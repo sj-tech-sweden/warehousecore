@@ -78,6 +78,30 @@ export function ZoneDetailPage() {
     navigate(`/zones?parent=${id}`);
   };
 
+  const handleCreateShelves = async (count: number) => {
+    if (!zone) return;
+
+    try {
+      // Create multiple shelves at once
+      const promises = [];
+      for (let i = 0; i < count; i++) {
+        promises.push(
+          zonesApi.create({
+            type: 'shelf',
+            parent_zone_id: zone.zone_id,
+            capacity: 10, // Default capacity for shelves
+            is_active: true,
+          })
+        );
+      }
+      await Promise.all(promises);
+      loadZoneDetails(); // Reload to show new shelves
+    } catch (error) {
+      console.error('Failed to create shelves:', error);
+      alert('Fehler beim Erstellen der Fächer');
+    }
+  };
+
   const handleDelete = async () => {
     if (!zone) return;
 
@@ -108,6 +132,7 @@ export function ZoneDetailPage() {
     warehouse: { label: 'Lager', icon: '🏭' },
     rack: { label: 'Regal', icon: '🗄️' },
     gitterbox: { label: 'Gitterbox', icon: '📦' },
+    shelf: { label: 'Fach', icon: '📚' },
     other: { label: 'Sonstige', icon: '📍' },
   };
 
@@ -176,6 +201,20 @@ export function ZoneDetailPage() {
               <Trash2 className="w-4 h-4" />
               Löschen
             </button>
+            {zone.type === 'rack' && (
+              <button
+                onClick={() => {
+                  const count = prompt('Wie viele Fächer sollen erstellt werden?', '5');
+                  if (count) {
+                    handleCreateShelves(parseInt(count));
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                Fächer erstellen
+              </button>
+            )}
             <button
               onClick={handleCreateSubzone}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent-red to-red-700 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-accent-red/50 transition-all"

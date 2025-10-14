@@ -365,7 +365,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.7` - Simplified zone types + delete functionality (current)
+- `1.8` - Automatic shelf creation with barcode generation (current)
+- `1.7` - Simplified zone types + delete functionality
 - `1.6` - Hierarchical zones with auto code generation
 - `1.5` - Clean JSON API responses
 - `1.4` - Zone creation fix
@@ -419,13 +420,39 @@ For issues or questions:
 
 ---
 
-**Version:** 1.7
+**Version:** 1.8
 **Last Updated:** 2025-10-14
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.8 (2025-10-14)
+- **Automatic Shelf (Fach) Creation:**
+  - Added 📚 **Fach** (shelf) as a 4th zone type for Regalen
+  - Automatic name generation (Fach 01, Fach 02, etc.) based on existing shelves in parent rack
+  - Automatic barcode generation (FACH-%08d format) after creation
+  - No manual name input required for shelf creation
+- **Bulk Shelf Creation:**
+  - "Fächer erstellen" button in rack detail view
+  - Create multiple shelves at once with a single action
+  - Default capacity of 10 per shelf
+- **Navigation Improvements:**
+  - Fixed subzone creation to stay in parent zone context instead of redirecting to /zones
+  - Maintains workflow continuity when creating hierarchical structures
+- **Database Migration:**
+  - Added barcode column to storage_zones table (006_add_zone_barcode.sql)
+  - Index on barcode for efficient lookups
+- **Backend Enhancements:**
+  - GenerateShelfName function in ZoneService for automatic naming
+  - Updated CreateZone handler to support optional Name field for shelves
+  - Barcode generation logic after zone insertion
+- **Example Usage:**
+  - Create Lager Weidelbach (WDB)
+  - Create Regal A (WDB-RG-01)
+  - Click "Fächer erstellen" → Enter "5" → Creates Fach 01 through Fach 05 automatically
+  - Each Fach gets codes like WDB-RG-01-F-01 and barcodes like FACH-00000014
 
 ### Version 1.7 (2025-10-14)
 - **Simplified Zone Types:** Reduced to 3 types only

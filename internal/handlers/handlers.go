@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -223,7 +224,7 @@ func GetDeviceMovements(w http.ResponseWriter, r *http.Request) {
 func GetZones(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetDB()
 	rows, err := db.Query(`
-		SELECT zone_id, code, name, type, description, parent_zone_id, capacity, is_active
+		SELECT zone_id, code, barcode, name, type, description, parent_zone_id, capacity, is_active
 		FROM storage_zones
 		WHERE is_active = TRUE
 		ORDER BY name
@@ -238,6 +239,7 @@ func GetZones(w http.ResponseWriter, r *http.Request) {
 	type ZoneResponse struct {
 		ZoneID       int64   `json:"zone_id"`
 		Code         string  `json:"code"`
+		Barcode      *string `json:"barcode,omitempty"`
 		Name         string  `json:"name"`
 		Type         string  `json:"type"`
 		Description  *string `json:"description,omitempty"`
@@ -249,7 +251,7 @@ func GetZones(w http.ResponseWriter, r *http.Request) {
 	zones := []ZoneResponse{}
 	for rows.Next() {
 		var z models.Zone
-		if err := rows.Scan(&z.ZoneID, &z.Code, &z.Name, &z.Type, &z.Description, &z.ParentZoneID, &z.Capacity, &z.IsActive); err != nil {
+		if err := rows.Scan(&z.ZoneID, &z.Code, &z.Barcode, &z.Name, &z.Type, &z.Description, &z.ParentZoneID, &z.Capacity, &z.IsActive); err != nil {
 			log.Printf("Error scanning zone row: %v", err)
 			continue
 		}
@@ -263,6 +265,9 @@ func GetZones(w http.ResponseWriter, r *http.Request) {
 			IsActive: z.IsActive,
 		}
 
+		if z.Barcode.Valid {
+			resp.Barcode = &z.Barcode.String
+		}
 		if z.Description.Valid {
 			resp.Description = &z.Description.String
 		}
@@ -284,7 +289,7 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 	// Input struct for API requests
 	var input struct {
 		Code         *string `json:"code"` // Optional - will be auto-generated if not provided
-		Name         string  `json:"name"`
+		Name         *string `json:"name"` // Optional for shelves - will be auto-generated
 		Type         string  `json:"type"`
 		Description  *string `json:"description"`
 		ParentZoneID *int64  `json:"parent_zone_id"`
@@ -298,23 +303,42 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	zoneService := services.NewZoneService()
+	db := repository.GetDB()
+
+	// Auto-generate name for shelves if not provided
+	var zoneName string
+	if input.Name != nil && *input.Name != "" {
+		zoneName = *input.Name
+	} else if input.Type == "shelf" {
+		// Generate automatic name for shelves (Fächer)
+		generatedName, err := zoneService.GenerateShelfName(input.ParentZoneID)
+		if err != nil {
+			log.Printf("Shelf name generation error: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to generate shelf name"})
+			return
+		}
+		zoneName = generatedName
+		log.Printf("Auto-generated shelf name: %s", zoneName)
+	} else {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Name is required for non-shelf zones"})
+		return
+	}
+
 	// Auto-generate code if not provided
 	var zoneCode string
 	if input.Code != nil && *input.Code != "" {
 		zoneCode = *input.Code
 	} else {
-		zoneService := services.NewZoneService()
-		generatedCode, err := zoneService.GenerateZoneCode(input.Name, input.Type, input.ParentZoneID)
+		generatedCode, err := zoneService.GenerateZoneCode(zoneName, input.Type, input.ParentZoneID)
 		if err != nil {
 			log.Printf("Zone code generation error: %v", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to generate zone code"})
 			return
 		}
 		zoneCode = generatedCode
-		log.Printf("Auto-generated zone code: %s for zone: %s", zoneCode, input.Name)
+		log.Printf("Auto-generated zone code: %s for zone: %s", zoneCode, zoneName)
 	}
-
-	db := repository.GetDB()
 
 	// Convert pointers to proper SQL values
 	var description, parentZoneID, capacity interface{}
@@ -334,10 +358,19 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 		capacity = nil
 	}
 
+	// Generate barcode for shelves
+	var barcode interface{}
+	if input.Type == "shelf" {
+		// Generate barcode - will be updated with actual ID after insert
+		barcode = nil // Will be set after we get the ID
+	} else {
+		barcode = nil
+	}
+
 	result, err := db.Exec(`
-		INSERT INTO storage_zones (code, name, type, description, parent_zone_id, capacity, is_active)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, zoneCode, input.Name, input.Type, description, parentZoneID, capacity, input.IsActive)
+		INSERT INTO storage_zones (code, barcode, name, type, description, parent_zone_id, capacity, is_active)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, zoneCode, barcode, zoneName, input.Type, description, parentZoneID, capacity, input.IsActive)
 	if err != nil {
 		log.Printf("Zone creation error - SQL insert: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -346,10 +379,23 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := result.LastInsertId()
 
+	// Generate and update barcode for shelves
+	var generatedBarcode *string
+	if input.Type == "shelf" {
+		barcodeStr := fmt.Sprintf("FACH-%08d", id)
+		_, err := db.Exec(`UPDATE storage_zones SET barcode = ? WHERE zone_id = ?`, barcodeStr, id)
+		if err != nil {
+			log.Printf("Failed to update barcode: %v", err)
+		} else {
+			generatedBarcode = &barcodeStr
+		}
+	}
+
 	// Return the created zone with clean JSON
 	type ZoneResponse struct {
 		ZoneID       int64   `json:"zone_id"`
 		Code         string  `json:"code"`
+		Barcode      *string `json:"barcode,omitempty"`
 		Name         string  `json:"name"`
 		Type         string  `json:"type"`
 		Description  *string `json:"description,omitempty"`
@@ -361,7 +407,8 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 	zone := ZoneResponse{
 		ZoneID:       id,
 		Code:         zoneCode,
-		Name:         input.Name,
+		Barcode:      generatedBarcode,
+		Name:         zoneName,
 		Type:         input.Type,
 		Description:  input.Description,
 		ParentZoneID: input.ParentZoneID,
@@ -369,7 +416,7 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 		IsActive:     input.IsActive,
 	}
 
-	log.Printf("Zone created successfully: %s (Code: %s, ID: %d)", input.Name, zoneCode, id)
+	log.Printf("Zone created successfully: %s (Code: %s, ID: %d)", zoneName, zoneCode, id)
 	respondJSON(w, http.StatusCreated, zone)
 }
 

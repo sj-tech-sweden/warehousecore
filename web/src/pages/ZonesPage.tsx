@@ -56,7 +56,13 @@ export function ZonesPage() {
       setShowForm(false);
       setFormData({ name: '', type: 'warehouse', description: '', capacity: '', parent_zone_id: '' });
       loadZones();
-      navigate('/zones'); // Remove query params
+
+      // If we created a subzone, navigate back to parent zone detail
+      if (formData.parent_zone_id) {
+        navigate(`/zones/${formData.parent_zone_id}`);
+      } else {
+        navigate('/zones');
+      }
     } catch (error) {
       console.error('Failed to create zone:', error);
     }
@@ -86,6 +92,7 @@ export function ZonesPage() {
     { value: 'warehouse', label: 'Lager', icon: '🏭' },
     { value: 'rack', label: 'Regal', icon: '🗄️' },
     { value: 'gitterbox', label: 'Gitterbox', icon: '📦' },
+    { value: 'shelf', label: 'Fach', icon: '📚' },
   ];
 
   // Get parent zone name if creating subzone
@@ -134,14 +141,23 @@ export function ZonesPage() {
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Name (z.B. Lager Weidelbach, Regal A1, Fach 03)"
-              required
-              className="w-full px-4 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
-            />
+            {formData.type !== 'shelf' && (
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Name (z.B. Lager Weidelbach, Regal A1)"
+                required
+                className="w-full px-4 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
+              />
+            )}
+            {formData.type === 'shelf' && (
+              <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                <p className="text-sm text-blue-300">
+                  ℹ️ Name und Barcode werden automatisch generiert (Fach 01, Fach 02, etc.)
+                </p>
+              </div>
+            )}
             <select
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
