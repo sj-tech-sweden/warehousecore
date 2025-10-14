@@ -17,9 +17,9 @@ type Job struct {
 
 // JobDevice represents a device assigned to a job (existing table)
 type JobDevice struct {
-	JobID    int64  `json:"job_id" db:"jobID"`
-	DeviceID string `json:"device_id" db:"deviceID"`
-	Quantity int    `json:"quantity" db:"quantity"`
+	JobID      int64  `json:"job_id" db:"jobID"`
+	DeviceID   string `json:"device_id" db:"deviceID"`
+	PackStatus string `json:"pack_status" db:"pack_status"` // pending, packed, issued, returned
 }
 
 // JobSummary contains job information with device counts

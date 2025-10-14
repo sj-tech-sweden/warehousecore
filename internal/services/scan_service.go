@@ -173,11 +173,11 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 		return nil, nil, err
 	}
 
-	// Assign to job
+	// Assign to job and update pack_status to issued
 	_, err = tx.Exec(`
-		INSERT INTO jobdevices (deviceID, jobID, quantity)
-		VALUES (?, ?, 1)
-		ON DUPLICATE KEY UPDATE quantity = 1
+		INSERT INTO jobdevices (deviceID, jobID, pack_status)
+		VALUES (?, ?, 'issued')
+		ON DUPLICATE KEY UPDATE pack_status = 'issued'
 	`, device.DeviceID, *jobID)
 	if err != nil {
 		return nil, nil, err
