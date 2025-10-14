@@ -246,25 +246,65 @@ func GetZones(w http.ResponseWriter, r *http.Request) {
 
 // CreateZone creates a new zone
 func CreateZone(w http.ResponseWriter, r *http.Request) {
-	var zone models.Zone
-	if err := json.NewDecoder(r.Body).Decode(&zone); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	// Input struct for API requests
+	var input struct {
+		Code         string  `json:"code"`
+		Name         string  `json:"name"`
+		Type         string  `json:"type"`
+		Description  *string `json:"description"`
+		ParentZoneID *int64  `json:"parent_zone_id"`
+		Capacity     *int64  `json:"capacity"`
+		IsActive     bool    `json:"is_active"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		log.Printf("Zone creation error - JSON decode: %v", err)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request: " + err.Error()})
 		return
 	}
 
 	db := repository.GetDB()
+
+	// Convert pointers to proper SQL values
+	var description, parentZoneID, capacity interface{}
+	if input.Description != nil && *input.Description != "" {
+		description = *input.Description
+	} else {
+		description = nil
+	}
+	if input.ParentZoneID != nil {
+		parentZoneID = *input.ParentZoneID
+	} else {
+		parentZoneID = nil
+	}
+	if input.Capacity != nil {
+		capacity = *input.Capacity
+	} else {
+		capacity = nil
+	}
+
 	result, err := db.Exec(`
 		INSERT INTO storage_zones (code, name, type, description, parent_zone_id, capacity, is_active)
-		VALUES (?, ?, ?, ?, ?, ?, TRUE)
-	`, zone.Code, zone.Name, zone.Type, zone.Description, zone.ParentZoneID, zone.Capacity)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, input.Code, input.Name, input.Type, description, parentZoneID, capacity, input.IsActive)
 	if err != nil {
+		log.Printf("Zone creation error - SQL insert: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	id, _ := result.LastInsertId()
-	zone.ZoneID = id
 
+	// Return the created zone
+	zone := models.Zone{
+		ZoneID:   id,
+		Code:     input.Code,
+		Name:     input.Name,
+		Type:     input.Type,
+		IsActive: input.IsActive,
+	}
+
+	log.Printf("Zone created successfully: %s (ID: %d)", input.Name, id)
 	respondJSON(w, http.StatusCreated, zone)
 }
 

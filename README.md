@@ -359,9 +359,11 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.0` - Version 1.0
-- `1.1` - Version 1.1
-- ... (semantic versioning)
+- `1.4` - Zone creation fix (current)
+- `1.3` - Multi-platform API URL support
+- `1.2` - Frontend enhancements
+- `1.1` - TailwindCSS fixes
+- `1.0` - Initial release
 
 **Pull image:**
 ```bash
@@ -408,6 +410,32 @@ For issues or questions:
 
 ---
 
-**Version:** 1.0
+**Version:** 1.4
 **Last Updated:** 2025-10-14
 **Maintainer:** Tsunami Events UG Development Team
+
+---
+
+## Changelog
+
+### Version 1.4 (2025-10-14)
+- Fixed zone creation API endpoint
+- Improved JSON request handling with proper nullable field support
+- Added detailed logging for zone creation operations
+
+### Version 1.3 (2025-10-14)
+- Fixed API URL configuration for multi-platform deployment
+- Changed from absolute to relative URLs for cross-platform compatibility
+
+### Version 1.2 (2025-10-14)
+- Frontend glassmorphism enhancements
+- Improved device and zone display components
+
+### Version 1.1 (2025-10-14)
+- Fixed TailwindCSS v4 configuration
+- Updated PostCSS plugins for modern build system
+
+### Version 1.0 (2025-10-14)
+- Initial release with core warehouse management features
+- Scan-driven workflows implementation
+- Modern React + TypeScript frontend with glassmorphism design
