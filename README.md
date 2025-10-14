@@ -365,7 +365,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.10` - Fixed zone devices SQL query + subzone delete buttons (current)
+- `1.11` - Fixed SPA routing for page reloads (current)
+- `1.10` - Fixed zone devices SQL query + subzone delete buttons
 - `1.9` - Fixed race condition in bulk shelf creation
 - `1.8` - Automatic shelf creation with barcode generation
 - `1.7` - Simplified zone types + delete functionality
@@ -422,13 +423,21 @@ For issues or questions:
 
 ---
 
-**Version:** 1.10
+**Version:** 1.11
 **Last Updated:** 2025-10-14
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.11 (2025-10-14)
+- **Bug Fix: SPA Routing on Page Reload**
+  - Fixed 404 errors when refreshing pages like `/zones`, `/zones/{id}`, etc.
+  - Implemented custom `spaHandler` to serve `index.html` for all non-file routes
+  - Server now properly handles client-side routing for React Router
+  - Changed from `http.FileServer` to custom handler with file existence check
+  - All frontend routes now work correctly on direct access or browser refresh
 
 ### Version 1.10 (2025-10-14)
 - **Bug Fix: Zone Devices SQL Query**

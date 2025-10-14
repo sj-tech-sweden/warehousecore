@@ -17,6 +17,22 @@ import (
 	"storagecore/internal/repository"
 )
 
+// spaHandler serves the SPA and falls back to index.html for client-side routes
+func spaHandler(w http.ResponseWriter, r *http.Request) {
+	// Build file path
+	path := "./web/dist" + r.URL.Path
+
+	// Check if file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// File doesn't exist - serve index.html for SPA routing
+		http.ServeFile(w, r, "./web/dist/index.html")
+		return
+	}
+
+	// File exists - serve it
+	http.FileServer(http.Dir("./web/dist")).ServeHTTP(w, r)
+}
+
 func main() {
 	// Load configuration
 	cfg, err := config.Load()
@@ -81,8 +97,8 @@ func main() {
 	api.Use(middleware.Logger)
 	api.Use(middleware.RecoveryMiddleware)
 
-	// Serve static frontend files (after frontend is built)
-	router.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/dist")))
+	// Serve static frontend files with SPA fallback
+	router.PathPrefix("/").HandlerFunc(spaHandler)
 
 	// CORS setup
 	c := cors.New(cors.Options{
