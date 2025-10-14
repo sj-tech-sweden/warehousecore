@@ -1,0 +1,332 @@
+package services
+
+import (
+	"database/sql"
+	"fmt"
+	"log"
+	"time"
+
+	"storagecore/internal/models"
+	"storagecore/internal/repository"
+)
+
+// ScanService handles all scan-related business logic
+type ScanService struct {
+	db *sql.DB
+}
+
+// NewScanService creates a new scan service
+func NewScanService() *ScanService {
+	return &ScanService{
+		db: repository.GetDB(),
+	}
+}
+
+// ProcessScan handles a barcode/QR scan and performs the appropriate action
+func (s *ScanService) ProcessScan(req models.ScanRequest, userID *int64, ipAddr, userAgent string) (*models.ScanResponse, error) {
+	// Start transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Find device by barcode/QR code
+	device, err := s.findDeviceByScan(req.ScanCode)
+	if err != nil {
+		// Log failed scan
+		s.logScanEvent(tx, req.ScanCode, nil, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: fmt.Sprintf("Device not found: %v", err),
+		}, nil
+	}
+
+	// Check for duplicate scan (same job)
+	if req.JobID != nil && device.CurrentJobID.Valid && device.CurrentJobID.Int64 == *req.JobID {
+		// Duplicate scan - treat as job complete signal
+		s.logScanEvent(tx, req.ScanCode, &device.DeviceID, "check", req.JobID, req.ZoneID, userID, true, "", ipAddr, userAgent)
+		tx.Commit()
+
+		return &models.ScanResponse{
+			Success:   true,
+			Message:   "Duplicate scan detected - job ready to complete",
+			Device:    s.getDeviceWithDetails(device.DeviceID),
+			Action:    "check",
+			Duplicate: true,
+		}, nil
+	}
+
+	// Process action
+	var response *models.ScanResponse
+	var movement *models.DeviceMovement
+
+	switch req.Action {
+	case "intake":
+		response, movement, err = s.processIntake(tx, device, req.ZoneID)
+	case "outtake":
+		response, movement, err = s.processOuttake(tx, device, req.JobID)
+	case "check":
+		response, err = s.processCheck(tx, device)
+	case "transfer":
+		response, movement, err = s.processTransfer(tx, device, req.ZoneID)
+	default:
+		err = fmt.Errorf("unknown action: %s", req.Action)
+	}
+
+	if err != nil {
+		s.logScanEvent(tx, req.ScanCode, &device.DeviceID, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: fmt.Sprintf("Action failed: %v", err),
+			Device:  s.getDeviceWithDetails(device.DeviceID),
+		}, nil
+	}
+
+	// Log successful scan
+	s.logScanEvent(tx, req.ScanCode, &device.DeviceID, req.Action, req.JobID, req.ZoneID, userID, true, "", ipAddr, userAgent)
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit: %w", err)
+	}
+
+	response.Device = s.getDeviceWithDetails(device.DeviceID)
+	response.Movement = movement
+	return response, nil
+}
+
+// processIntake handles device intake from job back to warehouse
+func (s *ScanService) processIntake(tx *sql.Tx, device *models.Device, zoneID *int64) (*models.ScanResponse, *models.DeviceMovement, error) {
+	previousStatus := device.Status
+	var fromJobID *int64
+	if device.CurrentJobID.Valid {
+		fromJobID = &device.CurrentJobID.Int64
+	}
+
+	// Update device status to in_storage
+	_, err := tx.Exec(`
+		UPDATE devices
+		SET status = 'in_storage', zone_id = ?, current_location = 'warehouse'
+		WHERE deviceID = ?
+	`, zoneID, device.DeviceID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Remove from job assignment
+	if fromJobID != nil {
+		_, err = tx.Exec(`DELETE FROM jobdevices WHERE deviceID = ? AND jobID = ?`, device.DeviceID, *fromJobID)
+		if err != nil {
+			log.Printf("Warning: failed to remove job assignment: %v", err)
+		}
+	}
+
+	// Create movement record
+	movement := &models.DeviceMovement{
+		DeviceID:   device.DeviceID,
+		Action:     "intake",
+		FromJobID:  models.IntToNullInt64(fromJobID),
+		ToZoneID:   models.IntToNullInt64(zoneID),
+		Timestamp:  time.Now(),
+	}
+
+	result, err := tx.Exec(`
+		INSERT INTO device_movements (device_id, action, from_job_id, to_zone_id, timestamp)
+		VALUES (?, ?, ?, ?, ?)
+	`, movement.DeviceID, movement.Action, movement.FromJobID, movement.ToZoneID, movement.Timestamp)
+	if err != nil {
+		return nil, nil, err
+	}
+	movement.MovementID, _ = result.LastInsertId()
+
+	return &models.ScanResponse{
+		Success:        true,
+		Message:        "Device successfully returned to warehouse",
+		Action:         "intake",
+		PreviousStatus: previousStatus,
+		NewStatus:      "in_storage",
+	}, movement, nil
+}
+
+// processOuttake handles device outtake from warehouse to job
+func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *int64) (*models.ScanResponse, *models.DeviceMovement, error) {
+	if jobID == nil {
+		return nil, nil, fmt.Errorf("job_id is required for outtake")
+	}
+
+	previousStatus := device.Status
+	var fromZoneID *int64
+	if device.ZoneID.Valid {
+		fromZoneID = &device.ZoneID.Int64
+	}
+
+	// Update device status to on_job
+	_, err := tx.Exec(`
+		UPDATE devices
+		SET status = 'on_job', zone_id = NULL
+		WHERE deviceID = ?
+	`, device.DeviceID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Assign to job
+	_, err = tx.Exec(`
+		INSERT INTO jobdevices (deviceID, jobID, quantity)
+		VALUES (?, ?, 1)
+		ON DUPLICATE KEY UPDATE quantity = 1
+	`, device.DeviceID, *jobID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create movement record
+	movement := &models.DeviceMovement{
+		DeviceID:   device.DeviceID,
+		Action:     "outtake",
+		FromZoneID: models.IntToNullInt64(fromZoneID),
+		ToJobID:    models.IntToNullInt64(jobID),
+		Timestamp:  time.Now(),
+	}
+
+	result, err := tx.Exec(`
+		INSERT INTO device_movements (device_id, action, from_zone_id, to_job_id, timestamp)
+		VALUES (?, ?, ?, ?, ?)
+	`, movement.DeviceID, movement.Action, movement.FromZoneID, movement.ToJobID, movement.Timestamp)
+	if err != nil {
+		return nil, nil, err
+	}
+	movement.MovementID, _ = result.LastInsertId()
+
+	return &models.ScanResponse{
+		Success:        true,
+		Message:        "Device assigned to job",
+		Action:         "outtake",
+		PreviousStatus: previousStatus,
+		NewStatus:      "on_job",
+	}, movement, nil
+}
+
+// processCheck verifies device status without changing it
+func (s *ScanService) processCheck(tx *sql.Tx, device *models.Device) (*models.ScanResponse, error) {
+	return &models.ScanResponse{
+		Success: true,
+		Message: fmt.Sprintf("Device status: %s", device.Status),
+		Action:  "check",
+	}, nil
+}
+
+// processTransfer moves device between zones
+func (s *ScanService) processTransfer(tx *sql.Tx, device *models.Device, toZoneID *int64) (*models.ScanResponse, *models.DeviceMovement, error) {
+	if toZoneID == nil {
+		return nil, nil, fmt.Errorf("zone_id is required for transfer")
+	}
+
+	var fromZoneID *int64
+	if device.ZoneID.Valid {
+		fromZoneID = &device.ZoneID.Int64
+	}
+
+	// Update device zone
+	_, err := tx.Exec(`UPDATE devices SET zone_id = ? WHERE deviceID = ?`, *toZoneID, device.DeviceID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create movement record
+	movement := &models.DeviceMovement{
+		DeviceID:   device.DeviceID,
+		Action:     "transfer",
+		FromZoneID: models.IntToNullInt64(fromZoneID),
+		ToZoneID:   models.IntToNullInt64(toZoneID),
+		Timestamp:  time.Now(),
+	}
+
+	result, err := tx.Exec(`
+		INSERT INTO device_movements (device_id, action, from_zone_id, to_zone_id, timestamp)
+		VALUES (?, ?, ?, ?, ?)
+	`, movement.DeviceID, movement.Action, movement.FromZoneID, movement.ToZoneID, movement.Timestamp)
+	if err != nil {
+		return nil, nil, err
+	}
+	movement.MovementID, _ = result.LastInsertId()
+
+	return &models.ScanResponse{
+		Success: true,
+		Message: "Device transferred to new zone",
+		Action:  "transfer",
+	}, movement, nil
+}
+
+// findDeviceByScan looks up a device by barcode or QR code
+func (s *ScanService) findDeviceByScan(scanCode string) (*models.Device, error) {
+	var device models.Device
+	err := s.db.QueryRow(`
+		SELECT deviceID, productID, serialnumber, barcode, qr_code, status,
+		       current_location, zone_id, condition_rating, usage_hours
+		FROM devices
+		WHERE barcode = ? OR qr_code = ? OR deviceID = ?
+		LIMIT 1
+	`, scanCode, scanCode, scanCode).Scan(
+		&device.DeviceID, &device.ProductID, &device.SerialNumber,
+		&device.Barcode, &device.QRCode, &device.Status,
+		&device.CurrentLocation, &device.ZoneID, &device.ConditionRating, &device.UsageHours,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get current job if on_job
+	if device.Status == "on_job" || device.Status == "rented" {
+		s.db.QueryRow(`
+			SELECT jobID FROM jobdevices WHERE deviceID = ? LIMIT 1
+		`, device.DeviceID).Scan(&device.CurrentJobID)
+	}
+
+	return &device, nil
+}
+
+// getDeviceWithDetails fetches device with related data
+func (s *ScanService) getDeviceWithDetails(deviceID string) *models.DeviceWithDetails {
+	var device models.DeviceWithDetails
+	err := s.db.QueryRow(`
+		SELECT d.*, p.name as product_name,
+		       COALESCE(z.name, '') as zone_name,
+		       COALESCE(c.name, '') as case_name,
+		       COALESCE(j.jobnumber, '') as job_number
+		FROM devices d
+		LEFT JOIN products p ON d.productID = p.productID
+		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
+		LEFT JOIN cases c ON dc.caseID = c.caseID
+		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID
+		LEFT JOIN jobs j ON jd.jobID = j.jobID
+		WHERE d.deviceID = ?
+		LIMIT 1
+	`, deviceID).Scan(
+		&device.DeviceID, &device.ProductID, &device.SerialNumber,
+		&device.Barcode, &device.QRCode, &device.Status,
+		&device.CurrentLocation, &device.ZoneID, &device.ConditionRating, &device.UsageHours,
+		&device.ProductName, &device.ZoneName, &device.CaseName, &device.JobNumber,
+	)
+	if err != nil {
+		log.Printf("Error fetching device details: %v", err)
+		return nil
+	}
+	return &device
+}
+
+// logScanEvent records a scan event
+func (s *ScanService) logScanEvent(tx *sql.Tx, scanCode string, deviceID *string, action string, jobID, zoneID, userID *int64, success bool, errorMsg, ipAddr, userAgent string) {
+	_, err := tx.Exec(`
+		INSERT INTO scan_events
+		(scan_code, device_id, action, job_id, zone_id, user_id, success, error_message, ip_address, user_agent, timestamp)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, scanCode, deviceID, action, jobID, zoneID, userID, success, errorMsg, ipAddr, userAgent, time.Now())
+	if err != nil {
+		log.Printf("Failed to log scan event: %v", err)
+	}
+}
