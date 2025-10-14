@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MapPin, Plus } from 'lucide-react';
+import { MapPin, Plus, Trash2 } from 'lucide-react';
 import { zonesApi } from '../lib/api';
 import type { Zone } from '../lib/api';
 
@@ -66,13 +66,26 @@ export function ZonesPage() {
     navigate(`/zones/${zoneId}`);
   };
 
+  const handleDeleteZone = async (e: React.MouseEvent, zone: Zone) => {
+    e.stopPropagation(); // Prevent navigation when clicking delete
+
+    if (!confirm(`Zone "${zone.name}" (${zone.code}) wirklich löschen?`)) {
+      return;
+    }
+
+    try {
+      await zonesApi.delete(zone.zone_id);
+      loadZones();
+    } catch (error) {
+      console.error('Failed to delete zone:', error);
+      alert('Fehler beim Löschen der Zone. Prüfe ob die Zone Unterzonen oder Geräte enthält.');
+    }
+  };
+
   const zoneTypes = [
     { value: 'warehouse', label: 'Lager', icon: '🏭' },
     { value: 'rack', label: 'Regal', icon: '🗄️' },
-    { value: 'shelf', label: 'Fach', icon: '📚' },
-    { value: 'vehicle', label: 'Fahrzeug', icon: '🚐' },
-    { value: 'stage', label: 'Bühne', icon: '🎪' },
-    { value: 'case', label: 'Case', icon: '📦' },
+    { value: 'gitterbox', label: 'Gitterbox', icon: '📦' },
   ];
 
   // Get parent zone name if creating subzone
@@ -178,11 +191,18 @@ export function ZonesPage() {
         {rootZones.map((zone) => {
           const typeInfo = zoneTypes.find((t) => t.value === zone.type);
           return (
-            <button
+            <div
               key={zone.zone_id}
+              className="glass rounded-xl p-5 hover:bg-white/20 transition-all cursor-pointer group relative"
               onClick={() => handleZoneClick(zone.zone_id)}
-              className="glass rounded-xl p-5 hover:bg-white/20 transition-all cursor-pointer group text-left"
             >
+              <button
+                onClick={(e) => handleDeleteZone(e, zone)}
+                className="absolute top-3 right-3 p-2 glass-dark rounded-lg text-red-400 hover:text-red-300 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all z-10"
+                title="Zone löschen"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
               <div className="flex items-start gap-4">
                 <div className="text-3xl">{typeInfo?.icon || '📦'}</div>
                 <div className="flex-1 min-w-0">
@@ -198,7 +218,7 @@ export function ZonesPage() {
                   </div>
                 </div>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

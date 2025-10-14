@@ -99,13 +99,9 @@ func generatePrefix(name string) string {
 // getTypePrefix returns the type prefix for zone codes
 func getTypePrefix(zoneType string) string {
 	prefixes := map[string]string{
-		"warehouse": "WH",
-		"rack":      "RG", // Regal
-		"shelf":     "F",  // Fach
-		"vehicle":   "VH", // Fahrzeug
-		"stage":     "ST", // Stage
-		"case":      "CS", // Case
-		"other":     "OT",
+		"warehouse": "LGR", // Lager
+		"rack":      "RG",  // Regal
+		"gitterbox": "GB",  // Gitterbox
 	}
 
 	if prefix, ok := prefixes[zoneType]; ok {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, Package, ChevronRight, ArrowLeft, Plus } from 'lucide-react';
+import { MapPin, Package, ChevronRight, ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { zonesApi } from '../lib/api';
 
 interface ZoneDetails {
@@ -78,13 +78,36 @@ export function ZoneDetailPage() {
     navigate(`/zones?parent=${id}`);
   };
 
+  const handleDelete = async () => {
+    if (!zone) return;
+
+    if (zone.device_count > 0) {
+      alert('Diese Zone enthält noch Geräte und kann nicht gelöscht werden.');
+      return;
+    }
+
+    if (zone.subzones && zone.subzones.length > 0) {
+      alert('Diese Zone enthält noch Unterzonen und kann nicht gelöscht werden.');
+      return;
+    }
+
+    if (!confirm(`Zone "${zone.name}" (${zone.code}) wirklich löschen?`)) {
+      return;
+    }
+
+    try {
+      await zonesApi.delete(zone.zone_id);
+      navigate('/zones');
+    } catch (error) {
+      console.error('Failed to delete zone:', error);
+      alert('Fehler beim Löschen der Zone');
+    }
+  };
+
   const zoneTypes = {
     warehouse: { label: 'Lager', icon: '🏭' },
     rack: { label: 'Regal', icon: '🗄️' },
-    shelf: { label: 'Fach', icon: '📚' },
-    vehicle: { label: 'Fahrzeug', icon: '🚐' },
-    stage: { label: 'Bühne', icon: '🎪' },
-    case: { label: 'Case', icon: '📦' },
+    gitterbox: { label: 'Gitterbox', icon: '📦' },
     other: { label: 'Sonstige', icon: '📍' },
   };
 
@@ -145,13 +168,22 @@ export function ZoneDetailPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleCreateSubzone}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent-red to-red-700 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-accent-red/50 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            Unterzone erstellen
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-2 px-4 py-2 glass text-red-400 hover:text-red-300 hover:bg-red-900/20 font-semibold rounded-xl transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              Löschen
+            </button>
+            <button
+              onClick={handleCreateSubzone}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent-red to-red-700 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-accent-red/50 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Unterzone erstellen
+            </button>
+          </div>
         </div>
 
         {zone.description && (

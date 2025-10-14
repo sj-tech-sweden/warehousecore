@@ -365,7 +365,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.6` - Hierarchical zones with auto code generation (current)
+- `1.7` - Simplified zone types + delete functionality (current)
+- `1.6` - Hierarchical zones with auto code generation
 - `1.5` - Clean JSON API responses
 - `1.4` - Zone creation fix
 - `1.3` - Multi-platform API URL support
@@ -418,7 +419,7 @@ For issues or questions:
 
 ---
 
-**Version:** 1.6
+**Version:** 1.7
 **Last Updated:** 2025-10-14
 **Maintainer:** Tsunami Events UG Development Team
 
@@ -426,9 +427,27 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.7 (2025-10-14)
+- **Simplified Zone Types:** Reduced to 3 types only
+  - 🏭 **Lager** (warehouse) - Main storage facility
+  - 🗄️ **Regal** (rack) - Shelving units
+  - 📦 **Gitterbox** (gitterbox) - Wire mesh containers
+- **Delete Functionality:**
+  - Delete button on zone cards (hover to reveal)
+  - Delete button in zone detail view
+  - Safety checks: prevents deletion if zone contains devices or subzones
+  - Confirmation dialog before deletion
+- **Updated Code Generation:**
+  - Warehouse prefix: LGR (Lager)
+  - Rack prefix: RG (Regal)
+  - Gitterbox prefix: GB (Gitterbox)
+- **Example Hierarchy:**
+  - Weidelbach (WDL) → Regal A (WDL-RG-01) → Gitterbox 01 (WDL-RG-01-GB-01)
+- **Database Migration:** Updated ENUM type to support gitterbox
+
 ### Version 1.6 (2025-10-14)
-- **Automatic Zone Code Generation:** Smart, hierarchical code generation (e.g., WDB → WDB-RG-01 → WDB-RG-01-F-01)
-- **Hierarchical Zone System:** Create nested zones (Lager → Regal → Fach)
+- **Automatic Zone Code Generation:** Smart, hierarchical code generation
+- **Hierarchical Zone System:** Create nested zones
 - **Zone Detail View:** Click zones to see subzones, devices, and breadcrumb navigation
 - **ZoneService:** New service layer for zone business logic
 - **API Enhancements:**
