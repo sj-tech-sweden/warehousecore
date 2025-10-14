@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 
 // DSN returns the database connection string
 func (c *DatabaseConfig) DSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=skip-verify",
 		c.User,
 		c.Password,
 		c.Host,

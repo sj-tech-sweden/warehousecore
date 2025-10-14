@@ -293,10 +293,12 @@ func (s *ScanService) findDeviceByScan(scanCode string) (*models.Device, error) 
 func (s *ScanService) getDeviceWithDetails(deviceID string) *models.DeviceWithDetails {
 	var device models.DeviceWithDetails
 	err := s.db.QueryRow(`
-		SELECT d.*, p.name as product_name,
+		SELECT d.deviceID, d.productID, d.serialnumber, d.barcode, d.qr_code, d.status,
+		       d.current_location, d.zone_id, d.condition_rating, d.usage_hours,
+		       COALESCE(p.name, '') as product_name,
 		       COALESCE(z.name, '') as zone_name,
 		       COALESCE(c.name, '') as case_name,
-		       COALESCE(j.jobnumber, '') as job_number
+		       COALESCE(CAST(j.jobID AS CHAR), '') as job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id

@@ -8,17 +8,8 @@ services:
     container_name: storagecore
     ports:
       - "8081:8081"
-    environment:
-      - PORT=8081
-      - HOST=0.0.0.0
-      - DB_HOST=tsunami-events.de
-      - DB_PORT=3306
-      - DB_USER=tsweb
-      - DB_PASS=your_password_here
-      - DB_NAME=RentalCore
-      - APP_ENV=production
-      - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+    env_file:
+      - .env
     restart: unless-stopped
     networks:
       - storagecore-network
