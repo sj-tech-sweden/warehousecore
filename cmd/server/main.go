@@ -91,7 +91,6 @@ func main() {
 	// Auth endpoints (public - no auth required)
 	api.HandleFunc("/auth/login", handlers.Login).Methods("POST")
 	api.HandleFunc("/auth/logout", handlers.Logout).Methods("POST")
-	api.HandleFunc("/auth/me", handlers.GetCurrentUser).Methods("GET")
 
 	// Health check (public)
 	api.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
@@ -99,6 +98,9 @@ func main() {
 	// Protected routes - apply auth middleware
 	protected := api.PathPrefix("").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
+
+	// Auth status endpoint (requires authentication)
+	protected.HandleFunc("/auth/me", handlers.GetCurrentUser).Methods("GET")
 
 	// Scan endpoints (CRITICAL - core functionality)
 	protected.HandleFunc("/scans", handlers.HandleScan).Methods("POST")
