@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User } from 'lucide-react';
+import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -20,9 +20,9 @@ export function Layout({ children }: LayoutProps) {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if (!mobile) {
-        setSidebarOpen(true);
+        setSidebarOpen(true); // Desktop: sidebar expanded by default
       } else {
-        setSidebarOpen(false);
+        setSidebarOpen(false); // Mobile: sidebar hidden by default
       }
     };
 
@@ -92,17 +92,32 @@ export function Layout({ children }: LayoutProps) {
     <div className="min-h-screen bg-dark">
       {/* Header */}
       <header className={`fixed top-0 right-0 z-50 glass-dark border-b border-white/10 transition-all duration-300 ${
-        !isMobile && sidebarOpen ? 'left-64' : 'left-0'
+        !isMobile && sidebarOpen ? 'left-64' : !isMobile ? 'left-20' : 'left-0'
       }`}>
         <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center gap-2 sm:gap-4">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              aria-label="Toggle menu"
-            >
-              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-            </button>
+            {!isMobile && (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                aria-label="Toggle sidebar"
+              >
+                {sidebarOpen ? (
+                  <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
+                )}
+              </button>
+            )}
+            {isMobile && (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                aria-label="Toggle menu"
+              >
+                <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            )}
             <h1 className="text-lg sm:text-2xl font-bold">
               <span className="text-accent-red">Storage</span>
               <span className="text-white">Core</span>
@@ -124,9 +139,11 @@ export function Layout({ children }: LayoutProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 bottom-0 z-50 glass-dark border-r border-white/10 transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } ${isMobile ? 'w-64' : 'w-64 md:translate-x-0'}`}
+        className={`fixed left-0 top-0 bottom-0 z-50 glass-dark border-r border-white/10 transition-all duration-300 ease-in-out ${
+          isMobile && !sidebarOpen ? '-translate-x-full' : 'translate-x-0'
+        } ${
+          isMobile ? 'w-64' : sidebarOpen ? 'w-64' : 'w-20'
+        }`}
       >
         {/* Sidebar Header (Mobile only) */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-white/10 md:hidden">
@@ -143,15 +160,17 @@ export function Layout({ children }: LayoutProps) {
           </button>
         </div>
 
-        <nav className="p-4 space-y-2 mt-12 md:mt-4">
+        <nav className={`p-4 space-y-2 ${isMobile ? 'mt-12' : 'mt-20'}`}>
           {/* Cross-navigation to RentalCore */}
           <a
             href={rentalCoreURL}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all bg-accent-red/10 text-accent-red hover:bg-accent-red hover:text-white shadow-lg shadow-accent-red/10 border border-accent-red/20"
+            className={`flex items-center rounded-lg transition-all bg-accent-red/10 text-accent-red hover:bg-accent-red hover:text-white shadow-lg shadow-accent-red/10 border border-accent-red/20 ${
+              sidebarOpen || isMobile ? 'gap-3 px-4 py-3' : 'justify-center p-3'
+            }`}
             title="Switch to RentalCore"
           >
-            <Briefcase className="w-5 h-5" />
-            <span className="font-semibold">RentalCore</span>
+            <Briefcase className="w-5 h-5 flex-shrink-0" />
+            {(sidebarOpen || isMobile) && <span className="font-semibold">RentalCore</span>}
           </a>
 
           {navItems.map((item) => {
@@ -163,21 +182,26 @@ export function Layout({ children }: LayoutProps) {
                 key={item.path}
                 to={item.path}
                 onClick={closeSidebar}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                className={`flex items-center rounded-lg transition-all ${
                   isActive
                     ? 'bg-accent-red text-white shadow-lg shadow-accent-red/20'
                     : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                } ${
+                  sidebarOpen || isMobile ? 'gap-3 px-4 py-3' : 'justify-center p-3'
                 }`}
+                title={!sidebarOpen && !isMobile ? item.label : ''}
               >
-                <Icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                {(sidebarOpen || isMobile) && <span className="font-medium">{item.label}</span>}
               </Link>
             );
           })}
 
           {/* User Profile & Logout */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10 bg-dark/50">
-            {user && (
+          <div className={`absolute bottom-0 left-0 right-0 p-4 border-t border-white/10 bg-dark/50 ${
+            !sidebarOpen && !isMobile ? 'flex flex-col items-center' : ''
+          }`}>
+            {user && (sidebarOpen || isMobile) && (
               <div className="mb-3 px-4 py-2 rounded-lg bg-white/5">
                 <div className="flex items-center gap-2 text-sm">
                   <User className="w-4 h-4 text-accent-red" />
@@ -188,12 +212,20 @@ export function Layout({ children }: LayoutProps) {
                 )}
               </div>
             )}
+            {user && !sidebarOpen && !isMobile && (
+              <div className="mb-3 p-2 rounded-lg bg-white/5 flex justify-center">
+                <User className="w-5 h-5 text-accent-red" />
+              </div>
+            )}
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-gray-400 hover:bg-red-500/10 hover:text-red-400 w-full"
+              className={`flex items-center rounded-lg transition-all text-gray-400 hover:bg-red-500/10 hover:text-red-400 ${
+                sidebarOpen || isMobile ? 'gap-3 px-4 py-3 w-full' : 'justify-center p-3'
+              }`}
+              title={!sidebarOpen && !isMobile ? 'Abmelden' : ''}
             >
-              <LogOut className="w-5 h-5" />
-              <span className="font-medium">Abmelden</span>
+              <LogOut className="w-5 h-5 flex-shrink-0" />
+              {(sidebarOpen || isMobile) && <span className="font-medium">Abmelden</span>}
             </button>
           </div>
         </nav>
@@ -202,7 +234,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Main Content */}
       <main
         className={`pt-14 sm:pt-16 transition-all duration-300 ${
-          !isMobile && sidebarOpen ? 'md:ml-64' : 'ml-0'
+          isMobile ? 'ml-0' : sidebarOpen ? 'ml-64' : 'ml-20'
         }`}
       >
         <div className="p-3 sm:p-6">
