@@ -16,6 +16,7 @@ import (
 
 	"storagecore/config"
 	"storagecore/internal/handlers"
+	"storagecore/internal/led"
 	"storagecore/internal/middleware"
 	"storagecore/internal/repository"
 )
@@ -81,6 +82,11 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer repository.CloseDatabase()
+
+	// Initialize LED service
+	log.Println("[LED] Initializing LED service...")
+	_ = led.GetService() // Initialize singleton at startup
+	log.Println("[LED] LED service initialization complete")
 
 	// Setup router
 	router := mux.NewRouter()

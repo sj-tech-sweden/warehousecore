@@ -2,13 +2,13 @@
   "warehouse_id": "WDL",
   "shelves": [
     {
-      "shelf_id": "Regal-01",
+      "shelf_id": "WDL-06-RG-02",
       "bins": [
-        { "bin_id": "WDL-RG-01-F-01", "pixels": [0, 1, 2, 3] },
-        { "bin_id": "WDL-RG-01-F-02", "pixels": [4, 5, 6] },
-        { "bin_id": "WDL-RG-01-F-03", "pixels": [7, 8, 9, 10] },
-        { "bin_id": "WDL-RG-01-F-04", "pixels": [11, 12, 13] },
-        { "bin_id": "WDL-RG-01-F-05", "pixels": [14, 15, 16, 17] }
+        { "bin_id": "WDL-RG-02-F-01", "pixels": [0, 1, 2, 3] },
+        { "bin_id": "WDL-RG-02-F-02", "pixels": [4, 5, 6] },
+        { "bin_id": "WDL-RG-02-F-03", "pixels": [7, 8, 9, 10] },
+        { "bin_id": "WDL-RG-02-F-04", "pixels": [11, 12, 13] },
+        { "bin_id": "WDL-RG-02-F-05", "pixels": [14, 15, 16, 17] }
       ]
     }
   ],

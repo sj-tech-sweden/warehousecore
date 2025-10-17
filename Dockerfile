@@ -29,6 +29,10 @@ COPY --from=builder /app/storagecore .
 # Copy migrations
 COPY --from=builder /app/migrations ./migrations
 
+# Copy LED configuration files
+COPY --from=builder /app/internal/led/config ./internal/led/config
+COPY --from=builder /app/internal/led/schema ./internal/led/schema
+
 # Copy frontend build
 COPY ./web/dist ./web/dist
 
