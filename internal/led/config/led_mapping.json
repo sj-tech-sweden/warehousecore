@@ -1,0 +1,42 @@
+{
+  "warehouse_id": "weidelbach",
+  "shelves": [
+    {
+      "shelf_id": "A",
+      "bins": [
+        { "bin_id": "A-01", "pixels": [0, 1, 2, 3] },
+        { "bin_id": "A-02", "pixels": [4, 5, 6] },
+        { "bin_id": "A-03", "pixels": [7, 8, 9, 10] },
+        { "bin_id": "A-04", "pixels": [11, 12, 13] },
+        { "bin_id": "A-05", "pixels": [14, 15, 16, 17] }
+      ]
+    },
+    {
+      "shelf_id": "B",
+      "bins": [
+        { "bin_id": "B-01", "pixels": [100, 101] },
+        { "bin_id": "B-02", "pixels": [102, 103, 104] },
+        { "bin_id": "B-03", "pixels": [105, 106] },
+        { "bin_id": "B-04", "pixels": [107, 108, 109] }
+      ]
+    },
+    {
+      "shelf_id": "C",
+      "bins": [
+        { "bin_id": "C-01", "pixels": [200, 201, 202] },
+        { "bin_id": "C-02", "pixels": [203, 204] },
+        { "bin_id": "C-03", "pixels": [205, 206, 207, 208] }
+      ]
+    }
+  ],
+  "led_strip": {
+    "length": 600,
+    "data_pin": 5,
+    "chipset": "SK6812_GRBW"
+  },
+  "defaults": {
+    "color": "#FF2A2A",
+    "pattern": "breathe",
+    "intensity": 180
+  }
+}

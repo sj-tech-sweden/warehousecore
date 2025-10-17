@@ -180,3 +180,46 @@ export const maintenanceApi = {
   getInspections: (params?: { status?: string }) =>
     api.get<Inspection[]>('/maintenance/inspections', { params }),
 };
+
+// LED Control Types
+export interface LEDStatus {
+  mqtt_connected: boolean;
+  mqtt_dry_run: boolean;
+  mapping_loaded: boolean;
+  warehouse_id: string;
+  total_shelves: number;
+  total_bins: number;
+}
+
+export interface LEDMapping {
+  warehouse_id: string;
+  shelves: Array<{
+    shelf_id: string;
+    bins: Array<{
+      bin_id: string;
+      pixels: number[];
+    }>;
+  }>;
+  led_strip: {
+    length: number;
+    data_pin: number;
+    chipset: string;
+  };
+  defaults: {
+    color: string;
+    pattern: string;
+    intensity: number;
+  };
+}
+
+export const ledApi = {
+  getStatus: () => api.get<LEDStatus>('/led/status'),
+  highlightJob: (jobId: number) => api.post(`/led/highlight?job_id=${jobId}`),
+  clear: () => api.post('/led/clear'),
+  identify: () => api.post('/led/identify'),
+  testBin: (shelfId: string, binId: string) =>
+    api.post(`/led/test?shelf_id=${shelfId}&bin_id=${binId}`),
+  getMapping: () => api.get<LEDMapping>('/led/mapping'),
+  updateMapping: (mapping: LEDMapping) => api.put('/led/mapping', mapping),
+  validateMapping: (mapping: LEDMapping) => api.post('/led/mapping/validate', mapping),
+};

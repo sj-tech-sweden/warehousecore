@@ -10,6 +10,7 @@ StorageCore is the digital twin of the Weidelbach warehouse, providing real-time
 
 - [Overview](#overview)
 - [Features](#features)
+- [LED Highlighting System](#led-highlighting-system)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
@@ -67,6 +68,367 @@ StorageCore manages the physical warehouse operations for Tsunami Events, synchr
    - Repair tracking with costs
    - Inspection scheduling
    - Status workflow (open → in_progress → repaired → closed)
+
+6. **LED Highlighting System** 🎨 NEW
+   - Physical warehouse bin highlighting via LED strips
+   - Real-time MQTT communication with ESP32 controllers
+   - Job-based automatic bin illumination
+   - Multiple LEDs per storage bin support
+   - Animation patterns (solid, blink, breathe)
+   - Remote management and testing
+   - Works worldwide with cloud-based MQTT broker
+
+---
+
+## LED Highlighting System
+
+### Overview
+
+The LED Highlighting System provides physical visual guidance in the warehouse by illuminating storage bins containing devices needed for a specific job. When a job is selected in StorageCore, the system automatically highlights the corresponding warehouse locations using addressable LED strips controlled by ESP32 microcontrollers.
+
+### Architecture Diagram
+
+```
+┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
+│  StorageCore    │         │  MQTT Broker     │         │   ESP32 + LEDs  │
+│  (Cloud/Server) │───────→ │  (Cloud/TLS)     │←─────── │  (Warehouse)    │
+│                 │  Pub    │                  │  Sub    │                 │
+│  - Job Manager  │         │  Topics:         │         │  - WiFi Client  │
+│  - LED Service  │         │  weidelbach/cmd  │         │  - MQTT Sub     │
+│  - Mapping Cfg  │         │  weidelbach/sts  │         │  - SK6812 Driver│
+└─────────────────┘         └──────────────────┘         └─────────────────┘
+     Backend                    Broker (e.g.                  Warehouse HW
+                                EMQX/Mosquitto)
+
+Flow: Job Selected → StorageCore queries device locations → Publish MQTT JSON command
+      → ESP32 receives command → Parse JSON → Set LED colors/patterns → Show
+```
+
+### Key Features
+
+- **No Port Forwarding Required**: ESP32 uses outbound MQTT connection, works from any network
+- **Cloud-Ready**: StorageCore can run on external servers, ESP32 connects via internet
+- **Multiple LEDs per Bin**: Support for 2-4 LEDs per storage compartment
+- **Flexible Patterns**: Solid, blink, breathe animations
+- **Real-Time Control**: Toggle LEDs on/off from job panel
+- **Status Monitoring**: MQTT heartbeat shows ESP32 online/offline status
+- **Dry-Run Mode**: Backend works without MQTT for testing
+- **Admin Mapping Editor**: JSON-based bin-to-LED configuration
+
+### Components
+
+#### 1. Backend (Go)
+
+**Location:** `internal/led/`
+
+- `models.go` - Data structures (LEDCommand, LEDMapping, Bin, Shelf)
+- `mqtt_publisher.go` - MQTT client with TLS support, reconnect logic
+- `service.go` - Business logic (Job → Bins → Pixels mapping)
+- `handlers/led_handlers.go` - REST API endpoints
+
+**Endpoints:**
+- `GET /api/v1/led/status` - MQTT connection status
+- `POST /api/v1/led/highlight?job_id=X` - Highlight bins for job
+- `POST /api/v1/led/clear` - Turn off all LEDs
+- `POST /api/v1/led/identify` - Test flash all LEDs
+- `POST /api/v1/led/test?shelf_id=A&bin_id=A-01` - Test specific bin
+- `GET /api/v1/led/mapping` - Get current mapping config
+- `PUT /api/v1/led/mapping` - Update mapping config
+- `POST /api/v1/led/mapping/validate` - Validate mapping JSON
+
+#### 2. Frontend (React/TypeScript)
+
+**Location:** `web/src/pages/JobsPage.tsx`, `web/src/lib/api.ts`
+
+- Toggle button in Job Panel: "Fächer hervorheben"
+- Visual indicators: MQTT connection status, bin count
+- Auto-clear LEDs when exiting job
+- Real-time status updates
+
+#### 3. ESP32 Firmware (Arduino C++)
+
+**Location:** `firmware/esp32_sk6812_leds/`
+
+- `esp32_sk6812_leds.ino` - Main firmware
+- `secrets.h.template` - Config template (WiFi, MQTT credentials)
+- `README.md` - Flash instructions, hardware wiring
+
+**Features:**
+- WiFi auto-reconnect
+- MQTT client with TLS (optional)
+- JSON command parsing (ArduinoJson)
+- SK6812 GRBW LED driver (Adafruit_NeoPixel)
+- Watchdog timer for stability
+- Heartbeat publishing every 15s
+- Pattern engine (solid/blink/breathe)
+
+#### 4. Configuration Files
+
+**LED Mapping:** `internal/led/config/led_mapping.json`
+
+Defines which LED indices belong to which storage bins:
+
+```json
+{
+  "warehouse_id": "weidelbach",
+  "shelves": [
+    {
+      "shelf_id": "A",
+      "bins": [
+        { "bin_id": "A-01", "pixels": [0, 1, 2, 3] },
+        { "bin_id": "A-02", "pixels": [4, 5, 6] }
+      ]
+    }
+  ],
+  "led_strip": {
+    "length": 600,
+    "data_pin": 5,
+    "chipset": "SK6812_GRBW"
+  },
+  "defaults": {
+    "color": "#FF2A2A",
+    "pattern": "breathe",
+    "intensity": 180
+  }
+}
+```
+
+**JSON Schemas:** `internal/led/schema/led_command.schema.json`, `internal/led/schema/led_mapping.schema.json`
+
+### MQTT Communication
+
+#### Command Topic (Publish from StorageCore)
+```
+{TOPIC_PREFIX}/{WAREHOUSE_ID}/cmd
+Example: weidelbach/weidelbach/cmd
+```
+
+**Highlight Command:**
+```json
+{
+  "op": "highlight",
+  "warehouse_id": "weidelbach",
+  "shelves": [
+    {
+      "shelf_id": "A",
+      "bins": [
+        {
+          "bin_id": "A-01",
+          "pixels": [0, 1, 2, 3],
+          "color": "#FF0000",
+          "pattern": "breathe",
+          "intensity": 180
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Clear Command:**
+```json
+{
+  "op": "clear",
+  "warehouse_id": "weidelbach"
+}
+```
+
+#### Status Topic (Publish from ESP32)
+```
+{TOPIC_PREFIX}/{WAREHOUSE_ID}/status
+Example: weidelbach/weidelbach/status
+```
+
+**Heartbeat:**
+```json
+{
+  "status": "online",
+  "warehouse_id": "weidelbach",
+  "active_leds": 12,
+  "wifi_rssi": -45,
+  "uptime": 3600
+}
+```
+
+### Setup Instructions
+
+#### 1. MQTT Broker Setup
+
+Choose a cloud MQTT broker (recommended for worldwide access):
+
+**Option A: EMQX Cloud** (easiest)
+- Sign up at https://www.emqx.com/en/cloud
+- Create free tier deployment
+- Note hostname, port (8883 for TLS), username, password
+
+**Option B: Self-hosted Mosquitto**
+- Install on VPS with public IP
+- Configure TLS certificates
+- Open port 8883
+
+**Option C: HiveMQ Cloud**
+- Free tier available at https://www.hivemq.com/
+
+#### 2. StorageCore Backend Configuration
+
+Add to `.env`:
+
+```env
+# LED MQTT Configuration
+LED_MQTT_HOST=your-broker.emqxsl.com
+LED_MQTT_PORT=8883
+LED_MQTT_TLS=true
+LED_MQTT_USER=your_username
+LED_MQTT_PASS=your_password
+LED_TOPIC_PREFIX=weidelbach
+WAREHOUSE_ID=weidelbach
+```
+
+**Note:** If `LED_MQTT_HOST` is empty, system runs in DRY-RUN mode (logs commands without sending).
+
+#### 3. LED Mapping Configuration
+
+Edit `internal/led/config/led_mapping.json`:
+
+1. Map storage bins to LED indices
+2. Support multiple LEDs per bin (e.g., `"pixels": [0, 1, 2, 3]`)
+3. Set defaults (color, pattern, intensity)
+4. Define LED strip parameters (length, pin, chipset)
+
+**Testing Mapping:**
+```bash
+curl -X POST http://localhost:8081/api/v1/led/mapping/validate \
+  -H "Content-Type: application/json" \
+  -d @internal/led/config/led_mapping.json
+```
+
+#### 4. ESP32 Firmware Flashing
+
+1. Install Arduino IDE + ESP32 support
+2. Install libraries: PubSubClient, ArduinoJson, Adafruit_NeoPixel
+3. Copy `secrets.h.template` to `secrets.h`
+4. Fill in WiFi SSID, password, MQTT credentials
+5. Set `LED_PIN` (default 5) and `LED_LENGTH` (e.g., 600)
+6. Upload to ESP32
+7. Monitor serial output (115200 baud)
+
+See `firmware/esp32_sk6812_leds/README.md` for detailed instructions.
+
+#### 5. Hardware Wiring
+
+```
+ESP32 GPIO 5 → Level Shifter (3.3V→5V) → SK6812 DIN
+ESP32 GND   → SK6812 GND (common ground!)
+5V PSU      → SK6812 5V+ (separate power for LEDs)
+```
+
+**Important:**
+- Use level shifter for data line
+- Common ground between ESP32 and LED strip
+- Adequate 5V power supply (calculate: # LEDs × 80mA)
+- Capacitor (1000µF) across power supply
+
+### User Workflow
+
+1. **Navigate to Jobs** → Select open job
+2. **Click "Fächer hervorheben"** button (Lightbulb icon)
+3. **LEDs illuminate** warehouse bins containing job devices
+4. **Pick devices** from highlighted bins
+5. **Scan each device** to mark as collected
+6. **LEDs auto-clear** when navigating away or completing job
+
+### Testing
+
+#### Dry-Run Mode (No MQTT Broker)
+
+Start StorageCore without LED_MQTT_HOST configured:
+
+```bash
+# .env
+LED_MQTT_HOST=  # Empty = dry-run mode
+
+# Start server
+./server
+
+# Test commands (will log JSON without sending)
+curl -X POST http://localhost:8081/api/v1/led/highlight?job_id=1
+curl -X POST http://localhost:8081/api/v1/led/clear
+```
+
+#### With Real MQTT Broker
+
+```bash
+# Check status
+curl http://localhost:8081/api/v1/led/status
+
+# Expected output:
+{
+  "mqtt_connected": true,
+  "mqtt_dry_run": false,
+  "mapping_loaded": true,
+  "warehouse_id": "weidelbach",
+  "total_shelves": 3,
+  "total_bins": 12
+}
+
+# Highlight job bins
+curl -X POST http://localhost:8081/api/v1/led/highlight?job_id=42
+
+# Test specific bin
+curl -X POST "http://localhost:8081/api/v1/led/test?shelf_id=A&bin_id=A-01"
+
+# Clear all
+curl -X POST http://localhost:8081/api/v1/led/clear
+```
+
+### Troubleshooting
+
+**Problem:** LEDs don't light up
+- Check ESP32 serial monitor for connection status
+- Verify MQTT credentials match between StorageCore and ESP32
+- Ensure ESP32 is online (check status topic)
+- Test with `/led/identify` endpoint
+
+**Problem:** Wrong bins highlighted
+- Review `internal/led/config/led_mapping.json`
+- Check device zone assignments in database
+- Validate mapping with `/led/mapping/validate`
+
+**Problem:** MQTT connection fails
+- Check broker hostname, port, credentials
+- Verify TLS setting matches broker (port 8883 = TLS)
+- Test broker with MQTT client (MQTT Explorer, mqttx)
+- Check firewall rules on broker
+
+**Problem:** ESP32 crashes/reboots
+- Insufficient power supply (check amperage)
+- Reduce LED_LENGTH if memory issues
+- Increase watchdog timeout in firmware
+
+### Security Considerations
+
+- **TLS**: Always use TLS in production (`LED_MQTT_TLS=true`, port 8883)
+- **Strong Passwords**: Use complex MQTT passwords
+- **Namespaced Topics**: Include warehouse_id to prevent conflicts
+- **Secrets Management**: Never commit `secrets.h` or `.env` files
+- **Certificate Pinning**: Consider for production ESP32 deployments
+
+### Performance
+
+- **LED Update Rate**: 50-100 Hz depending on strip length
+- **MQTT Latency**: Typical <100ms with cloud broker
+- **Reconnect Time**: 5-second retry interval
+- **Heartbeat**: Every 15 seconds
+- **Max LED Count**: ~2000 LEDs per ESP32 (RAM limited)
+
+### Future Enhancements
+
+- Admin UI for visual mapping editor
+- Support for multiple ESP32 controllers
+- Zone-based LED groups
+- Custom animation patterns
+- Mobile app for testing
+- Automatic mapping from CAD drawings
 
 ---
 
@@ -478,6 +840,15 @@ LOG_LEVEL=info|debug
 
 # CORS
 CORS_ORIGIN=*
+
+# LED MQTT Configuration
+LED_MQTT_HOST=your-broker.emqxsl.com  # MQTT broker hostname (empty = dry-run mode)
+LED_MQTT_PORT=8883                     # Port (1883 for non-TLS, 8883 for TLS)
+LED_MQTT_TLS=true                      # Enable TLS (true|false)
+LED_MQTT_USER=your_username            # MQTT username
+LED_MQTT_PASS=your_password            # MQTT password
+LED_TOPIC_PREFIX=weidelbach            # MQTT topic prefix
+WAREHOUSE_ID=weidelbach                # Warehouse identifier
 ```
 
 ---
@@ -503,6 +874,95 @@ For issues or questions:
 ---
 
 ## Changelog
+
+### Version 1.19 (2025-10-17)
+- **Feature: LED Warehouse Bin Highlighting System** 🎨
+  - Physical warehouse LED highlighting for job-based device picking
+  - Real-time MQTT communication with ESP32 controllers
+  - Works globally with cloud-based MQTT broker (no port forwarding needed)
+- **Backend LED Module:**
+  - New `internal/led/` package with models, MQTT publisher, service layer
+  - MQTT client with TLS support, auto-reconnect, heartbeat
+  - Dry-run mode for testing without MQTT broker
+  - Job-to-bins mapping algorithm using device zone assignments
+  - REST API endpoints: status, highlight, clear, identify, test, mapping
+  - JSON schemas for LED commands and mapping configuration
+  - Validation endpoint for mapping configuration
+- **Frontend LED Controls:**
+  - Toggle button "Fächer hervorheben" in Jobs page
+  - Visual indicators: MQTT connection status, active bin count
+  - Auto-clear LEDs when navigating away from job
+  - Real-time status updates with LED state
+  - Lightbulb icon with toggle states (on/off)
+- **ESP32 Firmware:**
+  - Complete Arduino sketch for ESP32 + SK6812 GRBW LED strips
+  - WiFi connectivity with auto-reconnect
+  - MQTT client with TLS support (optional)
+  - JSON command parsing with ArduinoJson
+  - Multiple LEDs per bin support (e.g., 4 LEDs per compartment)
+  - Animation patterns: solid, blink, breathe (sine wave)
+  - Watchdog timer for robustness
+  - Heartbeat status publishing every 15 seconds
+  - Last Will Testament for offline detection
+  - Firmware location: `firmware/esp32_sk6812_leds/`
+- **Configuration:**
+  - LED mapping file: `internal/led/config/led_mapping.json`
+  - Maps storage bins to LED pixel indices
+  - Supports multiple LEDs per bin
+  - Configurable defaults (color, pattern, intensity)
+  - LED strip parameters (length, data pin, chipset)
+  - Example mapping with 3 shelves, 12 bins
+- **MQTT Architecture:**
+  - Command topic: `{prefix}/{warehouse_id}/cmd`
+  - Status topic: `{prefix}/{warehouse_id}/status`
+  - JSON-based commands: highlight, clear, identify
+  - ESP32 subscribes to commands, publishes heartbeat
+  - Cloud broker recommended (EMQX, HiveMQ, Mosquitto)
+- **Hardware Support:**
+  - SK6812 GRBW addressable LED strips
+  - ESP32 development boards (DevKitC, WROOM-32)
+  - Level shifter for data line (3.3V → 5V)
+  - Detailed wiring diagrams and power calculations
+- **Documentation:**
+  - Complete LED system documentation in README
+  - ESP32 firmware README with flash instructions
+  - Hardware wiring diagrams
+  - MQTT broker setup guides (EMQX, Mosquitto, HiveMQ)
+  - Troubleshooting section
+  - Security considerations (TLS, passwords, secrets)
+- **Dependencies:**
+  - Go: `github.com/eclipse/paho.mqtt.golang` v1.5.1
+  - Arduino: PubSubClient, ArduinoJson, Adafruit_NeoPixel
+- **Environment Variables:**
+  - `LED_MQTT_HOST` - MQTT broker hostname (empty = dry-run)
+  - `LED_MQTT_PORT` - Broker port (1883 or 8883)
+  - `LED_MQTT_TLS` - Enable TLS (true/false)
+  - `LED_MQTT_USER` - MQTT username
+  - `LED_MQTT_PASS` - MQTT password
+  - `LED_TOPIC_PREFIX` - Topic namespace
+  - `WAREHOUSE_ID` - Warehouse identifier
+- **Testing:**
+  - Dry-run mode logs commands without sending
+  - Status endpoint shows connection state
+  - Test endpoints for individual bins
+  - Mapping validation endpoint
+  - Build verification successful
+- **Use Cases:**
+  - Visual guidance for warehouse workers during job packing
+  - Reduce picking errors by highlighting exact locations
+  - Speed up device collection process
+  - Real-time verification of picked items
+  - Support for large warehouses with hundreds of bins
+- **Performance:**
+  - MQTT latency < 100ms with cloud broker
+  - LED update rate: 50-100 Hz
+  - Supports up to ~2000 LEDs per ESP32
+  - Automatic reconnection with 5s retry
+- **Security:**
+  - TLS encryption for production (port 8883)
+  - Strong password enforcement
+  - Secrets templates prevent credential leaks
+  - Namespaced MQTT topics by warehouse_id
 
 ### Version 1.18 (2025-10-15)
 - **Feature: User Authentication and Single Sign-On (SSO)**

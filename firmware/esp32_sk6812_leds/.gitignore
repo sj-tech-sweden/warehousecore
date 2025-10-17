@@ -1,0 +1,14 @@
+# Secrets - NEVER commit!
+secrets.h
+
+# Build artifacts
+build/
+*.bin
+*.elf
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

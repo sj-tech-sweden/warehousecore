@@ -142,6 +142,16 @@ func main() {
 	api.HandleFunc("/dashboard/stats", handlers.GetDashboardStats).Methods("GET")
 	api.HandleFunc("/movements", handlers.GetMovements).Methods("GET")
 
+	// LED control endpoints
+	api.HandleFunc("/led/status", handlers.GetLEDStatus).Methods("GET")
+	api.HandleFunc("/led/highlight", handlers.HighlightJobBins).Methods("POST")
+	api.HandleFunc("/led/clear", handlers.ClearLEDs).Methods("POST")
+	api.HandleFunc("/led/identify", handlers.IdentifyLEDs).Methods("POST")
+	api.HandleFunc("/led/test", handlers.TestBin).Methods("POST")
+	api.HandleFunc("/led/mapping", handlers.GetLEDMapping).Methods("GET")
+	api.HandleFunc("/led/mapping", handlers.UpdateLEDMapping).Methods("PUT")
+	api.HandleFunc("/led/mapping/validate", handlers.ValidateLEDMapping).Methods("POST")
+
 	// Apply middleware
 	api.Use(middleware.Logger)
 	api.Use(middleware.RecoveryMiddleware)

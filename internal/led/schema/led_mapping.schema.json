@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LED Mapping Schema",
+  "description": "Configuration mapping storage bins to LED pixel indices",
+  "type": "object",
+  "required": ["warehouse_id", "shelves", "led_strip"],
+  "properties": {
+    "warehouse_id": {
+      "type": "string",
+      "description": "Warehouse identifier",
+      "minLength": 1
+    },
+    "shelves": {
+      "type": "array",
+      "description": "Array of shelves with bin-to-LED mappings",
+      "items": {
+        "type": "object",
+        "required": ["shelf_id", "bins"],
+        "properties": {
+          "shelf_id": {
+            "type": "string",
+            "description": "Unique shelf identifier"
+          },
+          "bins": {
+            "type": "array",
+            "description": "Bins within this shelf",
+            "items": {
+              "type": "object",
+              "required": ["bin_id", "pixels"],
+              "properties": {
+                "bin_id": {
+                  "type": "string",
+                  "description": "Unique bin identifier within the shelf"
+                },
+                "pixels": {
+                  "type": "array",
+                  "description": "LED pixel indices for this bin (multiple LEDs supported)",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "led_strip": {
+      "type": "object",
+      "required": ["length", "data_pin", "chipset"],
+      "properties": {
+        "length": {
+          "type": "integer",
+          "description": "Total number of LEDs in the strip",
+          "minimum": 1
+        },
+        "data_pin": {
+          "type": "integer",
+          "description": "GPIO pin number for LED data",
+          "minimum": 0
+        },
+        "chipset": {
+          "type": "string",
+          "description": "LED chipset type",
+          "enum": ["SK6812_GRBW", "SK6812_GRB", "WS2812B", "WS2811", "APA102"]
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Default LED settings",
+      "properties": {
+        "color": {
+          "type": "string",
+          "description": "Default hex color code",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#FF2A2A"
+        },
+        "pattern": {
+          "type": "string",
+          "enum": ["solid", "blink", "breathe"],
+          "default": "breathe"
+        },
+        "intensity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 180
+        }
+      }
+    }
+  }
+}

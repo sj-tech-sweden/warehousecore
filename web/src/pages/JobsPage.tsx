@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight } from 'lucide-react';
-import { jobsApi, scansApi } from '../lib/api';
-import type { Job, JobSummary, JobDevice } from '../lib/api';
+import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff } from 'lucide-react';
+import { jobsApi, scansApi, ledApi } from '../lib/api';
+import type { Job, JobSummary, JobDevice, LEDStatus } from '../lib/api';
 
 export function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -11,10 +11,25 @@ export function JobsPage() {
   const [scanLoading, setScanLoading] = useState(false);
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Load open jobs on mount
+  // LED state
+  const [ledActive, setLedActive] = useState(false);
+  const [ledStatus, setLedStatus] = useState<LEDStatus | null>(null);
+  const [ledLoading, setLedLoading] = useState(false);
+
+  // Load open jobs and LED status on mount
   useEffect(() => {
     loadJobs();
+    loadLEDStatus();
   }, []);
+
+  const loadLEDStatus = async () => {
+    try {
+      const { data } = await ledApi.getStatus();
+      setLedStatus(data);
+    } catch (error) {
+      console.error('Failed to load LED status:', error);
+    }
+  };
 
   // Auto-refresh job details when selected
   useEffect(() => {
@@ -99,11 +114,43 @@ export function JobsPage() {
     }
   };
 
-  const handleBackToList = () => {
+  const handleBackToList = async () => {
+    // Turn off LEDs when leaving job
+    if (ledActive) {
+      try {
+        await ledApi.clear();
+        setLedActive(false);
+      } catch (error) {
+        console.error('Failed to clear LEDs:', error);
+      }
+    }
+
     setSelectedJob(null);
     setScanCode('');
     setScanResult(null);
     loadJobs(); // Reload job list
+  };
+
+  const toggleLEDHighlight = async () => {
+    if (!selectedJob) return;
+
+    setLedLoading(true);
+    try {
+      if (ledActive) {
+        // Turn off LEDs
+        await ledApi.clear();
+        setLedActive(false);
+      } else {
+        // Turn on LEDs for this job
+        await ledApi.highlightJob(parseInt(selectedJob.job_id));
+        setLedActive(true);
+      }
+    } catch (error: any) {
+      console.error('LED toggle failed:', error);
+      alert(error.response?.data?.error || 'LED-Steuerung fehlgeschlagen');
+    } finally {
+      setLedLoading(false);
+    }
   };
 
   const getDeviceStats = (devices: JobDevice[]) => {
@@ -275,7 +322,51 @@ export function JobsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Scan Interface */}
           <div className="glass-dark rounded-2xl p-6 border-2 border-white/10">
-            <h2 className="text-2xl font-bold text-white mb-4">Gerät Ausscannen</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-white">Gerät Ausscannen</h2>
+            </div>
+
+            {/* LED Highlight Toggle */}
+            <div className="mb-4">
+              <button
+                onClick={toggleLEDHighlight}
+                disabled={ledLoading}
+                className={`w-full py-3 px-4 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
+                  ledActive
+                    ? 'bg-gradient-to-r from-green-600 to-green-700 hover:shadow-lg hover:shadow-green-500/50'
+                    : 'bg-gradient-to-r from-gray-600 to-gray-700 hover:shadow-lg hover:shadow-gray-500/50'
+                } ${ledLoading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
+              >
+                {ledActive ? (
+                  <>
+                    <Lightbulb className="w-5 h-5" />
+                    <span>Fächer hervorgehoben</span>
+                    <LightbulbOff className="w-5 h-5 ml-auto" />
+                  </>
+                ) : (
+                  <>
+                    <LightbulbOff className="w-5 h-5" />
+                    <span>Fächer hervorheben</span>
+                    <Lightbulb className="w-5 h-5 ml-auto" />
+                  </>
+                )}
+              </button>
+
+              {/* LED Status Info */}
+              {ledStatus && (
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className={`flex items-center gap-1 ${ledStatus.mqtt_connected ? 'text-green-400' : 'text-gray-500'}`}>
+                    <span className={`w-2 h-2 rounded-full ${ledStatus.mqtt_connected ? 'bg-green-400' : 'bg-gray-500'}`}></span>
+                    {ledStatus.mqtt_connected ? 'MQTT verbunden' : ledStatus.mqtt_dry_run ? 'Dry-Run Modus' : 'MQTT nicht konfiguriert'}
+                  </span>
+                  {ledStatus.mapping_loaded && (
+                    <span className="text-gray-400">
+                      {ledStatus.total_bins} Fächer verfügbar
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
 
             <form onSubmit={handleScan} className="space-y-4">
               <input
