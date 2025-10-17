@@ -46,3 +46,9 @@ go.sum
 # Temporary files
 tmp/
 temp/
+
+# MQTT Broker - Mosquitto
+mosquitto/data/
+mosquitto/log/
+mosquitto/config/passwords
+mosquitto/certs/

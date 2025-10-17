@@ -88,20 +88,41 @@ The LED Highlighting System provides physical visual guidance in the warehouse b
 
 ### Architecture Diagram
 
+**Option A: Self-Hosted (Single Server)**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Docker Compose Stack                      │
+│  ┌─────────────────┐         ┌──────────────────┐           │
+│  │  StorageCore    │         │  Mosquitto MQTT  │           │
+│  │  Container      │───────→ │  Container       │           │      ┌─────────────────┐
+│  │                 │  Pub    │                  │←──────────┼──────│   ESP32 + LEDs  │
+│  │  - Job Manager  │         │  Port 1883/8883  │  Sub      │      │  (Warehouse)    │
+│  │  - LED Service  │         │  weidelbach/cmd  │           │      │                 │
+│  │  - Mapping Cfg  │         │  weidelbach/sts  │           │      │  - WiFi Client  │
+│  └─────────────────┘         └──────────────────┘           │      │  - MQTT Sub     │
+│       Port 8081                   Auth required             │      │  - SK6812 Driver│
+└──────────────────────────────────────────────────────────────┘      └─────────────────┘
+         Server (your-server.example.com)                              Warehouse Network
+
+Flow: Job Selected → LED Service publishes to Mosquitto (same host)
+      → ESP32 connects to server:1883 → Receives command → Lights up bins
+```
+
+**Option B: Cloud-Hosted (Distributed)**
+
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
 │  StorageCore    │         │  MQTT Broker     │         │   ESP32 + LEDs  │
-│  (Cloud/Server) │───────→ │  (Cloud/TLS)     │←─────── │  (Warehouse)    │
+│  (Cloud/VPS)    │───────→ │  (Cloud/TLS)     │←─────── │  (Warehouse)    │
 │                 │  Pub    │                  │  Sub    │                 │
 │  - Job Manager  │         │  Topics:         │         │  - WiFi Client  │
 │  - LED Service  │         │  weidelbach/cmd  │         │  - MQTT Sub     │
 │  - Mapping Cfg  │         │  weidelbach/sts  │         │  - SK6812 Driver│
 └─────────────────┘         └──────────────────┘         └─────────────────┘
-     Backend                    Broker (e.g.                  Warehouse HW
-                                EMQX/Mosquitto)
+  Any Server Location        EMQX/HiveMQ/AWS IoT         Behind NAT/Firewall
 
-Flow: Job Selected → StorageCore queries device locations → Publish MQTT JSON command
-      → ESP32 receives command → Parse JSON → Set LED colors/patterns → Show
+Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LEDs
 ```
 
 ### Key Features
@@ -254,32 +275,112 @@ Example: weidelbach/weidelbach/status
 
 #### 1. MQTT Broker Setup
 
-Choose a cloud MQTT broker (recommended for worldwide access):
+You have two options for MQTT broker setup:
 
-**Option A: EMQX Cloud** (easiest)
+##### **Option A: Self-Hosted Mosquitto (Recommended for Single-Server Deployment)** ✅
+
+If your StorageCore and ESP32 can both connect to the same server (e.g., both on-premises or both can reach your server), use the included Mosquitto container:
+
+**Quick Setup:**
+
+```bash
+# 1. Run the setup script to create MQTT user and password
+./mosquitto/setup-mqtt.sh
+
+# 2. Start Mosquitto broker
+docker-compose up -d mosquitto
+
+# 3. Update your .env file
+LED_MQTT_HOST=mosquitto
+LED_MQTT_PORT=1883
+LED_MQTT_TLS=false
+LED_MQTT_USER=leduser
+LED_MQTT_PASS=<password_from_step_1>
+
+# 4. Restart StorageCore
+docker-compose restart storagecore
+```
+
+**ESP32 Configuration:**
+
+In your ESP32 `secrets.h`, use your server's domain or IP:
+
+```cpp
+#define MQTT_HOST "your-server.example.com"  // or IP address
+#define MQTT_PORT 1883
+#define MQTT_USER "leduser"
+#define MQTT_PASS "your_password"
+```
+
+**Production with TLS:**
+
+For production deployments, enable TLS on port 8883. See `mosquitto/README.md` for detailed instructions on:
+- Setting up Let's Encrypt certificates
+- Configuring TLS in mosquitto.conf
+- Updating ESP32 firmware for TLS support
+
+**Advantages:**
+- ✅ No external dependencies
+- ✅ No subscription fees
+- ✅ Full control over configuration
+- ✅ Lower latency (local network)
+- ✅ Works without internet connection
+- ✅ Included in docker-compose
+
+**See `mosquitto/README.md` for detailed setup and troubleshooting.**
+
+##### **Option B: Cloud MQTT Broker (For Distributed Deployments)**
+
+If your StorageCore runs in the cloud and ESP32 is behind NAT/firewall, use a cloud broker:
+
+**Option B1: EMQX Cloud** (easiest)
 - Sign up at https://www.emqx.com/en/cloud
 - Create free tier deployment
 - Note hostname, port (8883 for TLS), username, password
 
-**Option B: Self-hosted Mosquitto**
-- Install on VPS with public IP
-- Configure TLS certificates
-- Open port 8883
-
-**Option C: HiveMQ Cloud**
+**Option B2: HiveMQ Cloud**
 - Free tier available at https://www.hivemq.com/
+
+**Option B3: AWS IoT Core, Azure IoT Hub**
+- Enterprise options with advanced features
+
+**Configuration:**
+
+```env
+# LED MQTT Configuration - Cloud Broker
+LED_MQTT_HOST=your-broker.emqxsl.com
+LED_MQTT_PORT=8883
+LED_MQTT_TLS=true
+LED_MQTT_USER=your_cloud_username
+LED_MQTT_PASS=your_cloud_password
+```
+
+**Advantages:**
+- ✅ Works worldwide with StorageCore and ESP32 on different networks
+- ✅ No port forwarding required
+- ✅ Managed service (auto-scaling, backups)
+- ✅ Built-in monitoring and dashboards
 
 #### 2. StorageCore Backend Configuration
 
 Add to `.env`:
 
 ```env
-# LED MQTT Configuration
-LED_MQTT_HOST=your-broker.emqxsl.com
-LED_MQTT_PORT=8883
-LED_MQTT_TLS=true
-LED_MQTT_USER=your_username
+# Option 1: Self-Hosted (docker-compose)
+LED_MQTT_HOST=mosquitto
+LED_MQTT_PORT=1883
+LED_MQTT_TLS=false
+LED_MQTT_USER=leduser
 LED_MQTT_PASS=your_password
+
+# Option 2: Cloud Broker (EMQX, HiveMQ, etc.)
+# LED_MQTT_HOST=your-broker.emqxsl.com
+# LED_MQTT_PORT=8883
+# LED_MQTT_TLS=true
+# LED_MQTT_USER=your_cloud_username
+# LED_MQTT_PASS=your_cloud_password
+
+# Common settings
 LED_TOPIC_PREFIX=weidelbach
 WAREHOUSE_ID=weidelbach
 ```
@@ -793,7 +894,9 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.18` - User authentication and SSO with RentalCore (current)
+- `1.26` - Self-hosted MQTT broker with Docker Compose (current)
+- `1.25` - LED warehouse bin highlighting system
+- `1.18` - User authentication and SSO with RentalCore
 - `1.17` - Fixed mobile scrolling issues and button overlaps
 - `1.16` - Complete mobile responsiveness for all pages
 - `1.15` - Complete maintenance module with defect tracking and inspections
@@ -867,13 +970,88 @@ For issues or questions:
 
 ---
 
-**Version:** 1.25
+**Version:** 1.26
 **Last Updated:** 2025-10-17
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.26 (2025-10-17)
+- **Feature: Self-Hosted MQTT Broker with Docker Compose** 🐳
+  - Added Mosquitto MQTT broker container to docker-compose.yml
+  - StorageCore and ESP32 can now connect to the same server
+  - No need for external cloud MQTT broker for single-server deployments
+  - Eliminates subscription fees and external dependencies
+  - Lower latency with local network communication
+- **Mosquitto Configuration:**
+  - Pre-configured mosquitto.conf with authentication, logging, persistence
+  - Support for plain MQTT (1883), TLS (8883), and WebSocket (9001)
+  - Password-based authentication required (no anonymous access)
+  - Health checks for container monitoring
+  - Volume mounts for config, data, and log persistence
+- **Setup Automation:**
+  - New setup script: `mosquitto/setup-mqtt.sh`
+  - Interactive password creation for MQTT users
+  - Automatic directory structure creation
+  - Permission management
+  - Clear step-by-step instructions
+- **Documentation:**
+  - Comprehensive `mosquitto/README.md` with setup guide
+  - TLS setup instructions with Let's Encrypt integration
+  - Firewall configuration guide
+  - Monitoring and troubleshooting sections
+  - Security best practices
+  - ACL configuration examples
+  - Backup recommendations
+- **Docker Compose Updates:**
+  - Added `mosquitto` service with eclipse-mosquitto:2.0 image
+  - StorageCore now depends_on mosquitto service
+  - Exposed ports: 1883 (MQTT), 8883 (TLS), 9001 (WebSocket)
+  - Volume mounts for persistent configuration and data
+  - Health check with mosquitto_sub test
+- **Environment Configuration:**
+  - Updated .env.example with two MQTT options
+  - Option 1: Self-hosted (mosquitto container)
+  - Option 2: Cloud broker (EMQX, HiveMQ, etc.)
+  - Clear documentation for each option
+  - Default configuration uses self-hosted option
+- **Git Ignore Updates:**
+  - Added mosquitto/data/ to prevent committing MQTT persistence
+  - Added mosquitto/log/ to exclude log files
+  - Added mosquitto/config/passwords to protect credentials
+  - Added mosquitto/certs/ for TLS certificate protection
+- **Deployment Options:**
+  - Simple deployment: Just run `docker-compose up -d`
+  - No external account or subscription needed
+  - Works offline (no internet required after container pull)
+  - Scales from development to production with TLS
+- **ESP32 Configuration:**
+  - Can connect to server's public IP or domain
+  - Same credentials as StorageCore
+  - Works from warehouse WiFi to server
+  - No port forwarding required (outbound connection)
+- **Security Features:**
+  - Password file authentication
+  - Optional TLS with Let's Encrypt certificates
+  - ACL support for topic-level permissions
+  - No anonymous access allowed
+  - Secure password hashing
+- **Production Ready:**
+  - Persistent data storage
+  - Log rotation support
+  - Container health monitoring
+  - Auto-restart on failure
+  - Compatible with existing LED system
+- **User Benefits:**
+  - ✅ Zero cost (no subscription)
+  - ✅ Full control over MQTT broker
+  - ✅ Faster communication (local network)
+  - ✅ Works without internet
+  - ✅ Single-server deployment
+  - ✅ Easy ESP32 configuration (just use server address)
+  - ✅ Professional monitoring with system topics
 
 ### Version 1.25 (2025-10-17)
 - **Feature: LED Warehouse Bin Highlighting System** 🎨

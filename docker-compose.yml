@@ -9,12 +9,36 @@ services:
     restart: unless-stopped
     networks:
       - storagecore-network
+    depends_on:
+      - mosquitto
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/api/v1/health"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 10s
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    ports:
+      - "1883:1883"   # MQTT (plain)
+      - "8883:8883"   # MQTT over TLS
+      - "9001:9001"   # WebSocket (optional)
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+      - ./mosquitto/config/passwords:/mosquitto/config/passwords
+    restart: unless-stopped
+    networks:
+      - storagecore-network
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 networks:
   storagecore-network:
