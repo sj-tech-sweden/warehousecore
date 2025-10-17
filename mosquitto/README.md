@@ -2,23 +2,26 @@
 
 This directory contains the configuration for the self-hosted Mosquitto MQTT broker used by StorageCore's LED warehouse highlighting system.
 
-## Quick Setup (Pre-Configured)
+## Quick Setup (Zero Configuration)
 
-The MQTT broker is **ready to use out of the box** with demo credentials:
+The MQTT broker **automatically generates** its password file from your `.env` file:
 
 ```bash
-# Just start the broker - no additional setup needed!
+# 1. Copy .env.example to .env
+cp .env.example .env
+
+# 2. Edit credentials in .env (optional - demo credentials work out of the box)
+nano .env
+
+# 3. Start the broker
 docker-compose up -d
 ```
 
-**Default Credentials:**
+**Default Credentials (from `.env.example`):**
 - Username: `leduser`
 - Password: `ledpassword123`
 
-These credentials are pre-configured in:
-- `mosquitto/config/passwords` (password hash file)
-- `.env.example` (StorageCore configuration)
-- `firmware/esp32_sk6812_leds/secrets.h.template` (ESP32 configuration)
+The password file (`mosquitto/config/passwords`) is **automatically created** when the container starts using the credentials from your `.env` file.
 
 ### Verify It's Running
 
@@ -30,33 +33,29 @@ docker-compose logs -f mosquitto
 mosquitto_sub -h localhost -p 1883 -t test/topic -u leduser -P ledpassword123
 ```
 
-## Custom Password Setup (Optional)
+## Change MQTT Credentials
 
-If you want to change the default password or add additional users:
-
-### Option 1: Using the Setup Script
+**Super simple - just edit your `.env` file:**
 
 ```bash
-# Interactive setup wizard
-./mosquitto/setup-mqtt.sh
+# Edit .env
+nano .env
 ```
 
-### Option 2: Manual Password Creation
+Change these lines:
+```env
+LED_MQTT_USER=leduser
+LED_MQTT_PASS=your_new_password
+```
 
+Then restart:
 ```bash
-# Create/replace password file with a new user
-docker run -it --rm -v $(pwd)/mosquitto/config:/mosquitto/config eclipse-mosquitto:2.0 \
-  mosquitto_passwd -c /mosquitto/config/passwords leduser
-
-# Add additional users (without -c flag to append)
-docker run -it --rm -v $(pwd)/mosquitto/config:/mosquitto/config eclipse-mosquitto:2.0 \
-  mosquitto_passwd /mosquitto/config/passwords anotheruser
+docker-compose restart mosquitto
 ```
 
-After changing passwords, update:
-1. Your `.env` file with the new `LED_MQTT_PASS`
-2. Your ESP32 `secrets.h` with the new `MQTT_PASS`
-3. Restart the containers: `docker-compose restart`
+**That's it!** The password file is automatically regenerated on startup.
+
+Don't forget to update your ESP32 `secrets.h` with the same credentials and re-flash.
 
 ## Configuration
 

@@ -27,9 +27,14 @@ services:
       - "9001:9001"   # WebSocket (optional)
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
-      - ./mosquitto/config/passwords:/mosquitto/config/passwords
+      - ./mosquitto/config:/mosquitto/config
+    environment:
+      - MQTT_USER=${LED_MQTT_USER}
+      - MQTT_PASS=${LED_MQTT_PASS}
+    entrypoint: ["/docker-entrypoint.sh"]
     restart: unless-stopped
     networks:
       - storagecore-network
