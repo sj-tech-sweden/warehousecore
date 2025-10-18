@@ -934,7 +934,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.32` - Fixed LED zone codes and MQTT configuration (current)
+- `1.33` - Solid green LED pattern for job bins (current)
+- `1.32` - Fixed LED zone codes and MQTT configuration
 - `1.31` - Copy LED config files to Docker image and initialize service
 - `1.30` - Docker image includes LED configuration directories
 - `1.29` - LED mapping uses zone codes from database
@@ -1016,13 +1017,25 @@ For issues or questions:
 
 ---
 
-**Version:** 1.32
+**Version:** 1.33
 **Last Updated:** 2025-10-18
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.33 (2025-10-18)
+- **LED Pattern Change: Solid Green for Job Bins** 🟢
+  - Changed LED pattern from "breathe" to "solid" for clearer visibility
+  - Changed default color from red (#FF2A2A) to green (#00FF00)
+  - Job bins now illuminate in solid green instead of breathing red
+  - Increased intensity from 180 to 200 for brighter illumination
+- **User Experience:**
+  - No more pulsing/breathing effect - LEDs stay on constantly
+  - Green color clearly indicates bins to pack (positive action)
+  - Easier to spot which bins need attention in warehouse
+  - More professional appearance with steady illumination
 
 ### Version 1.32 (2025-10-18)
 - **Bug Fix: LED Zone Code Mapping and MQTT Configuration** 🔧
