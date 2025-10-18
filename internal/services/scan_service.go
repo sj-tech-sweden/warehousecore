@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
+	"warehousecore/internal/led"
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 )
@@ -95,6 +97,12 @@ func (s *ScanService) ProcessScan(req models.ScanRequest, userID *int64, ipAddr,
 
 	response.Device = s.getDeviceWithDetails(device.DeviceID)
 	response.Movement = movement
+
+	// Update LED status after successful outtake
+	if req.Action == "outtake" && movement != nil && movement.FromZoneID.Valid && req.JobID != nil {
+		go s.updateLEDsAfterOuttake(*req.JobID, movement.FromZoneID.Int64)
+	}
+
 	return response, nil
 }
 
@@ -330,5 +338,33 @@ func (s *ScanService) logScanEvent(tx *sql.Tx, scanCode string, deviceID *string
 	`, scanCode, deviceID, action, jobID, zoneID, userID, success, errorMsg, ipAddr, userAgent, time.Now())
 	if err != nil {
 		log.Printf("Failed to log scan event: %v", err)
+	}
+}
+
+// updateLEDsAfterOuttake updates LED colors for the zone after a device is taken out
+func (s *ScanService) updateLEDsAfterOuttake(jobID int64, fromZoneID int64) {
+	// Get zone code from zone ID
+	var zoneCode string
+	err := s.db.QueryRow(`
+		SELECT code FROM storage_zones WHERE zone_id = ?
+	`, fromZoneID).Scan(&zoneCode)
+	if err != nil {
+		log.Printf("[LED] Failed to get zone code for zone_id %d: %v", fromZoneID, err)
+		return
+	}
+
+	if zoneCode == "" {
+		log.Printf("[LED] Zone %d has no code, skipping LED update", fromZoneID)
+		return
+	}
+
+	// Update LED for this bin
+	ledService := led.GetService()
+	jobIDStr := strconv.FormatInt(jobID, 10)
+
+	if err := ledService.UpdateBinAfterScan(jobIDStr, zoneCode); err != nil {
+		log.Printf("[LED] Failed to update bin %s after scan: %v", zoneCode, err)
+	} else {
+		log.Printf("[LED] Successfully updated bin %s after device removal for job %d", zoneCode, jobID)
 	}
 }

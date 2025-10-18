@@ -216,6 +216,96 @@ func (s *Service) GetStatus() map[string]interface{} {
 	return status
 }
 
+// UpdateBinAfterScan updates LED color for a specific bin after a device scan
+// Green = still has devices needed for the job
+// Red = all devices from this bin have been taken
+func (s *Service) UpdateBinAfterScan(jobID string, zoneCode string) error {
+	if jobID == "" || zoneCode == "" {
+		return nil // Nothing to update
+	}
+
+	db := repository.GetSQLDB()
+
+	// Check if there are still devices in this zone that are needed for this job
+	var count int
+	query := `
+		SELECT COUNT(*)
+		FROM jobdevices jd
+		JOIN devices d ON jd.deviceID = d.deviceID
+		JOIN storage_zones z ON d.zone_id = z.zone_id
+		WHERE jd.jobID = ? AND z.code = ? AND d.status = 'in_storage'
+	`
+	err := db.QueryRow(query, jobID, zoneCode).Scan(&count)
+	if err != nil {
+		log.Printf("[LED] Error checking remaining devices in zone %s: %v", zoneCode, err)
+		return err
+	}
+
+	s.mu.RLock()
+	mapping := s.mapping
+	s.mu.RUnlock()
+
+	if mapping == nil {
+		return fmt.Errorf("no mapping loaded")
+	}
+
+	// Find bin in mapping
+	var pixels []int
+	var shelfID string
+	found := false
+	for _, shelf := range mapping.Shelves {
+		for _, bin := range shelf.Bins {
+			if bin.BinID == zoneCode {
+				pixels = bin.Pixels
+				shelfID = shelf.ShelfID
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		log.Printf("[LED] Zone code %s not found in LED mapping", zoneCode)
+		return nil // Not an error - zone might not have LEDs
+	}
+
+	// Determine color based on remaining devices
+	color := "#FF0000" // Red - bin is done
+	pattern := "solid"
+	if count > 0 {
+		color = "#00FF00" // Green - still has devices
+		pattern = "solid"
+		log.Printf("[LED] Zone %s still has %d devices for job %s - setting to GREEN", zoneCode, count, jobID)
+	} else {
+		log.Printf("[LED] Zone %s is now empty for job %s - setting to RED", zoneCode, jobID)
+	}
+
+	// Create update command for this specific bin
+	cmd := LEDCommand{
+		Op:          "highlight",
+		WarehouseID: mapping.WarehouseID,
+		Shelves: []Shelf{
+			{
+				ShelfID: shelfID,
+				Bins: []Bin{
+					{
+						BinID:     zoneCode,
+						Pixels:    pixels,
+						Color:     color,
+						Pattern:   pattern,
+						Intensity: 255,
+					},
+				},
+			},
+		},
+	}
+
+	return s.publisher.PublishCommand(cmd)
+}
+
 // getJobDeviceZones retrieves device zone codes for a job from database
 // Returns a map of deviceID -> zone code (e.g., "WDL-06-RG-01-F-01")
 func (s *Service) getJobDeviceZones(jobID string) (map[string]string, error) {
