@@ -18,8 +18,8 @@
     "chipset": "SK6812_GRBW"
   },
   "defaults": {
-    "color": "#FF2A2A",
-    "pattern": "breathe",
-    "intensity": 180
+    "color": "#00FF00",
+    "pattern": "solid",
+    "intensity": 200
   }
 }
