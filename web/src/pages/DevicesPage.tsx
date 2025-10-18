@@ -3,11 +3,14 @@ import { Package, Search } from 'lucide-react';
 import { devicesApi } from '../lib/api';
 import type { Device } from '../lib/api';
 import { getStatusColor, formatStatus } from '../lib/utils';
+import { DeviceDetailModal } from '../components/DeviceDetailModal';
 
 export function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   useEffect(() => {
     loadDevices();
@@ -22,6 +25,11 @@ export function DevicesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeviceClick = (device: Device) => {
+    setSelectedDevice(device);
+    setIsDetailModalOpen(true);
   };
 
   const filteredDevices = devices.filter((device) =>
@@ -65,6 +73,7 @@ export function DevicesPage() {
         {filteredDevices.map((device) => (
           <div
             key={device.device_id}
+            onClick={() => handleDeviceClick(device)}
             className="glass-dark rounded-lg sm:rounded-xl p-4 sm:p-5 hover:bg-white/10 transition-all cursor-pointer group"
           >
             <div className="flex items-start gap-3 sm:gap-4">
@@ -98,6 +107,13 @@ export function DevicesPage() {
           <p className="text-sm sm:text-base text-gray-400">Keine Geräte gefunden</p>
         </div>
       )}
+
+      {/* Device Detail Modal */}
+      <DeviceDetailModal
+        device={selectedDevice}
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+      />
     </div>
   );
 }
