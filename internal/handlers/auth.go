@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"storagecore/internal/middleware"
-	"storagecore/internal/models"
-	"storagecore/internal/repository"
+	"warehousecore/internal/middleware"
+	"warehousecore/internal/models"
+	"warehousecore/internal/repository"
 
 	"golang.org/x/crypto/bcrypt"
 )

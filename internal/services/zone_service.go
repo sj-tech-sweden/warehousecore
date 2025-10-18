@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"storagecore/internal/repository"
+	"warehousecore/internal/repository"
 )
 
 // ZoneService handles zone-related business logic

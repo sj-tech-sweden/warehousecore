@@ -1,4 +1,4 @@
-module storagecore
+module warehousecore
 
 go 1.24.0
 

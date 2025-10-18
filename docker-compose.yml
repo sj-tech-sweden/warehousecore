@@ -1,14 +1,14 @@
 services:
-  storagecore:
-    image: nobentie/storagecore:latest
-    container_name: storagecore
+  warehousecore:
+    image: nobentie/warehousecore:latest
+    container_name: warehousecore
     ports:
       - "8082:8082"
     env_file:
       - .env  # Loads ALL variables from .env including LED_MQTT_HOST, LED_MQTT_USER, LED_MQTT_PASS, etc.
     restart: unless-stopped
     networks:
-      - storagecore-network
+      - warehousecore-network
     depends_on:
       - mosquitto
     healthcheck:
@@ -37,7 +37,7 @@ services:
     entrypoint: ["/docker-entrypoint.sh"]
     restart: unless-stopped
     networks:
-      - storagecore-network
+      - warehousecore-network
     healthcheck:
       test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
       interval: 30s
@@ -46,5 +46,5 @@ services:
       start_period: 5s
 
 networks:
-  storagecore-network:
+  warehousecore-network:
     driver: bridge

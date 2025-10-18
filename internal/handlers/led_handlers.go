@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"storagecore/internal/led"
+	"warehousecore/internal/led"
 )
 
 // HighlightJobBins highlights LED bins for a specific job

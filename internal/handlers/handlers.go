@@ -11,9 +11,9 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"storagecore/internal/models"
-	"storagecore/internal/repository"
-	"storagecore/internal/services"
+	"warehousecore/internal/models"
+	"warehousecore/internal/repository"
+	"warehousecore/internal/services"
 )
 
 // HealthCheck returns server health status
@@ -29,7 +29,7 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "healthy",
-		"service": "StorageCore",
+		"service": "WarehouseCore",
 	})
 }
 

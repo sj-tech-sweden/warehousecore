@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync"
 
-	"storagecore/internal/repository"
+	"warehousecore/internal/repository"
 )
 
 // Service handles LED-related business logic

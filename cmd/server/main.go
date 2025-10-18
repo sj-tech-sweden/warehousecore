@@ -14,11 +14,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 
-	"storagecore/config"
-	"storagecore/internal/handlers"
-	"storagecore/internal/led"
-	"storagecore/internal/middleware"
-	"storagecore/internal/repository"
+	"warehousecore/config"
+	"warehousecore/internal/handlers"
+	"warehousecore/internal/led"
+	"warehousecore/internal/middleware"
+	"warehousecore/internal/repository"
 )
 
 // spaHandler serves the SPA and falls back to index.html for client-side routes
@@ -57,10 +57,10 @@ func serveIndexWithConfig(w http.ResponseWriter, r *http.Request) {
 	// These should be just the domain (e.g., "rent.server-nt.de")
 	// without protocol or port - the frontend will add the protocol
 	rentalCoreDomain := os.Getenv("RENTALCORE_DOMAIN")
-	storageCoreDomain := os.Getenv("STORAGECORE_DOMAIN")
+	warehouseCoreDomain := os.Getenv("WAREHOUSECORE_DOMAIN")
 
 	// Create config injection script
-	configScript := fmt.Sprintf(`<script>window.__APP_CONFIG__={rentalCoreDomain:"%s",storageCoreDomain:"%s"};</script>`, rentalCoreDomain, storageCoreDomain)
+	configScript := fmt.Sprintf(`<script>window.__APP_CONFIG__={rentalCoreDomain:"%s",warehouseCoreDomain:"%s"};</script>`, rentalCoreDomain, warehouseCoreDomain)
 
 	// Inject the script before </head>
 	modifiedContent := bytes.Replace(content, []byte("</head>"), []byte(configScript+"</head>"), 1)
@@ -186,7 +186,7 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("StorageCore server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)
+		log.Printf("WarehouseCore server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)
 		log.Printf("Environment: %s", cfg.App.Environment)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed: %v", err)

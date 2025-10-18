@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"time"
 
-	"storagecore/internal/models"
-	"storagecore/internal/repository"
+	"warehousecore/internal/models"
+	"warehousecore/internal/repository"
 )
 
 type contextKey string
@@ -19,13 +19,13 @@ const UserContextKey = contextKey("user")
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Debug: Log all cookies
-		fmt.Printf("DEBUG [StorageCore]: AuthMiddleware - Path: %s, Cookies: %+v\n", r.URL.Path, r.Cookies())
+		fmt.Printf("DEBUG [WarehouseCore]: AuthMiddleware - Path: %s, Cookies: %+v\n", r.URL.Path, r.Cookies())
 
 		// Get session cookie
 		cookie, err := r.Cookie("session_id")
 		if err != nil || cookie.Value == "" {
 			// No session cookie - return 401
-			fmt.Printf("DEBUG [StorageCore]: No session_id cookie found for %s (error: %v)\n", r.URL.Path, err)
+			fmt.Printf("DEBUG [WarehouseCore]: No session_id cookie found for %s (error: %v)\n", r.URL.Path, err)
 			http.Error(w, `{"error":"Unauthorized - No session"}`, http.StatusUnauthorized)
 			return
 		}
@@ -33,12 +33,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// URL-decode the cookie value (browsers may URL-encode it)
 		sessionID, err := url.QueryUnescape(cookie.Value)
 		if err != nil {
-			fmt.Printf("DEBUG [StorageCore]: Failed to decode cookie for %s: %v\n", r.URL.Path, err)
+			fmt.Printf("DEBUG [WarehouseCore]: Failed to decode cookie for %s: %v\n", r.URL.Path, err)
 			http.Error(w, `{"error":"Unauthorized - Invalid cookie"}`, http.StatusUnauthorized)
 			return
 		}
 
-		fmt.Printf("DEBUG [StorageCore]: Found session_id cookie: %s (decoded: %s) for path: %s\n", cookie.Value, sessionID, r.URL.Path)
+		fmt.Printf("DEBUG [WarehouseCore]: Found session_id cookie: %s (decoded: %s) for path: %s\n", cookie.Value, sessionID, r.URL.Path)
 
 		// Validate session in database
 		db := repository.GetDB()
@@ -54,12 +54,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		if err != nil {
 			// Invalid or expired session
-			fmt.Printf("DEBUG [StorageCore]: Session validation failed for %s: %v\n", sessionID, err)
+			fmt.Printf("DEBUG [WarehouseCore]: Session validation failed for %s: %v\n", sessionID, err)
 			http.Error(w, `{"error":"Unauthorized - Invalid session"}`, http.StatusUnauthorized)
 			return
 		}
 
-		fmt.Printf("DEBUG [StorageCore]: Session valid for user: %s (ID: %d)\n", session.User.Username, session.User.UserID)
+		fmt.Printf("DEBUG [WarehouseCore]: Session valid for user: %s (ID: %d)\n", session.User.Username, session.User.UserID)
 
 		// Check if user is active
 		if !session.User.IsActive {

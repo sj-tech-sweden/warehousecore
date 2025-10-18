@@ -1,8 +1,8 @@
-# StorageCore
+# WarehouseCore
 
 **Physical Warehouse Management System for Tsunami Events UG**
 
-StorageCore is the digital twin of the Weidelbach warehouse, providing real-time tracking of devices, cases, zones, and movements with barcode/QR scan-driven workflows.
+WarehouseCore is the digital twin of the Weidelbach warehouse, providing real-time tracking of devices, cases, zones, and movements with barcode/QR scan-driven workflows.
 
 ---
 
@@ -24,7 +24,7 @@ StorageCore is the digital twin of the Weidelbach warehouse, providing real-time
 
 ## Overview
 
-StorageCore manages the physical warehouse operations for Tsunami Events, synchronizing in real-time with RentalCore (job management system). It provides:
+WarehouseCore manages the physical warehouse operations for Tsunami Events, synchronizing in real-time with RentalCore (job management system). It provides:
 
 - **Digital warehouse mapping** - Zones, shelves, racks, vehicles, cases
 - **Real-time device status** - in_storage | on_job | defective | repair
@@ -84,7 +84,7 @@ StorageCore manages the physical warehouse operations for Tsunami Events, synchr
 
 ### Overview
 
-The LED Highlighting System provides physical visual guidance in the warehouse by illuminating storage bins containing devices needed for a specific job. When a job is selected in StorageCore, the system automatically highlights the corresponding warehouse locations using addressable LED strips controlled by ESP32 microcontrollers.
+The LED Highlighting System provides physical visual guidance in the warehouse by illuminating storage bins containing devices needed for a specific job. When a job is selected in WarehouseCore, the system automatically highlights the corresponding warehouse locations using addressable LED strips controlled by ESP32 microcontrollers.
 
 ### Architecture Diagram
 
@@ -94,7 +94,7 @@ The LED Highlighting System provides physical visual guidance in the warehouse b
 ┌──────────────────────────────────────────────────────────────┐
 │                    Docker Compose Stack                      │
 │  ┌─────────────────┐         ┌──────────────────┐           │
-│  │  StorageCore    │         │  Mosquitto MQTT  │           │
+│  │  WarehouseCore    │         │  Mosquitto MQTT  │           │
 │  │  Container      │───────→ │  Container       │           │      ┌─────────────────┐
 │  │                 │  Pub    │                  │←──────────┼──────│   ESP32 + LEDs  │
 │  │  - Job Manager  │         │  Port 1883/8883  │  Sub      │      │  (Warehouse)    │
@@ -113,7 +113,7 @@ Flow: Job Selected → LED Service publishes to Mosquitto (same host)
 
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
-│  StorageCore    │         │  MQTT Broker     │         │   ESP32 + LEDs  │
+│  WarehouseCore    │         │  MQTT Broker     │         │   ESP32 + LEDs  │
 │  (Cloud/VPS)    │───────→ │  (Cloud/TLS)     │←─────── │  (Warehouse)    │
 │                 │  Pub    │                  │  Sub    │                 │
 │  - Job Manager  │         │  Topics:         │         │  - WiFi Client  │
@@ -128,7 +128,7 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 ### Key Features
 
 - **No Port Forwarding Required**: ESP32 uses outbound MQTT connection, works from any network
-- **Cloud-Ready**: StorageCore can run on external servers, ESP32 connects via internet
+- **Cloud-Ready**: WarehouseCore can run on external servers, ESP32 connects via internet
 - **Multiple LEDs per Bin**: Support for 2-4 LEDs per storage compartment
 - **Flexible Patterns**: Solid, blink, breathe animations
 - **Real-Time Control**: Toggle LEDs on/off from job panel
@@ -218,7 +218,7 @@ Defines which LED indices belong to which storage bins.
 
 **How it works:**
 1. Job is selected with devices
-2. StorageCore looks up each device's `zone_id` in the database
+2. WarehouseCore looks up each device's `zone_id` in the database
 3. Gets the zone's `code` (e.g., "WDL-RG-01-F-01")
 4. Matches this code with `bin_id` in the mapping file
 5. Sends the corresponding `pixels` to the ESP32 to light up
@@ -227,7 +227,7 @@ Defines which LED indices belong to which storage bins.
 
 ### MQTT Communication
 
-#### Command Topic (Publish from StorageCore)
+#### Command Topic (Publish from WarehouseCore)
 ```
 {TOPIC_PREFIX}/{WAREHOUSE_ID}/cmd
 Example: weidelbach/weidelbach/cmd
@@ -288,7 +288,7 @@ You have two options for MQTT broker setup:
 
 ##### **Option A: Self-Hosted Mosquitto (Recommended for Single-Server Deployment)** ✅
 
-If your StorageCore and ESP32 can both connect to the same server (e.g., both on-premises or both can reach your server), use the included Mosquitto container:
+If your WarehouseCore and ESP32 can both connect to the same server (e.g., both on-premises or both can reach your server), use the included Mosquitto container:
 
 **Quick Setup (3 Steps):**
 
@@ -362,7 +362,7 @@ Then:
 
 ##### **Option B: Cloud MQTT Broker (For Distributed Deployments)**
 
-If your StorageCore runs in the cloud and ESP32 is behind NAT/firewall, use a cloud broker:
+If your WarehouseCore runs in the cloud and ESP32 is behind NAT/firewall, use a cloud broker:
 
 **Option B1: EMQX Cloud** (easiest)
 - Sign up at https://www.emqx.com/en/cloud
@@ -387,12 +387,12 @@ LED_MQTT_PASS=your_cloud_password
 ```
 
 **Advantages:**
-- ✅ Works worldwide with StorageCore and ESP32 on different networks
+- ✅ Works worldwide with WarehouseCore and ESP32 on different networks
 - ✅ No port forwarding required
 - ✅ Managed service (auto-scaling, backups)
 - ✅ Built-in monitoring and dashboards
 
-#### 2. StorageCore Backend Configuration
+#### 2. WarehouseCore Backend Configuration
 
 Add to `.env`:
 
@@ -482,7 +482,7 @@ ESP32 GND   → SK6812 GND (common ground!)
 
 #### Dry-Run Mode (No MQTT Broker)
 
-Start StorageCore without LED_MQTT_HOST configured:
+Start WarehouseCore without LED_MQTT_HOST configured:
 
 ```bash
 # .env
@@ -526,7 +526,7 @@ curl -X POST http://localhost:8081/api/v1/led/clear
 
 **Problem:** LEDs don't light up
 - Check ESP32 serial monitor for connection status
-- Verify MQTT credentials match between StorageCore and ESP32
+- Verify MQTT credentials match between WarehouseCore and ESP32
 - Ensure ESP32 is online (check status topic)
 - Test with `/led/identify` endpoint
 
@@ -576,7 +576,7 @@ curl -X POST http://localhost:8081/api/v1/led/clear
 ## Architecture
 
 ```
-storagecore/
+warehousecore/
 ├── cmd/
 │   └── server/
 │       └── main.go              # Application entry point
@@ -635,8 +635,8 @@ storagecore/
 
 **Infrastructure:**
 - Docker + Docker Compose
-- Docker Hub: `nobentie/storagecore`
-- GitLab: git.server-nt.de/ntielmann/storagecore
+- Docker Hub: `nobentie/warehousecore`
+- GitLab: git.server-nt.de/ntielmann/warehousecore
 
 ---
 
@@ -653,8 +653,8 @@ storagecore/
 
 1. **Clone the repository**
 ```bash
-git clone https://git.server-nt.de/ntielmann/storagecore.git
-cd storagecore
+git clone https://git.server-nt.de/ntielmann/warehousecore.git
+cd warehousecore
 ```
 
 2. **Configure environment**
@@ -798,7 +798,7 @@ curl http://localhost:8081/api/v1/health
 
 ## Database Schema
 
-### New Tables (StorageCore-specific)
+### New Tables (WarehouseCore-specific)
 
 **storage_zones** - Logical warehouse areas
 - zone_id, code, name, type, description, parent_zone_id, capacity, is_active
@@ -828,16 +828,16 @@ curl http://localhost:8081/api/v1/health
 ```bash
 make docker-build
 # Or manually:
-docker build -t nobentie/storagecore:1.0 .
-docker tag nobentie/storagecore:1.0 nobentie/storagecore:latest
+docker build -t nobentie/warehousecore:1.0 .
+docker tag nobentie/warehousecore:1.0 nobentie/warehousecore:latest
 ```
 
 **Push to Docker Hub:**
 ```bash
 make docker-push
 # Or manually:
-docker push nobentie/storagecore:1.0
-docker push nobentie/storagecore:latest
+docker push nobentie/warehousecore:1.0
+docker push nobentie/warehousecore:latest
 ```
 
 **Run with docker-compose:**
@@ -849,16 +849,16 @@ docker-compose pull
 docker-compose up -d
 ```
 
-> **Note:** docker-compose.yml is configured to use the `nobentie/storagecore:latest` image from Docker Hub.
+> **Note:** docker-compose.yml is configured to use the `nobentie/warehousecore:latest` image from Docker Hub.
 
 **Check logs:**
 ```bash
-docker-compose logs -f storagecore
+docker-compose logs -f warehousecore
 ```
 
 ### 🔄 Integrated Deployment with RentalCore
 
-For integrated deployment of both StorageCore and RentalCore together, use the root docker-compose configuration:
+For integrated deployment of both WarehouseCore and RentalCore together, use the root docker-compose configuration:
 
 ```bash
 # Navigate to the parent directory (NOT a git repo)
@@ -874,16 +874,16 @@ docker compose up -d
 docker compose ps
 
 # View logs
-docker compose logs -f storagecore
+docker compose logs -f warehousecore
 docker compose logs -f rentalcore
 ```
 
 **Access the applications:**
-- **StorageCore**: http://localhost:8082
+- **WarehouseCore**: http://localhost:8082
 - **RentalCore**: http://localhost:8081
 
 **Cross-navigation:**
-Both applications feature sidebar/navbar links to seamlessly switch between StorageCore and RentalCore with a single click.
+Both applications feature sidebar/navbar links to seamlessly switch between WarehouseCore and RentalCore with a single click.
 
 **Note:** The images use `:latest` tags. Pull periodically to get the newest versions:
 ```bash
@@ -930,7 +930,7 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 ## Docker Hub
 
-**Repository:** `nobentie/storagecore`
+**Repository:** `nobentie/warehousecore`
 
 **Tags:**
 - `latest` - Latest stable build
@@ -967,7 +967,7 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Pull image:**
 ```bash
-docker pull nobentie/storagecore:latest
+docker pull nobentie/warehousecore:latest
 ```
 
 ---
@@ -1014,7 +1014,7 @@ Proprietary - Tsunami Events UG
 ## Support
 
 For issues or questions:
-- GitLab Issues: https://git.server-nt.de/ntielmann/storagecore/issues
+- GitLab Issues: https://git.server-nt.de/ntielmann/warehousecore/issues
 - Internal documentation: See /lager_weidelbach/claude.md
 
 ---
@@ -1085,10 +1085,10 @@ For issues or questions:
   - Ensures exact match with storage_zones.code column in database
   - Both shelf_id and bin_id now use proper hierarchical zone codes
 - **Port Configuration Fix:**
-  - Changed StorageCore port from 8081 to 8082 to avoid conflict with RentalCore
+  - Changed WarehouseCore port from 8081 to 8082 to avoid conflict with RentalCore
   - Updated docker-compose.yml port mapping: `8082:8082`
   - Updated healthcheck endpoint to use port 8082
-  - RentalCore uses 8081, StorageCore uses 8082
+  - RentalCore uses 8081, WarehouseCore uses 8082
 - **MQTT Configuration Correction:**
   - Fixed LED_MQTT_HOST environment variable format
   - Changed from full URL (`tcp://mosquitto:1883`) to hostname only (`mosquitto`)
@@ -1133,7 +1133,7 @@ For issues or questions:
   - Clear documentation on how bin_id must match database codes
 - **How It Works:**
   1. Job is selected with devices
-  2. StorageCore queries device's `zone_id` from database
+  2. WarehouseCore queries device's `zone_id` from database
   3. Gets the zone's `code` field (e.g., "WDL-RG-01-F-01")
   4. Matches code with `bin_id` in LED mapping configuration
   5. Sends corresponding pixel indices to ESP32
@@ -1169,7 +1169,7 @@ For issues or questions:
   - Single source of truth: `.env` file
 - **User Experience:**
   - Change password: Edit `.env` → Restart container → Done!
-  - Same credentials in StorageCore and Mosquitto (both read from .env)
+  - Same credentials in WarehouseCore and Mosquitto (both read from .env)
   - ESP32 uses same password (manual sync required for security)
   - Perfect for both development and production
 - **Documentation:**
@@ -1211,7 +1211,7 @@ For issues or questions:
 ### Version 1.26 (2025-10-17)
 - **Feature: Self-Hosted MQTT Broker with Docker Compose** 🐳
   - Added Mosquitto MQTT broker container to docker-compose.yml
-  - StorageCore and ESP32 can now connect to the same server
+  - WarehouseCore and ESP32 can now connect to the same server
   - No need for external cloud MQTT broker for single-server deployments
   - Eliminates subscription fees and external dependencies
   - Lower latency with local network communication
@@ -1237,7 +1237,7 @@ For issues or questions:
   - Backup recommendations
 - **Docker Compose Updates:**
   - Added `mosquitto` service with eclipse-mosquitto:2.0 image
-  - StorageCore now depends_on mosquitto service
+  - WarehouseCore now depends_on mosquitto service
   - Exposed ports: 1883 (MQTT), 8883 (TLS), 9001 (WebSocket)
   - Volume mounts for persistent configuration and data
   - Health check with mosquitto_sub test
@@ -1259,7 +1259,7 @@ For issues or questions:
   - Scales from development to production with TLS
 - **ESP32 Configuration:**
   - Can connect to server's public IP or domain
-  - Same credentials as StorageCore
+  - Same credentials as WarehouseCore
   - Works from warehouse WiFi to server
   - No port forwarding required (outbound connection)
 - **Security Features:**
@@ -1377,7 +1377,7 @@ For issues or questions:
   - Complete user authentication system integrated with RentalCore
   - Shared session-based authentication using MySQL sessions table
   - Cookie-based SSO across both applications (.server-nt.de domain)
-  - Login required to access StorageCore directly
+  - Login required to access WarehouseCore directly
   - Automatic authentication when navigating from RentalCore
 - **Backend Authentication:**
   - Added GORM ORM for auth model management (User, Session)
@@ -1405,9 +1405,9 @@ For issues or questions:
   - No new tables required
   - Maintains backward compatibility with RentalCore auth
 - **User Experience:**
-  - Seamless navigation between RentalCore and StorageCore when logged in
+  - Seamless navigation between RentalCore and WarehouseCore when logged in
   - Single login for both applications
-  - Professional login page matching StorageCore design
+  - Professional login page matching WarehouseCore design
   - Clear authentication feedback
   - Automatic session check on application load
 - **Technical Changes:**

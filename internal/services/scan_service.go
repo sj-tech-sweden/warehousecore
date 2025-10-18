@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"storagecore/internal/models"
-	"storagecore/internal/repository"
+	"warehousecore/internal/models"
+	"warehousecore/internal/repository"
 )
 
 // ScanService handles all scan-related business logic

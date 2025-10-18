@@ -74,8 +74,8 @@ Falls du bereits ein Wildcard-Zertifikat für `*.server-nt.de` hast, kannst du d
 ## 📦 Schritt 3: Zertifikat für Mosquitto kopieren
 
 ```bash
-# 1. Navigiere zum StorageCore-Verzeichnis
-cd /opt/dev/lager_weidelbach/storagecore
+# 1. Navigiere zum WarehouseCore-Verzeichnis
+cd /opt/dev/lager_weidelbach/warehousecore
 
 # 2. Erstelle Zertifikat-Ordner
 mkdir -p mosquitto/certs
@@ -151,7 +151,7 @@ mosquitto:
   entrypoint: ["/docker-entrypoint.sh"]
   restart: unless-stopped
   networks:
-    - storagecore-network
+    - warehousecore-network
   healthcheck:
     test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
     interval: 30s
@@ -269,9 +269,9 @@ Falls nicht, öffne den Port manuell (Docker macht das normalerweise automatisch
 
 ---
 
-## 🔄 Schritt 8: StorageCore anpassen (optional)
+## 🔄 Schritt 8: WarehouseCore anpassen (optional)
 
-Wenn du möchtest, dass StorageCore auch über die öffentliche Domain mit MQTT spricht:
+Wenn du möchtest, dass WarehouseCore auch über die öffentliche Domain mit MQTT spricht:
 
 ```bash
 nano .env
@@ -286,7 +286,7 @@ LED_MQTT_TLS=true
 
 **Dann:**
 ```bash
-docker-compose restart storagecore
+docker-compose restart warehousecore
 ```
 
 ---
@@ -366,7 +366,7 @@ sudo crontab -e
 ```
 Füge hinzu:
 ```
-0 0 1 * * certbot renew --quiet && cp /etc/letsencrypt/live/mqtt.server-nt.de/fullchain.pem /opt/dev/lager_weidelbach/storagecore/mosquitto/certs/server.crt && cp /etc/letsencrypt/live/mqtt.server-nt.de/privkey.pem /opt/dev/lager_weidelbach/storagecore/mosquitto/certs/server.key && docker restart mosquitto
+0 0 1 * * certbot renew --quiet && cp /etc/letsencrypt/live/mqtt.server-nt.de/fullchain.pem /opt/dev/lager_weidelbach/warehousecore/mosquitto/certs/server.crt && cp /etc/letsencrypt/live/mqtt.server-nt.de/privkey.pem /opt/dev/lager_weidelbach/warehousecore/mosquitto/certs/server.key && docker restart mosquitto
 ```
 
 ---

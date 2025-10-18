@@ -9,7 +9,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"storagecore/config"
+	"warehousecore/config"
 )
 
 // DB holds the database connection pool
