@@ -934,7 +934,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.33` - Solid green LED pattern for job bins (current)
+- `1.34` - Red/green bin highlighting + MQTT topic fix (current)
+- `1.33` - Solid green LED pattern for job bins
 - `1.32` - Fixed LED zone codes and MQTT configuration
 - `1.31` - Copy LED config files to Docker image and initialize service
 - `1.30` - Docker image includes LED configuration directories
@@ -1017,13 +1018,35 @@ For issues or questions:
 
 ---
 
-**Version:** 1.33
+**Version:** 1.34
 **Last Updated:** 2025-10-18
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.34 (2025-10-18)
+- **Feature: Red/Green Bin Highlighting** 🔴🟢
+  - ALL bins in the rack now illuminate when job is selected
+  - Job bins (with devices to pack) → **GREEN** (solid)
+  - Empty bins (no job devices) → **RED** (solid)
+  - Clear visual distinction for warehouse workers
+  - Example: Job 1024 shows 1 green bin + 4 red bins
+- **Bug Fix: MQTT Topic Configuration**
+  - Fixed environment variable names in mqtt_publisher.go
+  - Changed from `WAREHOUSE_ID` → `LED_WAREHOUSE_ID`
+  - Changed from `LED_TOPIC_PREFIX` → `LED_MQTT_TOPIC_PREFIX`
+  - Clear command now sends to correct topic: `weidelbach/WDL/cmd`
+  - Previously sent to wrong topic: `weidelbach/weidelbach/cmd`
+- **Enhanced Logging:**
+  - Now shows breakdown: "5 bins total (1 green job bins, 4 red empty bins)"
+  - Easier to verify correct operation in logs
+- **User Experience:**
+  - Workers can now see the entire rack at a glance
+  - Green bins = pick these devices
+  - Red bins = skip these (empty or other jobs)
+  - No confusion about which bins to check
 
 ### Version 1.33 (2025-10-18)
 - **LED Pattern Change: Solid Green for Job Bins** 🟢
