@@ -33,7 +33,7 @@ export function Login() {
         {/* Logo/Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">
-            <span className="text-accent-red">Storage</span>
+            <span className="text-accent-red">Warehouse</span>
             <span className="text-white">Core</span>
           </h1>
           <p className="text-gray-400">Tsunami Events UG</p>
@@ -116,7 +116,7 @@ export function Login() {
         {/* Footer */}
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500">
-            StorageCore © 2025 Tsunami Events UG
+            WarehouseCore © 2025 Tsunami Events UG
           </p>
         </div>
       </div>
