@@ -934,7 +934,15 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.35` - Frontend with LED control button (current)
+- `1.47` - Auto-clear LEDs on page exit/browser close (current)
+- `1.46` - Reset pack status on device intake
+- `1.45` - Complete LED refresh after device scan
+- `1.44` - Live LED updates on device outtake
+- `1.43` - Device tree string-based ID fix
+- `1.42` - Device tree database schema fix
+- `1.41` - Device tree selector in zone details
+- `1.40` - Cross-navigation hostname fix
+- `1.35` - Frontend with LED control button
 - `1.34` - Red/green bin highlighting + MQTT topic fix
 - `1.33` - Solid green LED pattern for job bins
 - `1.32` - Fixed LED zone codes and MQTT configuration
@@ -1019,13 +1027,98 @@ For issues or questions:
 
 ---
 
-**Version:** 1.35
+**Version:** 1.47
 **Last Updated:** 2025-10-18
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.47 (2025-10-18)
+- **Feature: Automatic LED Cleanup on Page Exit** 🔴
+  - LEDs automatically turn off when leaving job page
+  - LEDs turn off when navigating to different page
+  - LEDs turn off when closing browser or reloading page
+  - useEffect cleanup hooks ensure no LEDs left on
+  - beforeunload event handler for browser close
+  - Prevents LEDs from staying on after job is finished
+- **User Experience:**
+  - No manual LED turn-off needed
+  - System automatically resets LED state
+  - Clean workflow when switching between jobs
+
+### Version 1.46 (2025-10-18)
+- **Feature: Reset Pack Status on Device Intake** ♻️
+  - Devices returned to warehouse now reset to "not scanned" state
+  - Updates pack_status='pending' instead of deleting job assignment
+  - Clears pack_ts timestamp
+  - Device stays assigned to job but appears unchecked
+  - Allows re-scanning device for same job
+- **Implementation:**
+  - Modified scan_service.go processIntake()
+  - UPDATE jobdevices instead of DELETE
+  - Device-job relationship preserved
+
+### Version 1.45 (2025-10-18)
+- **Feature: Complete LED Refresh After Device Scan** 🔄
+  - All bins for job stay visible after device outtake
+  - GREEN bins: Still have devices for job
+  - RED bins: All devices taken or not needed for job
+  - Single MQTT command updates all bins
+  - getJobDeviceZonesWithCounts() groups devices by zone
+- **Bug Fix:**
+  - Fixed issue where all LEDs turned off after single scan
+  - Now sends complete state refresh for entire job
+
+### Version 1.44 (2025-10-18)
+- **Feature: Live LED Updates on Device Scan** 🔴🟢
+  - LEDs automatically update after device outtake scan
+  - Bin turns RED when last device is taken
+  - Bin stays GREEN while devices remain
+  - Asynchronous update via goroutine
+  - No manual LED refresh needed
+- **Implementation:**
+  - Added UpdateBinAfterScan() to led/service.go
+  - Integrated into ProcessScan() as background task
+  - Queries remaining device count per zone
+
+### Version 1.43 (2025-10-18)
+- **Bug Fix: Device Tree String-Based IDs** 🔧
+  - Fixed type mismatch for category IDs
+  - Changed from int64 to string-based maps
+  - subcategoryID and subbiercategoryID are VARCHAR(50)
+  - Device tree now loads correctly
+
+### Version 1.42 (2025-10-18)
+- **Bug Fix: Device Tree Database Schema** 🔧
+  - Fixed column name from serial_number to serialnumber
+  - Fixed table names to lowercase (subcategories, subbiercategories)
+  - Device tree API now working
+
+### Version 1.41 (2025-10-18)
+- **Feature: Device Tree Selector in Zone Details** 📦
+  - Multi-select hierarchical device browser
+  - Category → Subcategory → Subbiercategory → Device navigation
+  - Modal dialog with "Add Devices" button
+  - Batch assignment to zones
+  - Shows device status and current zone
+  - Disables devices already in current zone
+- **API Endpoints:**
+  - GET /api/v1/devices/tree - Hierarchical device tree
+  - POST /api/v1/zones/{id}/devices - Batch device assignment
+- **Components:**
+  - DeviceTreeModal.tsx (new)
+  - Updated ZoneDetailPage.tsx
+
+### Version 1.40 (2025-10-18)
+- **Bug Fix: Cross-Navigation to RentalCore** 🔗
+  - Fixed hostname detection from storage. to warehouse.
+  - Enhanced fallback logic for reverse proxy scenarios
+  - RentalCore button now correctly redirects to RentalCore
+- **Implementation:**
+  - Updated Layout.tsx hostname check
+  - Supports warehouse.* subdomain pattern
 
 ### Version 1.35 (2025-10-18)
 - **Frontend Update: LED Control Button Now Visible** 💡
