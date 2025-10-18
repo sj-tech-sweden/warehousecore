@@ -934,7 +934,10 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.29` - LED mapping uses zone codes from database (current)
+- `1.32` - Fixed LED zone codes and MQTT configuration (current)
+- `1.31` - Copy LED config files to Docker image and initialize service
+- `1.30` - Docker image includes LED configuration directories
+- `1.29` - LED mapping uses zone codes from database
 - `1.28` - MQTT credentials via .env only, auto-generated password file
 - `1.27` - Simplified zero-config MQTT setup with demo credentials
 - `1.26` - Self-hosted MQTT broker with Docker Compose
@@ -1013,13 +1016,50 @@ For issues or questions:
 
 ---
 
-**Version:** 1.29
-**Last Updated:** 2025-10-17
+**Version:** 1.32
+**Last Updated:** 2025-10-18
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.32 (2025-10-18)
+- **Bug Fix: LED Zone Code Mapping and MQTT Configuration** 🔧
+  - Fixed LED mapping zone codes to include complete hierarchical format
+  - Updated bin_id values from `WDL-RG-02-F-XX` to `WDL-06-RG-02-F-XX` format
+  - Ensures exact match with storage_zones.code column in database
+  - Both shelf_id and bin_id now use proper hierarchical zone codes
+- **Port Configuration Fix:**
+  - Changed StorageCore port from 8081 to 8082 to avoid conflict with RentalCore
+  - Updated docker-compose.yml port mapping: `8082:8082`
+  - Updated healthcheck endpoint to use port 8082
+  - RentalCore uses 8081, StorageCore uses 8082
+- **MQTT Configuration Correction:**
+  - Fixed LED_MQTT_HOST environment variable format
+  - Changed from full URL (`tcp://mosquitto:1883`) to hostname only (`mosquitto`)
+  - Added LED_MQTT_PORT as separate variable (1883)
+  - Code expects hostname and builds URL internally
+- **Docker Image Updates:**
+  - Rebuilt with corrected LED mapping configuration
+  - LED config files properly copied to container at build time
+  - Service initialization at startup working correctly
+- **Testing Results:**
+  - ✅ MQTT connection successful: `tcp://mosquitto:1883`
+  - ✅ LED mapping loaded: 1 shelf, 5 bins
+  - ✅ LED highlight command published successfully for Job 1024
+  - ✅ Device MIX2001 correctly mapped to zone WDL-06-RG-02-F-01
+  - ✅ MQTT message published to topic: `weidelbach/WDL/cmd`
+- **Environment Variables:**
+  - PORT changed from 8081 to 8082
+  - Added LED_MQTT_HOST=mosquitto (hostname only)
+  - Added LED_MQTT_PORT=1883
+  - LED configuration now complete in .env file
+- **Result:**
+  - LED warehouse bin highlighting system fully operational
+  - Zone codes match database exactly
+  - No more "no bins to highlight" errors
+  - MQTT communication working end-to-end
 
 ### Version 1.29 (2025-10-17)
 - **LED Mapping Now Uses Zone Codes from Database** 🔗
