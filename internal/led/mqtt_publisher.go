@@ -55,8 +55,8 @@ func NewPublisher() *Publisher {
 		UseTLS:      getEnvBool("LED_MQTT_TLS", false),
 		Username:    os.Getenv("LED_MQTT_USER"),
 		Password:    os.Getenv("LED_MQTT_PASS"),
-		TopicPrefix: getEnvString("LED_TOPIC_PREFIX", "weidelbach"),
-		WarehouseID: getEnvString("WAREHOUSE_ID", "weidelbach"),
+		TopicPrefix: getEnvString("LED_MQTT_TOPIC_PREFIX", "weidelbach"),
+		WarehouseID: getEnvString("LED_WAREHOUSE_ID", "WDL"),
 		ClientID:    fmt.Sprintf("storagecore-%d", time.Now().Unix()),
 	}
 
@@ -204,34 +204,41 @@ func (p *Publisher) PublishHighlight(jobID string, mapping *LEDMapping, deviceZo
 		Shelves:     []Shelf{},
 	}
 
-	// Group bins by shelf
+	// Create a map of zones that have job devices (for quick lookup)
+	jobZones := make(map[string]bool)
+	for _, zoneName := range deviceZones {
+		jobZones[zoneName] = true
+	}
+
+	// Group bins by shelf - illuminate ALL bins in the mapping
 	shelfBins := make(map[string][]Bin)
 
-	for deviceID, zoneName := range deviceZones {
-		// Find bin in mapping
-		pixels, found := findBinPixels(mapping, zoneName)
-		if !found {
-			log.Printf("[LED] Warning: No LED mapping found for zone '%s' (device %s)", zoneName, deviceID)
-			continue
-		}
+	// Iterate through ALL bins in mapping
+	for _, shelf := range mapping.Shelves {
+		for _, binConfig := range shelf.Bins {
+			// Check if this bin has a job device
+			hasJobDevice := jobZones[binConfig.BinID]
 
-		// Extract shelf ID from zone name (e.g., "A-01" -> shelf "A")
-		shelfID, binID := parseZoneName(zoneName)
-		if shelfID == "" {
-			log.Printf("[LED] Warning: Could not parse shelf from zone '%s'", zoneName)
-			continue
-		}
+			var color string
+			if hasJobDevice {
+				// Job device in this bin → GREEN
+				color = "#00FF00"
+			} else {
+				// No job device → RED
+				color = "#FF0000"
+			}
 
-		// Create bin entry
-		bin := Bin{
-			BinID:     binID,
-			Pixels:    pixels,
-			Color:     mapping.Defaults.Color,
-			Pattern:   mapping.Defaults.Pattern,
-			Intensity: mapping.Defaults.Intensity,
-		}
+			// Create bin entry
+			bin := Bin{
+				BinID:     binConfig.BinID,
+				Pixels:    binConfig.Pixels,
+				Color:     color,
+				Pattern:   "solid",
+				Intensity: 200,
+			}
 
-		shelfBins[shelfID] = append(shelfBins[shelfID], bin)
+			shelfBins[shelf.ShelfID] = append(shelfBins[shelf.ShelfID], bin)
+		}
 	}
 
 	// Convert map to shelves array
@@ -243,10 +250,24 @@ func (p *Publisher) PublishHighlight(jobID string, mapping *LEDMapping, deviceZo
 	}
 
 	if len(cmd.Shelves) == 0 {
-		return fmt.Errorf("no bins to highlight for job %s", jobID)
+		return fmt.Errorf("no bins configured in LED mapping")
 	}
 
+	log.Printf("[LED] Highlighting %d bins total (%d green job bins, %d red empty bins)",
+		len(jobZones) + (countTotalBins(shelfBins) - len(jobZones)),
+		len(jobZones),
+		countTotalBins(shelfBins) - len(jobZones))
+
 	return p.PublishCommand(cmd)
+}
+
+// countTotalBins counts total bins in the shelfBins map
+func countTotalBins(shelfBins map[string][]Bin) int {
+	count := 0
+	for _, bins := range shelfBins {
+		count += len(bins)
+	}
+	return count
 }
 
 // PublishClear sends a clear command to turn off all LEDs
