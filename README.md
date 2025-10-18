@@ -934,7 +934,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.47` - Auto-clear LEDs on page exit/browser close (current)
+- `1.48` - Device detail modal with orange breathe LED locate (current)
+- `1.47` - Auto-clear LEDs on page exit/browser close
 - `1.46` - Reset pack status on device intake
 - `1.45` - Complete LED refresh after device scan
 - `1.44` - Live LED updates on device outtake
@@ -1027,13 +1028,38 @@ For issues or questions:
 
 ---
 
-**Version:** 1.47
+**Version:** 1.48
 **Last Updated:** 2025-10-18
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.48 (2025-10-18)
+- **Feature: Device Detail Modal with LED Locate** 🔍💡
+  - Click any device to open detail popup
+  - Shows complete device information:
+    - Device ID, serial number, barcode, QR code
+    - Product name, status, condition rating
+    - Location (zone name and code)
+    - Usage hours, case assignment, job number
+  - **"Fach beleuchten" button**: Highlights device's bin with orange breathe pattern
+  - Orange breathe LED makes finding devices easy
+  - Modal accessible from zone detail page device list
+- **Backend Enhancement:**
+  - New LED locate API: POST /api/v1/led/locate?bin_code=XXX
+  - LocateBin service function with orange breathe pattern
+  - Added zone_code to Device API responses
+  - Updated DeviceWithDetails model with zone_code field
+- **Database Updates:**
+  - GetDevices, GetDevice, GetZoneDevices now return zone_code
+  - Enhanced device queries with serial_number, condition_rating, usage_hours
+- **User Experience:**
+  - Hover effect on device rows
+  - One-click access to full device details
+  - Instant LED location for faster picking
+  - Beautiful modal with organized information layout
 
 ### Version 1.47 (2025-10-18)
 - **Feature: Automatic LED Cleanup on Page Exit** 🔴
