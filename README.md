@@ -934,7 +934,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.34` - Red/green bin highlighting + MQTT topic fix (current)
+- `1.35` - Frontend with LED control button (current)
+- `1.34` - Red/green bin highlighting + MQTT topic fix
 - `1.33` - Solid green LED pattern for job bins
 - `1.32` - Fixed LED zone codes and MQTT configuration
 - `1.31` - Copy LED config files to Docker image and initialize service
@@ -1018,13 +1019,30 @@ For issues or questions:
 
 ---
 
-**Version:** 1.34
+**Version:** 1.35
 **Last Updated:** 2025-10-18
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.35 (2025-10-18)
+- **Frontend Update: LED Control Button Now Visible** 💡
+  - Rebuilt frontend with LED control button in Jobs page
+  - LED toggle button appears when job is selected
+  - Shows "Fächer hervorheben" / "Fächer hervorgehoben"
+  - Visual indicators for MQTT connection status
+  - Green/gray styling based on LED state
+  - Button includes lightbulb icons for clarity
+  - Shows total bins available in LED system
+  - Auto-clears LEDs when leaving job view
+- **User Interface:**
+  - Button located above scan interface in job detail view
+  - One-click toggle to turn LEDs on/off
+  - Real-time feedback when LED state changes
+  - Connection status: "MQTT verbunden" or "Dry-Run Modus"
+  - No page reload needed - instant LED control
 
 ### Version 1.34 (2025-10-18)
 - **Feature: Red/Green Bin Highlighting** 🔴🟢
