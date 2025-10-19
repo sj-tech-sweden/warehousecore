@@ -1,21 +1,28 @@
 package led
 
 import (
+	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 )
 
+//go:embed config/led_mapping.json
+var defaultMappingData []byte
+
 // Service handles LED-related business logic
 type Service struct {
-	mapping   *LEDMapping
-	publisher *Publisher
-	mu        sync.RWMutex
+	mapping     *LEDMapping
+	mappingPath string
+	publisher   *Publisher
+	mu          sync.RWMutex
 }
 
 var (
@@ -37,8 +44,17 @@ func NewService() *Service {
 		publisher: GetPublisher(),
 	}
 
+	mappingPath := os.Getenv("LED_MAPPING_FILE")
+	if mappingPath == "" {
+		mappingPath = "internal/led/config/led_mapping.json"
+	}
+
+	if err := s.ensureMappingFile(mappingPath); err != nil {
+		log.Printf("[LED] Failed to prepare mapping file: %v", err)
+	}
+
 	// Load mapping configuration
-	if err := s.LoadMapping("internal/led/config/led_mapping.json"); err != nil {
+	if err := s.LoadMapping(mappingPath); err != nil {
 		log.Printf("[LED] Failed to load mapping: %v", err)
 	}
 
@@ -76,6 +92,7 @@ func (s *Service) getJobHighlightSettings() *models.LEDJobHighlightSettings {
 func (s *Service) LoadMapping(filename string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.mappingPath = filename
 
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -93,12 +110,15 @@ func (s *Service) LoadMapping(filename string) error {
 }
 
 // SaveMapping saves the LED mapping configuration to file
-func (s *Service) SaveMapping(filename string) error {
+func (s *Service) SaveMapping() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if s.mapping == nil {
 		return fmt.Errorf("no mapping loaded")
+	}
+	if s.mappingPath == "" {
+		return fmt.Errorf("mapping path not set")
 	}
 
 	data, err := json.MarshalIndent(s.mapping, "", "  ")
@@ -106,7 +126,7 @@ func (s *Service) SaveMapping(filename string) error {
 		return fmt.Errorf("failed to marshal mapping: %w", err)
 	}
 
-	if err := os.WriteFile(filename, data, 0644); err != nil {
+	if err := os.WriteFile(s.mappingPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write mapping file: %w", err)
 	}
 
@@ -134,6 +154,30 @@ func (s *Service) UpdateMapping(mapping *LEDMapping) error {
 
 	s.mapping = mapping
 	log.Printf("[LED] Mapping updated: %d shelves, %d bins", len(mapping.Shelves), s.countTotalBins())
+	return nil
+}
+
+func (s *Service) ensureMappingFile(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("failed to create mapping directory: %w", err)
+	}
+
+	data := defaultMappingData
+	if len(data) == 0 {
+		// Fallback minimal mapping if embed fails for some reason
+		data = []byte(`{"warehouse_id":"default","shelves":[],"led_strip":{"length":600,"data_pin":5,"chipset":"SK6812_GRBW"},"defaults":{"color":"#FF0000","pattern":"solid","intensity":200,"speed":1200}}`)
+	}
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write default mapping: %w", err)
+	}
+
 	return nil
 }
 

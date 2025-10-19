@@ -144,7 +144,7 @@ func UpdateLEDMapping(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save to file
-	if err := service.SaveMapping("internal/led/config/led_mapping.json"); err != nil {
+	if err := service.SaveMapping(); err != nil {
 		log.Printf("[LED] Failed to save mapping to file: %v", err)
 		// Don't fail the request - mapping is already updated in memory
 	}

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Save, Lightbulb, RefreshCcw, SlidersHorizontal, FileText } from 'lucide-react';
-import { api, ledApi, type LEDAppearance, type LEDJobHighlightSettings } from '../../lib/api';
+import { api, ledApi, zonesApi, type LEDAppearance, type LEDJobHighlightSettings, type LEDMapping, type Zone } from '../../lib/api';
 
 interface LEDDefault {
   color: string;
@@ -50,11 +50,18 @@ export function LEDSettingsTab() {
   const [zoneTypeLoading, setZoneTypeLoading] = useState(true);
   const [zoneTypeSaving, setZoneTypeSaving] = useState<number | null>(null);
   const [zoneTypeMessages, setZoneTypeMessages] = useState<Record<number, string>>({});
-  const [mappingJSON, setMappingJSON] = useState('');
+  const [mapping, setMapping] = useState<LEDMapping | null>(null);
   const [mappingLoading, setMappingLoading] = useState(true);
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingValidating, setMappingValidating] = useState(false);
   const [mappingMessage, setMappingMessage] = useState('');
+  const [pixelsInput, setPixelsInput] = useState<Record<string, string>>({});
+  const [zones, setZones] = useState<Zone[]>([]);
+  const zoneOptions = useMemo(() => {
+    return [...zones].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'de', { sensitivity: 'base' })
+    );
+  }, [zones]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewMessage, setPreviewMessage] = useState('');
 
@@ -63,6 +70,19 @@ export function LEDSettingsTab() {
     loadJobSettings();
     loadZoneTypes();
     loadMapping();
+  }, []);
+
+  useEffect(() => {
+    const fetchZones = async () => {
+      try {
+        const { data } = await zonesApi.getAll();
+        setZones(data);
+      } catch (error) {
+        console.error('Failed to load zones for LED mapping:', error);
+      }
+    };
+
+    fetchZones();
   }, []);
 
   const loadDefaults = async () => {
@@ -96,14 +116,27 @@ export function LEDSettingsTab() {
     }
   };
 
+  const rebuildPixelInputs = (mappingData: LEDMapping): Record<string, string> => {
+    const next: Record<string, string> = {};
+    mappingData.shelves.forEach((shelf, shelfIndex) => {
+      shelf.bins.forEach((bin, binIndex) => {
+        next[`${shelfIndex}:${binIndex}`] = bin.pixels.join(', ');
+      });
+    });
+    return next;
+  };
+
   const loadMapping = async () => {
     setMappingLoading(true);
     try {
       const { data } = await ledApi.getMapping();
-      setMappingJSON(JSON.stringify(data, null, 2));
+      setMapping(data);
+      setPixelsInput(rebuildPixelInputs(data));
       setMappingMessage('');
     } catch (error) {
       console.error('Failed to load LED mapping:', error);
+      setMapping(null);
+      setPixelsInput({});
       setMappingMessage('Fehler beim Laden des LED-Mappings.');
     } finally {
       setMappingLoading(false);
@@ -148,11 +181,14 @@ export function LEDSettingsTab() {
   };
 
   const handleMappingValidate = async () => {
+    if (!mapping) {
+      setMappingMessage('Kein Mapping geladen.');
+      return;
+    }
     setMappingValidating(true);
     setMappingMessage('');
     try {
-      const parsed = JSON.parse(mappingJSON);
-      const { data } = await ledApi.validateMapping(parsed);
+      const { data } = await ledApi.validateMapping(mapping);
       if (data.valid) {
         setMappingMessage(`✓ Mapping gültig (${data.total_bins ?? 0} Bins, ${data.total_shelves ?? 0} Regale)`);
       } else {
@@ -167,11 +203,14 @@ export function LEDSettingsTab() {
   };
 
   const handleMappingSave = async () => {
+    if (!mapping) {
+      setMappingMessage('Kein Mapping geladen.');
+      return;
+    }
     setMappingSaving(true);
     setMappingMessage('');
     try {
-      const parsed = JSON.parse(mappingJSON);
-      await ledApi.updateMapping(parsed);
+      await ledApi.updateMapping(mapping);
       setMappingMessage('✓ Mapping gespeichert');
       setTimeout(() => setMappingMessage(''), 4000);
     } catch (error: any) {
@@ -179,6 +218,123 @@ export function LEDSettingsTab() {
     } finally {
       setMappingSaving(false);
     }
+  };
+
+  const updateLedStrip = (patch: Partial<LEDMapping['led_strip']>) => {
+    setMapping((prev) => {
+      if (!prev) return prev;
+      return { ...prev, led_strip: { ...prev.led_strip, ...patch } };
+    });
+  };
+
+  const updateMappingDefaults = (patch: Partial<LEDMapping['defaults']>) => {
+    setMapping((prev) => {
+      if (!prev) return prev;
+      return { ...prev, defaults: { ...prev.defaults, ...patch } };
+    });
+  };
+
+  const updateShelfId = (shelfIndex: number, value: string) => {
+    setMapping((prev) => {
+      if (!prev) return prev;
+      const shelves = prev.shelves.map((shelf, idx) =>
+        idx === shelfIndex ? { ...shelf, shelf_id: value } : shelf
+      );
+      return { ...prev, shelves };
+    });
+  };
+
+  const addShelf = () => {
+    setMapping((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      const next: LEDMapping = {
+        ...prev,
+        shelves: [...prev.shelves, { shelf_id: `${prev.warehouse_id}-shelf-${prev.shelves.length + 1}`, bins: [] }],
+      };
+      setPixelsInput(rebuildPixelInputs(next));
+      return next;
+    });
+  };
+
+  const removeShelf = (shelfIndex: number) => {
+    setMapping((prev) => {
+      if (!prev) return prev;
+      const next: LEDMapping = {
+        ...prev,
+        shelves: prev.shelves.filter((_, idx) => idx !== shelfIndex),
+      };
+      setPixelsInput(rebuildPixelInputs(next));
+      return next;
+    });
+  };
+
+  const addBin = (shelfIndex: number) => {
+    setMapping((prev) => {
+      if (!prev) return prev;
+      const shelves = prev.shelves.map((shelf, idx) =>
+        idx === shelfIndex ? { ...shelf, bins: [...shelf.bins, { bin_id: '', pixels: [] }] } : shelf
+      );
+      const next: LEDMapping = { ...prev, shelves };
+      setPixelsInput(rebuildPixelInputs(next));
+      return next;
+    });
+  };
+
+  const removeBin = (shelfIndex: number, binIndex: number) => {
+    setMapping((prev) => {
+      if (!prev) return prev;
+      const shelves = prev.shelves.map((shelf, idx) =>
+        idx === shelfIndex
+          ? { ...shelf, bins: shelf.bins.filter((_, bIdx) => bIdx !== binIndex) }
+          : shelf
+      );
+      const next: LEDMapping = { ...prev, shelves };
+      setPixelsInput(rebuildPixelInputs(next));
+      return next;
+    });
+  };
+
+  const updateBinId = (shelfIndex: number, binIndex: number, value: string) => {
+    setMapping((prev) => {
+      if (!prev) return prev;
+      const shelves = prev.shelves.map((shelf, idx) => {
+        if (idx !== shelfIndex) return shelf;
+        const bins = shelf.bins.map((bin, bIdx) =>
+          bIdx === binIndex ? { ...bin, bin_id: value } : bin
+        );
+        return { ...shelf, bins };
+      });
+      return { ...prev, shelves };
+    });
+  };
+
+  const parsePixels = (value: string): number[] => {
+    if (!value.trim()) {
+      return [];
+    }
+    return value
+      .split(/[,\s]+/)
+      .map((part) => parseInt(part.trim(), 10))
+      .filter((num) => !Number.isNaN(num));
+  };
+
+  const handlePixelInputChange = (shelfIndex: number, binIndex: number, value: string) => {
+    const key = `${shelfIndex}:${binIndex}`;
+    setPixelsInput((prev) => ({ ...prev, [key]: value }));
+    const pixels = parsePixels(value);
+    setMapping((prev) => {
+      if (!prev) return prev;
+      const shelves = prev.shelves.map((shelf, idx) => {
+        if (idx !== shelfIndex) return shelf;
+        const bins = shelf.bins.map((bin, bIdx) =>
+          bIdx === binIndex ? { ...bin, pixels } : bin
+        );
+        return { ...shelf, bins };
+      });
+      return { ...prev, shelves };
+    });
   };
 
   const toPreviewAppearance = (color: string, pattern: string, intensity: number, speed?: number): LEDAppearance => ({
@@ -620,78 +776,314 @@ export function LEDSettingsTab() {
       </div>
 
       {/* LED mapping editor */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-accent-red" />
-          <h3 className="text-lg font-semibold text-white">LED-Mapping (Expertenmodus)</h3>
+          <h3 className="text-lg font-semibold text-white">LED-Mapping konfigurieren</h3>
         </div>
         <p className="text-sm text-gray-400">
-          Bearbeite die vollständige Zuordnung von Regalfächern zu LED-Pixeln. Änderungen wirken sich direkt auf die Hardware aus – bitte mit Vorsicht nutzen.
+          Weise Regalfächern ihre LED-Pixel zu. Die Konfiguration wird im Container persistiert und survive Deployments.
         </p>
 
-        <div className="glass rounded-xl p-5 space-y-4">
-          <div className="flex justify-between items-center gap-3 flex-wrap">
-            <span className="text-xs text-gray-500">JSON-Konfiguration aus <code>internal/led/config/led_mapping.json</code></span>
-            <button
-              onClick={loadMapping}
-              disabled={mappingLoading}
-              className="flex items-center gap-2 px-3 py-2 glass text-gray-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
-            >
-              <RefreshCcw className="w-4 h-4" /> Neu laden
-            </button>
+        {mappingLoading ? (
+          <div className="glass rounded-xl p-5 text-sm text-gray-400">Mapping wird geladen...</div>
+        ) : !mapping ? (
+          <div className="glass rounded-xl p-5 text-sm text-red-400">
+            Mapping konnte nicht geladen werden. Prüfe die Server-Logs.
           </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="glass rounded-xl p-5 space-y-3">
+                <h4 className="text-white font-semibold text-sm uppercase tracking-wide">LED Strip</h4>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 mb-1">Anzahl LEDs</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={mapping.led_strip.length}
+                    onChange={(e) => updateLedStrip({ length: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full px-3 py-2 rounded-lg glass text-white"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1">Data Pin</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={mapping.led_strip.data_pin}
+                      onChange={(e) => updateLedStrip({ data_pin: parseInt(e.target.value, 10) || 0 })}
+                      className="w-full px-3 py-2 rounded-lg glass text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1">Chipset</label>
+                    <select
+                      value={mapping.led_strip.chipset}
+                      onChange={(e) => updateLedStrip({ chipset: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg glass text-white"
+                    >
+                      {['SK6812_GRBW', 'SK6812_GRB', 'WS2812B', 'WS2811', 'APA102'].map((chip) => (
+                        <option key={chip} value={chip} className="bg-dark">
+                          {chip}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
 
-          {mappingLoading ? (
-            <div className="text-sm text-gray-400">Mapping wird geladen...</div>
-          ) : (
-            <textarea
-              value={mappingJSON}
-              onChange={(e) => setMappingJSON(e.target.value)}
-              rows={16}
-              className="w-full font-mono text-sm bg-black/40 text-gray-100 border border-white/10 rounded-lg p-4 focus:outline-none focus:border-accent-red"
-            />
-          )}
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={handleMappingValidate}
-              disabled={mappingLoading || mappingValidating}
-              className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${
-                mappingLoading || mappingValidating
-                  ? 'bg-gray-600 cursor-not-allowed text-gray-200'
-                  : 'glass text-gray-200 hover:text-white'
-              }`}
-            >
-              {mappingValidating ? 'Validiere...' : 'Mapping prüfen'}
-            </button>
-            <button
-              onClick={handleMappingSave}
-              disabled={mappingLoading || mappingSaving}
-              className={`px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2 ${
-                mappingLoading || mappingSaving
-                  ? 'bg-gray-600 cursor-not-allowed'
-                  : 'bg-accent-red hover:bg-red-600 transition-colors'
-              }`}
-            >
-              <Save className="w-4 h-4" />
-              <span>{mappingSaving ? 'Speichert...' : 'Mapping speichern'}</span>
-            </button>
-          </div>
-
-          {mappingMessage && (
-            <div
-              className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                mappingMessage.startsWith('✓')
-                  ? 'bg-green-500/20 text-green-400'
-                  : mappingMessage.startsWith('⚠️')
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : 'bg-red-500/20 text-red-400'
-              }`}
-            >
-              {mappingMessage}
+              <div className="glass rounded-xl p-5 space-y-3">
+                <h4 className="text-white font-semibold text-sm uppercase tracking-wide">Standard-Erscheinung</h4>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={mapping.defaults.color}
+                    onChange={(e) => updateMappingDefaults({ color: e.target.value })}
+                    className="w-14 h-14 rounded-lg cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={mapping.defaults.color}
+                    onChange={(e) => updateMappingDefaults({ color: e.target.value })}
+                    className="flex-1 px-3 py-2 rounded-lg glass text-white font-mono"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1">Muster</label>
+                    <select
+                      value={mapping.defaults.pattern}
+                      onChange={(e) => updateMappingDefaults({ pattern: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg glass text-white"
+                    >
+                      <option value="solid">Durchgehend</option>
+                      <option value="breathe">Atmen</option>
+                      <option value="blink">Blinken</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1">
+                      Intensität: {mapping.defaults.intensity} / 255
+                    </label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={255}
+                      value={mapping.defaults.intensity}
+                      onChange={(e) => updateMappingDefaults({ intensity: parseInt(e.target.value, 10) })}
+                      className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 mb-1">
+                    Geschwindigkeit{mapping.defaults.pattern === 'solid' ? '' : `: ${mapping.defaults.speed ?? 1200} ms`}
+                  </label>
+                  <input
+                    type="range"
+                    min={200}
+                    max={3000}
+                    step={100}
+                    value={mapping.defaults.pattern === 'solid' ? 1200 : mapping.defaults.speed ?? 1200}
+                    disabled={mapping.defaults.pattern === 'solid'}
+                    onChange={(e) => updateMappingDefaults({ speed: parseInt(e.target.value, 10) })}
+                    className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer disabled:opacity-40"
+                  />
+                </div>
+                <button
+                  onClick={() =>
+                    triggerPreview(
+                      [
+                        toPreviewAppearance(
+                          mapping.defaults.color,
+                          mapping.defaults.pattern,
+                          mapping.defaults.intensity,
+                          mapping.defaults.speed
+                        ),
+                      ],
+                      true
+                    )
+                  }
+                  disabled={previewLoading}
+                  className={`w-full px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                    previewLoading ? 'bg-gray-600 cursor-not-allowed text-gray-300' : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  <Lightbulb className="w-4 h-4 text-yellow-300" /> Standard-Vorschau
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={loadMapping}
+                disabled={mappingLoading}
+                className="flex items-center gap-2 px-3 py-2 glass text-gray-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                <RefreshCcw className="w-4 h-4" /> Neu laden
+              </button>
+              <button
+                onClick={addShelf}
+                className="flex items-center gap-2 px-3 py-2 bg-accent-red/80 hover:bg-accent-red text-white rounded-lg transition-colors"
+              >
+                Regal hinzufügen
+              </button>
+            </div>
+
+            {mapping.shelves.length === 0 ? (
+              <div className="glass rounded-xl p-5 text-sm text-gray-400">
+                Noch keine Regale angelegt. Füge über "Regal hinzufügen" ein neues Regal hinzu.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {mapping.shelves.map((shelf, shelfIndex) => (
+                  <div key={`${shelf.shelf_id}-${shelfIndex}`} className="glass-dark rounded-xl p-5 space-y-4 border border-white/10">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-gray-400 mb-1">Regal-ID</label>
+                        <input
+                          type="text"
+                          value={shelf.shelf_id}
+                          onChange={(e) => updateShelfId(shelfIndex, e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg glass text-white"
+                        />
+                      </div>
+                      <button
+                        onClick={() => removeShelf(shelfIndex)}
+                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 text-red-300"
+                      >
+                        Regal entfernen
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {shelf.bins.map((bin, binIndex) => {
+                        const key = `${shelfIndex}:${binIndex}`;
+                        const pixelValue = pixelsInput[key] ?? '';
+                        const selectedZone = zones.find((zone) => zone.code === bin.bin_id);
+                        return (
+                          <div key={`${bin.bin_id}-${binIndex}`} className="glass rounded-lg p-4 space-y-3 border border-white/10">
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-400 mb-1">Fach auswählen</label>
+                                <select
+                                  value={selectedZone ? selectedZone.code : ''}
+                                  onChange={(e) => updateBinId(shelfIndex, binIndex, e.target.value || bin.bin_id)}
+                                  className="w-full px-3 py-2 rounded-lg glass text-white"
+                                >
+                                  <option value="">-- Fach wählen --</option>
+                                  {zoneOptions.map((zone) => (
+                                    <option key={zone.zone_id} value={zone.code} className="bg-dark">
+                                      {zone.name} ({zone.code})
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="text"
+                                  value={bin.bin_id}
+                                  onChange={(e) => updateBinId(shelfIndex, binIndex, e.target.value)}
+                                  className="mt-2 w-full px-3 py-2 rounded-lg glass text-white"
+                                  placeholder="Fachcode (z.B. WDL-06-RG-02-F-01)"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-400 mb-1">LED-Pixel (Komma getrennt)</label>
+                                <input
+                                  type="text"
+                                  value={pixelValue}
+                                  onChange={(e) => handlePixelInputChange(shelfIndex, binIndex, e.target.value)}
+                                  className="w-full px-3 py-2 rounded-lg glass text-white font-mono"
+                                  placeholder="0,1,2,3"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <button
+                                  onClick={() =>
+                                    triggerPreview(
+                                      [
+                                        toPreviewAppearance(
+                                          mapping.defaults.color,
+                                          mapping.defaults.pattern,
+                                          mapping.defaults.intensity,
+                                          mapping.defaults.speed
+                                        ),
+                                      ],
+                                      true
+                                    )
+                                  }
+                                  disabled={previewLoading}
+                                  className={`px-3 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                                    previewLoading ? 'bg-gray-600 cursor-not-allowed text-gray-300' : 'bg-white/10 text-white hover:bg-white/20'
+                                  }`}
+                                >
+                                  <Lightbulb className="w-4 h-4 text-yellow-300" /> Vorschau
+                                </button>
+                                <button
+                                  onClick={() => removeBin(shelfIndex, binIndex)}
+                                  className="px-3 py-2 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 text-red-300"
+                                >
+                                  Fach entfernen
+                                </button>
+                              </div>
+                            </div>
+                            {selectedZone && (
+                              <p className="text-xs text-gray-500">{selectedZone.name} ({selectedZone.code})</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => addBin(shelfIndex)}
+                      className="px-3 py-2 rounded-lg text-sm font-semibold bg-accent-red/80 hover:bg-accent-red text-white"
+                    >
+                      Fach hinzufügen
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleMappingValidate}
+                disabled={mappingValidating}
+                className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${
+                  mappingValidating ? 'bg-gray-600 cursor-not-allowed text-gray-200' : 'glass text-gray-200 hover:text-white'
+                }`}
+              >
+                {mappingValidating ? 'Validiere...' : 'Mapping prüfen'}
+              </button>
+              <button
+                onClick={handleMappingSave}
+                disabled={mappingSaving}
+                className={`px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2 ${
+                  mappingSaving ? 'bg-gray-600 cursor-not-allowed' : 'bg-accent-red hover:bg-red-600 transition-colors'
+                }`}
+              >
+                <Save className="w-4 h-4" />
+                <span>{mappingSaving ? 'Speichert...' : 'Mapping speichern'}</span>
+              </button>
+            </div>
+
+            {mappingMessage && (
+              <div
+                className={`px-3 py-2 rounded-lg text-sm font-semibold ${
+                  mappingMessage.startsWith('✓')
+                    ? 'bg-green-500/20 text-green-400'
+                    : mappingMessage.startsWith('⚠️')
+                      ? 'bg-yellow-500/20 text-yellow-400'
+                      : 'bg-red-500/20 text-red-400'
+                }`}
+              >
+                {mappingMessage}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Zone type specific defaults */}

@@ -2,11 +2,15 @@ services:
   warehousecore:
     image: nobentie/warehousecore:latest
     container_name: warehousecore
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      LED_MAPPING_FILE: "${LED_MAPPING_FILE:-/var/lib/warehousecore/led/led_mapping.json}"
     ports:
       - "8082:8082"
-    env_file:
-      - .env  # Loads ALL variables from .env including LED_MQTT_HOST, LED_MQTT_USER, LED_MQTT_PASS, etc.
-    restart: unless-stopped
+    volumes:
+      - led-mapping:/var/lib/warehousecore/led
     networks:
       - warehousecore-network
     depends_on:
@@ -21,21 +25,40 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: mosquitto
-    ports:
-      - "1883:1883"   # MQTT (plain)
-      - "8883:8883"   # MQTT over TLS
-      - "9001:9001"   # WebSocket (optional)
-    volumes:
-      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - ./mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-      - ./mosquitto/config:/mosquitto/config
-    environment:
-      - MQTT_USER=${LED_MQTT_USER}
-      - MQTT_PASS=${LED_MQTT_PASS}
-    entrypoint: ["/docker-entrypoint.sh"]
     restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "8883:8883"
+      - "9001:9001"
+    environment:
+      MQTT_USER: "${LED_MQTT_USER:-leduser}"
+      MQTT_PASS: "${LED_MQTT_PASS:-ledpassword123}"
+    volumes:
+      - mosquitto-config:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    entrypoint: >
+      /bin/sh -c "\
+      set -e; \
+      mkdir -p /mosquitto/config; \
+      if [ ! -f /mosquitto/config/mosquitto.conf ]; then \
+        cat <<'EOF' > /mosquitto/config/mosquitto.conf\n\
+listener 1883\n\
+allow_anonymous false\n\
+password_file /mosquitto/config/passwd\n\
+log_dest stdout\n\
+persistence true\n\
+persistence_location /mosquitto/data/\n\
+listener 9001\n\
+protocol websockets\n\
+EOF\n\
+      fi; \
+      if [ -n \"$MQTT_USER\" ]; then \
+        if [ ! -f /mosquitto/config/passwd ] || ! grep -q \"^$MQTT_USER:\" /mosquitto/config/passwd 2>/dev/null; then \
+          mosquitto_passwd -b /mosquitto/config/passwd \"$MQTT_USER\" \"$MQTT_PASS\"; \
+        fi; \
+      fi; \
+      exec /docker-entrypoint.sh /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf"
     networks:
       - warehousecore-network
     healthcheck:
@@ -48,3 +71,9 @@ services:
 networks:
   warehousecore-network:
     driver: bridge
+
+volumes:
+  led-mapping:
+  mosquitto-config:
+  mosquitto-data:
+  mosquitto-log:
