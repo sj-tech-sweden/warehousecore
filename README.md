@@ -88,6 +88,7 @@ Screens (Beschreibung):
 - Admin > LED-Verhalten: Radio solid/breathe/blink, Color-Picker, Intensitäts-Slider, Vorschau
 - Admin > Rollen: Benutzerliste, Rollen-Chips, Speichern
 - Profil: Avatar-URL, Anzeigename, UI-Prefs (dark-mode default on)
+- Sidebar: Profilseite wird ausschließlich über den Username im Benutzerbereich geöffnet, kein separater Menüeintrag.
 
 LED Single-Bin Defaults:
 - Setting Key: `app_settings(scope='warehousecore', k='led.single_bin.default')`
