@@ -492,6 +492,85 @@ func (s *Service) getJobDeviceZones(jobID string) (map[string]string, error) {
 	return deviceZones, nil
 }
 
+// PreviewAppearances highlights sample bins using the provided appearances for live preview
+func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBefore bool) error {
+	if len(appearances) == 0 {
+		return fmt.Errorf("no appearances provided")
+	}
+
+	s.mu.RLock()
+	mapping := s.mapping
+	s.mu.RUnlock()
+
+	if mapping == nil {
+		return fmt.Errorf("no mapping loaded")
+	}
+
+	type sample struct {
+		shelfID string
+		bin     BinConfig
+	}
+
+	var samples []sample
+	for _, shelf := range mapping.Shelves {
+		for _, bin := range shelf.Bins {
+			samples = append(samples, sample{shelfID: shelf.ShelfID, bin: bin})
+		}
+	}
+
+	if len(samples) == 0 {
+		return fmt.Errorf("mapping contains no bins to preview")
+	}
+
+	if clearBefore {
+		if err := s.publisher.PublishClear(); err != nil {
+			log.Printf("[LED] Failed to clear LEDs before preview: %v", err)
+		}
+	}
+
+	shelvesMap := make(map[string][]Bin)
+	for idx, appearance := range appearances {
+		sampleIdx := idx % len(samples)
+		target := samples[sampleIdx]
+
+		intensity := int(appearance.Intensity)
+		if intensity < 0 {
+			intensity = 0
+		}
+		if intensity > 255 {
+			intensity = 255
+		}
+
+		bin := Bin{
+			BinID:     target.bin.BinID,
+			Pixels:    target.bin.Pixels,
+			Color:     appearance.Color,
+			Pattern:   appearance.Pattern,
+			Intensity: intensity,
+		}
+
+		if appearance.Speed > 0 {
+			bin.Speed = appearance.Speed
+		}
+
+		shelvesMap[target.shelfID] = append(shelvesMap[target.shelfID], bin)
+	}
+
+	cmd := LEDCommand{
+		Op:          "highlight",
+		WarehouseID: mapping.WarehouseID,
+	}
+
+	for shelfID, bins := range shelvesMap {
+		cmd.Shelves = append(cmd.Shelves, Shelf{
+			ShelfID: shelfID,
+			Bins:    bins,
+		})
+	}
+
+	return s.publisher.PublishCommand(cmd)
+}
+
 // countTotalBins counts total bins in current mapping (must be called with lock held)
 func (s *Service) countTotalBins() int {
 	if s.mapping == nil {

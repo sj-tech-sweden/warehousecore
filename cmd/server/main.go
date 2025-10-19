@@ -194,6 +194,7 @@ func main() {
 	admin.HandleFunc("/led/job-highlights", handlers.UpdateLEDJobHighlightSettings).Methods("PUT")
 	admin.HandleFunc("/led/mapping", handlers.UpdateLEDMapping).Methods("PUT")
 	admin.HandleFunc("/led/mapping/validate", handlers.ValidateLEDMapping).Methods("POST")
+	admin.HandleFunc("/led/preview", handlers.PreviewLEDSettings).Methods("POST")
 	admin.HandleFunc("/users/{id}/roles", handlers.UpdateUserRoles).Methods("PUT")
 
 	// Profile endpoints (authenticated users)

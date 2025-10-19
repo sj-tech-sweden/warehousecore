@@ -55,6 +55,8 @@ export function LEDSettingsTab() {
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingValidating, setMappingValidating] = useState(false);
   const [mappingMessage, setMappingMessage] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState('');
 
   useEffect(() => {
     loadDefaults();
@@ -179,6 +181,30 @@ export function LEDSettingsTab() {
     }
   };
 
+  const toPreviewAppearance = (color: string, pattern: string, intensity: number, speed?: number): LEDAppearance => ({
+    color,
+    pattern,
+    intensity: Math.max(0, Math.min(255, intensity)),
+    speed: speed && speed > 0 ? speed : 1200,
+  });
+
+  const triggerPreview = async (appearances: LEDAppearance[], clearBefore: boolean = true) => {
+    if (appearances.length === 0) {
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewMessage('');
+    try {
+      await ledApi.preview(appearances, clearBefore);
+      setPreviewMessage('✓ Vorschau gestartet – zum Stoppen ggf. „LEDs löschen“ verwenden.');
+      setTimeout(() => setPreviewMessage(''), 4000);
+    } catch (error: any) {
+      setPreviewMessage('Fehler bei der Vorschau: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const handleZoneTypeFieldChange = (id: number, field: keyof ZoneTypeLED, value: string | number) => {
     setZoneTypes((prev) =>
       prev.map((zoneType) =>
@@ -250,6 +276,16 @@ export function LEDSettingsTab() {
           <p className="text-gray-400 text-sm">Diese Einstellungen gelten für die "Fach beleuchten" Funktion</p>
         </div>
       </div>
+
+      {previewMessage && (
+        <div
+          className={`px-4 py-3 rounded-lg text-sm font-semibold ${
+            previewMessage.startsWith('✓') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+          }`}
+        >
+          {previewMessage}
+        </div>
+      )}
 
       <div className="glass rounded-xl p-6 space-y-6">
         {/* Pattern Selection */}
@@ -332,18 +368,44 @@ export function LEDSettingsTab() {
 
         {/* Save Button */}
         <div className="pt-4 border-t border-white/10">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className={`w-full py-3 px-6 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
-              saving
-                ? 'bg-gray-600 cursor-not-allowed'
-                : 'bg-gradient-to-r from-accent-red to-red-700 hover:shadow-lg hover:shadow-red-500/50 hover:scale-105 active:scale-95'
-            }`}
-          >
-            <Save className="w-5 h-5" />
-            <span>{saving ? 'Speichert...' : 'Einstellungen speichern'}</span>
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className={`flex-1 py-3 px-6 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
+                saving
+                  ? 'bg-gray-600 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-accent-red to-red-700 hover:shadow-lg hover:shadow-red-500/50 hover:scale-105 active:scale-95'
+              }`}
+            >
+              <Save className="w-5 h-5" />
+              <span>{saving ? 'Speichert...' : 'Einstellungen speichern'}</span>
+            </button>
+            <button
+              onClick={() =>
+                triggerPreview(
+                  [
+                    toPreviewAppearance(
+                      defaults.color,
+                      defaults.pattern,
+                      defaults.intensity,
+                      defaults.pattern === 'solid' ? 1200 : 1200
+                    ),
+                  ],
+                  true
+                )
+              }
+              disabled={previewLoading}
+              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                previewLoading
+                  ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              <Lightbulb className="w-5 h-5 text-yellow-300" />
+              <span>{previewLoading ? 'Vorschau läuft…' : 'LED Vorschau'}</span>
+            </button>
+          </div>
 
           {message && (
             <div className={`mt-3 p-3 rounded-lg text-center text-sm font-semibold ${
@@ -497,17 +559,53 @@ export function LEDSettingsTab() {
             })}
           </div>
 
-          <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <button
-              onClick={handleJobSettingsSave}
-              disabled={jobSaving}
-              className={`px-4 py-2 rounded-lg font-semibold text-white flex items-center justify-center gap-2 ${
-                jobSaving ? 'bg-gray-600 cursor-not-allowed' : 'bg-accent-red hover:bg-red-600 transition-colors'
-              }`}
-            >
-              <Save className="w-4 h-4" />
-              <span>{jobSaving ? 'Speichert...' : 'Job-Highlight speichern'}</span>
-            </button>
+          <div className="pt-4 border-t border-white/10 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleJobSettingsSave}
+                disabled={jobSaving}
+                className={`flex-1 px-4 py-2 rounded-lg font-semibold text-white flex items-center justify-center gap-2 ${
+                  jobSaving ? 'bg-gray-600 cursor-not-allowed' : 'bg-accent-red hover:bg-red-600 transition-colors'
+                }`}
+              >
+                <Save className="w-4 h-4" />
+                <span>{jobSaving ? 'Speichert...' : 'Job-Highlight speichern'}</span>
+              </button>
+              <button
+                onClick={() =>
+                  triggerPreview(
+                    [
+                      toPreviewAppearance(
+                        jobSettings.required.color,
+                        jobSettings.required.pattern,
+                        jobSettings.required.intensity,
+                        jobSettings.required.speed
+                      ),
+                      ...(jobSettings.mode === 'all_bins'
+                        ? [
+                            toPreviewAppearance(
+                              jobSettings.non_required.color,
+                              jobSettings.non_required.pattern,
+                              jobSettings.non_required.intensity,
+                              jobSettings.non_required.speed
+                            ),
+                          ]
+                        : []),
+                    ],
+                    true
+                  )
+                }
+                disabled={previewLoading}
+                className={`flex-1 px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                  previewLoading
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
+              >
+                <Lightbulb className="w-4 h-4 text-yellow-300" />
+                <span>{previewLoading ? 'Vorschau läuft…' : 'Job-Highlight Vorschau'}</span>
+              </button>
+            </div>
             {jobMessage && (
               <div
                 className={`px-3 py-2 rounded-lg text-sm font-semibold ${
@@ -680,18 +778,44 @@ export function LEDSettingsTab() {
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <button
-                  onClick={() => handleZoneTypeSave(zoneType)}
-                  disabled={zoneTypeSaving === zoneType.id}
-                  className={`px-4 py-2 rounded-lg font-semibold text-white flex items-center justify-center gap-2 ${
-                    zoneTypeSaving === zoneType.id
-                      ? 'bg-gray-600 cursor-not-allowed'
-                      : 'bg-accent-red hover:bg-red-600 transition-colors'
-                  }`}
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{zoneTypeSaving === zoneType.id ? 'Speichert...' : 'Zonentyp speichern'}</span>
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                  <button
+                    onClick={() => handleZoneTypeSave(zoneType)}
+                    disabled={zoneTypeSaving === zoneType.id}
+                    className={`flex-1 px-4 py-2 rounded-lg font-semibold text-white flex items-center justify-center gap-2 ${
+                      zoneTypeSaving === zoneType.id
+                        ? 'bg-gray-600 cursor-not-allowed'
+                        : 'bg-accent-red hover:bg-red-600 transition-colors'
+                    }`}
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{zoneTypeSaving === zoneType.id ? 'Speichert...' : 'Zonentyp speichern'}</span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      triggerPreview(
+                        [
+                          toPreviewAppearance(
+                            zoneType.default_led_color || defaults.color,
+                            zoneType.default_led_pattern || 'solid',
+                            zoneType.default_intensity ?? 180,
+                            zoneType.default_led_pattern === 'solid' ? 1200 : 1200
+                          ),
+                        ],
+                        true
+                      )
+                    }
+                    disabled={previewLoading}
+                    className={`flex-1 px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                      previewLoading
+                        ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                        : 'bg-white/10 text-white hover:bg-white/20'
+                    }`}
+                  >
+                    <Lightbulb className="w-4 h-4 text-yellow-300" />
+                    <span>{previewLoading ? 'Vorschau läuft…' : 'LED Vorschau'}</span>
+                  </button>
+                </div>
                 {zoneTypeMessages[zoneType.id] && (
                   <div
                     className={`px-3 py-2 rounded-lg text-sm font-semibold ${

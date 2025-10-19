@@ -86,7 +86,7 @@ Cross-Links Navbar:
 
 Screens (Beschreibung):
 - Admin > Zonentypen: Tabelle mit CRUD für Key/Label/Beschreibung; LED-Defaults werden auf der LED-Seite gepflegt.
-- Admin > LED-Verhalten: Globale Defaults, Job-Highlight-Modus (Farben/Pattern/Speed), zonentypspezifische Einstellungen und JSON-Mapping-Editor mit Validierung
+- Admin > LED-Verhalten: Globale Defaults, Job-Highlight-Modus (Farben/Pattern/Speed) inkl. Live-Vorschau, zonentypspezifische Einstellungen und JSON-Mapping-Editor mit Validierung
 - Admin > Rollen: Benutzerliste, Rollen-Chips, Speichern
 - Profil: Avatar-URL, Anzeigename, UI-Prefs (dark-mode default on)
 - Sidebar: Profilseite wird ausschließlich über den Username im Benutzerbereich geöffnet, kein separater Menüeintrag.

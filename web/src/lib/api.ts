@@ -256,4 +256,6 @@ export const ledApi = {
   getMapping: () => api.get<LEDMapping>('/admin/led/mapping'),
   updateMapping: (mapping: LEDMapping) => api.put('/admin/led/mapping', mapping),
   validateMapping: (mapping: LEDMapping) => api.post('/admin/led/mapping/validate', mapping),
+  preview: (appearances: LEDAppearance[], clearBefore: boolean = true) =>
+    api.post('/admin/led/preview', { appearances, clear_before: clearBefore }),
 };
