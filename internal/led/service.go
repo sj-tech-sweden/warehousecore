@@ -1,14 +1,14 @@
 package led
 
 import (
-    "encoding/json"
-    "fmt"
-    "log"
-    "os"
-    "sync"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"sync"
 
-    "warehousecore/internal/repository"
-    "warehousecore/internal/models"
+	"warehousecore/internal/models"
+	"warehousecore/internal/repository"
 )
 
 // Service handles LED-related business logic
@@ -43,6 +43,33 @@ func NewService() *Service {
 	}
 
 	return s
+}
+
+func (s *Service) getJobHighlightSettings() *models.LEDJobHighlightSettings {
+	defaults := models.DefaultLEDJobHighlightSettings()
+
+	gormDB := repository.GetDB()
+	if gormDB == nil {
+		return defaults
+	}
+
+	var setting models.AppSetting
+	if err := gormDB.Where("scope = ? AND k = ?", "warehousecore", "led.job.highlight").First(&setting).Error; err != nil {
+		return defaults
+	}
+
+	bytes, err := json.Marshal(setting.Value)
+	if err != nil {
+		return defaults
+	}
+
+	var cfg models.LEDJobHighlightSettings
+	if err := json.Unmarshal(bytes, &cfg); err != nil {
+		return defaults
+	}
+
+	cfg.Normalize(defaults)
+	return &cfg
 }
 
 // LoadMapping loads the LED mapping configuration from file
@@ -126,7 +153,9 @@ func (s *Service) HighlightJobBins(jobID string) error {
 	mapping := s.mapping
 	s.mu.RUnlock()
 
-	return s.publisher.PublishHighlight(jobID, mapping, deviceZones)
+	settings := s.getJobHighlightSettings()
+
+	return s.publisher.PublishHighlight(jobID, mapping, deviceZones, settings)
 }
 
 // ClearAllLEDs turns off all LEDs
@@ -226,32 +255,32 @@ func (s *Service) LocateBin(binCode string) error {
 		return fmt.Errorf("bin with code %s not found in LED mapping", binCode)
 	}
 
-    // Get LED defaults from settings (with fallback to defaults)
-    color := "#FF7A00"
-    pattern := "breathe"
-    intensity := uint8(180)
+	// Get LED defaults from settings (with fallback to defaults)
+	color := "#FF7A00"
+	pattern := "breathe"
+	intensity := uint8(180)
 
 	// Try to load from app_settings
-    gormDB := repository.GetDB()
-    if gormDB != nil {
-        var setting models.AppSetting
-        if err := gormDB.Where("scope = ? AND k = ?", "warehousecore", "led.single_bin.default").First(&setting).Error; err == nil {
-            // Parse JSON to defaults
-            bytes, _ := json.Marshal(setting.Value)
-            var defaults map[string]interface{}
-            if err := json.Unmarshal(bytes, &defaults); err == nil {
-                if c, ok := defaults["color"].(string); ok {
-                    color = c
-                }
-                if p, ok := defaults["pattern"].(string); ok {
-                    pattern = p
-                }
-                if i, ok := defaults["intensity"].(float64); ok {
-                    intensity = uint8(i)
-                }
-            }
-        }
-    }
+	gormDB := repository.GetDB()
+	if gormDB != nil {
+		var setting models.AppSetting
+		if err := gormDB.Where("scope = ? AND k = ?", "warehousecore", "led.single_bin.default").First(&setting).Error; err == nil {
+			// Parse JSON to defaults
+			bytes, _ := json.Marshal(setting.Value)
+			var defaults map[string]interface{}
+			if err := json.Unmarshal(bytes, &defaults); err == nil {
+				if c, ok := defaults["color"].(string); ok {
+					color = c
+				}
+				if p, ok := defaults["pattern"].(string); ok {
+					pattern = p
+				}
+				if i, ok := defaults["intensity"].(float64); ok {
+					intensity = uint8(i)
+				}
+			}
+		}
+	}
 
 	// Create locate command with configurable settings
 	cmd := LEDCommand{
@@ -266,7 +295,7 @@ func (s *Service) LocateBin(binCode string) error {
 						Pixels:    pixels,
 						Color:     color,
 						Pattern:   pattern,
-                    Intensity: int(intensity),
+						Intensity: int(intensity),
 					},
 				},
 			},
@@ -283,12 +312,12 @@ func (s *Service) GetStatus() map[string]interface{} {
 	defer s.mu.RUnlock()
 
 	status := map[string]interface{}{
-		"mqtt_connected":  s.publisher.IsConnected(),
-		"mqtt_dry_run":    s.publisher.IsDryRun(),
-		"mapping_loaded":  s.mapping != nil,
-		"warehouse_id":    "",
-		"total_shelves":   0,
-		"total_bins":      0,
+		"mqtt_connected": s.publisher.IsConnected(),
+		"mqtt_dry_run":   s.publisher.IsDryRun(),
+		"mapping_loaded": s.mapping != nil,
+		"warehouse_id":   "",
+		"total_shelves":  0,
+		"total_bins":     0,
 	}
 
 	if s.mapping != nil {
@@ -319,8 +348,16 @@ func (s *Service) UpdateBinAfterScan(jobID string, zoneCode string) error {
 	mapping := s.mapping
 	s.mu.RUnlock()
 
+	settings := s.getJobHighlightSettings()
+
 	if mapping == nil {
 		return fmt.Errorf("no mapping loaded")
+	}
+
+	if settings.Mode == "required_only" {
+		if err := s.publisher.PublishClear(); err != nil {
+			log.Printf("[LED] Failed to clear LEDs before required-only update: %v", err)
+		}
 	}
 
 	// Build bins list with updated colors
@@ -332,23 +369,30 @@ func (s *Service) UpdateBinAfterScan(jobID string, zoneCode string) error {
 			// Check if this bin has devices for the job
 			count, hasDevices := deviceZones[bin.BinID]
 
-			var color string
-			if hasDevices && count > 0 {
-				// Green - still has devices for this job
-				color = "#00FF00"
-				log.Printf("[LED] Bin %s: GREEN (%d devices remaining)", bin.BinID, count)
+			hasRequired := hasDevices && count > 0
+
+			if !hasRequired && settings.Mode == "required_only" {
+				// Skip bins without pending devices when operating in required-only mode
+				continue
+			}
+
+			appearance := settings.NonRequired
+			if hasRequired {
+				appearance = settings.Required
+				log.Printf("[LED] Bin %s: REQUIRED (%d devices remaining)", bin.BinID, count)
 			} else {
-				// Red - no devices or all taken
-				color = "#FF0000"
-				log.Printf("[LED] Bin %s: RED (complete or not needed)", bin.BinID)
+				log.Printf("[LED] Bin %s: NON-REQUIRED (complete or not needed)", bin.BinID)
 			}
 
 			ledBin := Bin{
 				BinID:     bin.BinID,
 				Pixels:    bin.Pixels,
-				Color:     color,
-				Pattern:   "solid",
-				Intensity: 255,
+				Color:     appearance.Color,
+				Pattern:   appearance.Pattern,
+				Intensity: int(appearance.Intensity),
+			}
+			if appearance.Speed > 0 {
+				ledBin.Speed = appearance.Speed
 			}
 
 			shelvesMap[shelf.ShelfID] = append(shelvesMap[shelf.ShelfID], ledBin)
@@ -365,6 +409,11 @@ func (s *Service) UpdateBinAfterScan(jobID string, zoneCode string) error {
 	}
 
 	// Send complete update for all bins
+	if len(shelves) == 0 {
+		log.Printf("[LED] No bins to update for job %s in mode %s", jobID, settings.Mode)
+		return nil
+	}
+
 	cmd := LEDCommand{
 		Op:          "highlight",
 		WarehouseID: mapping.WarehouseID,

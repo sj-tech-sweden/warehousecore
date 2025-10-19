@@ -64,6 +64,12 @@
                   "minimum": 0,
                   "maximum": 255,
                   "default": 180
+                },
+                "speed": {
+                  "type": "integer",
+                  "description": "Animation speed in milliseconds (lower is faster)",
+                  "minimum": 0,
+                  "default": 1200
                 }
               }
             }

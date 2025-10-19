@@ -20,6 +20,7 @@ type Bin struct {
 	Color     string `json:"color"`      // Hex color, e.g., "#FF0000"
 	Pattern   string `json:"pattern"`    // "solid", "blink", "breathe"
 	Intensity int    `json:"intensity"`  // 0-255
+	Speed     int    `json:"speed,omitempty"` // Animation speed in milliseconds
 }
 
 // LEDMapping represents the configuration file that maps bins to LED indices
@@ -54,4 +55,5 @@ type DefaultConfig struct {
 	Color     string `json:"color"`
 	Pattern   string `json:"pattern"`
 	Intensity int    `json:"intensity"`
+	Speed     int    `json:"speed,omitempty"`
 }

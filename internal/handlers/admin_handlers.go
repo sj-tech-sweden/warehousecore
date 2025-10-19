@@ -211,6 +211,63 @@ func UpdateLEDSingleBinDefault(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, payload)
 }
 
+// GetLEDJobHighlightSettings returns the current highlight configuration for job packing
+func GetLEDJobHighlightSettings(w http.ResponseWriter, r *http.Request) {
+	adminService := services.NewAdminService()
+	settings, err := adminService.GetLEDJobHighlightSettings()
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, settings)
+}
+
+// UpdateLEDJobHighlightSettings updates how bins are highlighted when preparing jobs
+func UpdateLEDJobHighlightSettings(w http.ResponseWriter, r *http.Request) {
+	var payload models.LEDJobHighlightSettings
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	// Normalize with defaults and validate
+	defaults := models.DefaultLEDJobHighlightSettings()
+	payload.Normalize(defaults)
+
+	if payload.Mode != "all_bins" && payload.Mode != "required_only" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid mode. Must be all_bins or required_only"})
+		return
+	}
+
+	for _, appearance := range []models.LEDAppearance{payload.Required, payload.NonRequired} {
+		if !validation.ValidateColorHex(appearance.Color) {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid color. Use #RRGGBB format"})
+			return
+		}
+		if !validation.ValidatePattern(appearance.Pattern) {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid pattern. Must be solid, breathe, or blink"})
+			return
+		}
+		if appearance.Intensity > 255 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid intensity. Must be 0-255"})
+			return
+		}
+		if appearance.Speed < 0 || appearance.Speed > 10000 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid speed. Must be between 0 and 10000 milliseconds"})
+			return
+		}
+	}
+
+	adminService := services.NewAdminService()
+	if err := adminService.SetLEDJobHighlightSettings(&payload); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, payload)
+}
+
 // ===========================
 // ROLES HANDLERS
 // ===========================
@@ -229,14 +286,45 @@ func GetRoles(w http.ResponseWriter, r *http.Request) {
 
 // GetUsersWithRoles returns all users with their assigned roles
 func GetUsersWithRoles(w http.ResponseWriter, r *http.Request) {
-	rbacService := services.NewRBACService()
-	users, err := rbacService.GetUsersWithRoles()
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
+    rbacService := services.NewRBACService()
+    users, err := rbacService.GetUsersWithRoles()
+    if err != nil {
+        respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
 
-	respondJSON(w, http.StatusOK, users)
+    // Shape response for frontend: keys match expected casing
+    type RoleDTO struct {
+        ID          int    `json:"id"`
+        Name        string `json:"name"`
+        Description string `json:"description"`
+    }
+    type UserDTO struct {
+        UserID    uint      `json:"userID"`
+        Username  string    `json:"username"`
+        Email     string    `json:"email"`
+        FirstName string    `json:"first_name"`
+        LastName  string    `json:"last_name"`
+        Roles     []RoleDTO `json:"roles"`
+    }
+
+    out := make([]UserDTO, 0, len(users))
+    for _, u := range users {
+        roles := make([]RoleDTO, 0, len(u.Roles))
+        for _, rle := range u.Roles {
+            roles = append(roles, RoleDTO{ID: rle.ID, Name: rle.Name, Description: rle.Description})
+        }
+        out = append(out, UserDTO{
+            UserID:    u.User.UserID,
+            Username:  u.User.Username,
+            Email:     u.User.Email,
+            FirstName: u.User.FirstName,
+            LastName:  u.User.LastName,
+            Roles:     roles,
+        })
+    }
+
+    respondJSON(w, http.StatusOK, out)
 }
 
 // GetUserRoles returns roles for a specific user
@@ -293,30 +381,60 @@ func UpdateUserRoles(w http.ResponseWriter, r *http.Request) {
 
 // GetMyProfile returns the current user's profile
 func GetMyProfile(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.GetUserFromContext(r)
-	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-		return
-	}
+    user, ok := middleware.GetUserFromContext(r)
+    if !ok {
+        respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+        return
+    }
 
-	adminService := services.NewAdminService()
-	rbacService := services.NewRBACService()
+    adminService := services.NewAdminService()
+    rbacService := services.NewRBACService()
 
-	profile, err := adminService.GetProfileWithUser(user.UserID)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
+    profile, err := adminService.GetProfileWithUser(user.UserID)
+    if err != nil {
+        respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
 
-	// Add user roles to response
-	roles, _ := rbacService.GetUserRoles(user.UserID)
+    // Add user roles to response
+    roles, _ := rbacService.GetUserRoles(user.UserID)
 
-	response := map[string]interface{}{
-		"profile": profile,
-		"roles":   roles,
-	}
+    // Build DTO matching frontend expectations
+    type RoleDTO struct {
+        ID          int    `json:"id"`
+        Name        string `json:"name"`
+        Description string `json:"description"`
+    }
+    type UserDTO struct {
+        UserID    uint   `json:"userID"`
+        Username  string `json:"username"`
+        Email     string `json:"email"`
+        FirstName string `json:"first_name"`
+        LastName  string `json:"last_name"`
+    }
+    userDTO := UserDTO{
+        UserID:    profile.User.UserID,
+        Username:  profile.User.Username,
+        Email:     profile.User.Email,
+        FirstName: profile.User.FirstName,
+        LastName:  profile.User.LastName,
+    }
+    rolesDTO := make([]RoleDTO, 0, len(roles))
+    for _, rle := range roles {
+        rolesDTO = append(rolesDTO, RoleDTO{ID: rle.ID, Name: rle.Name, Description: rle.Description})
+    }
 
-	respondJSON(w, http.StatusOK, response)
+    respondJSON(w, http.StatusOK, map[string]interface{}{
+        "profile": map[string]interface{}{
+            "id":           profile.ID,
+            "user_id":      profile.UserID,
+            "display_name": profile.DisplayName,
+            "avatar_url":   profile.AvatarURL,
+            "prefs":        profile.Prefs,
+            "user":         userDTO,
+        },
+        "roles": rolesDTO,
+    })
 }
 
 // UpdateMyProfile updates the current user's profile

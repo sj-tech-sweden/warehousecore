@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Save, Lightbulb, RefreshCcw } from 'lucide-react';
-import { api } from '../../lib/api';
+import { Save, Lightbulb, RefreshCcw, SlidersHorizontal, FileText } from 'lucide-react';
+import { api, ledApi, type LEDAppearance, type LEDJobHighlightSettings } from '../../lib/api';
 
 interface LEDDefault {
   color: string;
@@ -18,6 +18,22 @@ interface ZoneTypeLED {
   default_intensity: number;
 }
 
+const defaultJobSettings: LEDJobHighlightSettings = {
+  mode: 'all_bins',
+  required: {
+    color: '#00FF00',
+    pattern: 'solid',
+    intensity: 220,
+    speed: 1200,
+  },
+  non_required: {
+    color: '#FF0000',
+    pattern: 'solid',
+    intensity: 160,
+    speed: 1200,
+  },
+};
+
 export function LEDSettingsTab() {
   const [defaults, setDefaults] = useState<LEDDefault>({
     color: '#FF7A00',
@@ -27,14 +43,24 @@ export function LEDSettingsTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [jobSettings, setJobSettings] = useState<LEDJobHighlightSettings>(defaultJobSettings);
+  const [jobSaving, setJobSaving] = useState(false);
+  const [jobMessage, setJobMessage] = useState('');
   const [zoneTypes, setZoneTypes] = useState<ZoneTypeLED[]>([]);
   const [zoneTypeLoading, setZoneTypeLoading] = useState(true);
   const [zoneTypeSaving, setZoneTypeSaving] = useState<number | null>(null);
   const [zoneTypeMessages, setZoneTypeMessages] = useState<Record<number, string>>({});
+  const [mappingJSON, setMappingJSON] = useState('');
+  const [mappingLoading, setMappingLoading] = useState(true);
+  const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingValidating, setMappingValidating] = useState(false);
+  const [mappingMessage, setMappingMessage] = useState('');
 
   useEffect(() => {
     loadDefaults();
+    loadJobSettings();
     loadZoneTypes();
+    loadMapping();
   }, []);
 
   const loadDefaults = async () => {
@@ -48,6 +74,15 @@ export function LEDSettingsTab() {
     }
   };
 
+  const loadJobSettings = async () => {
+    try {
+      const { data } = await ledApi.getJobSettings();
+      setJobSettings(data);
+    } catch (error) {
+      console.error('Failed to load job highlight settings:', error);
+    }
+  };
+
   const loadZoneTypes = async () => {
     try {
       const response = await api.get('/admin/zone-types');
@@ -56,6 +91,20 @@ export function LEDSettingsTab() {
       console.error('Failed to load zone type LED defaults:', error);
     } finally {
       setZoneTypeLoading(false);
+    }
+  };
+
+  const loadMapping = async () => {
+    setMappingLoading(true);
+    try {
+      const { data } = await ledApi.getMapping();
+      setMappingJSON(JSON.stringify(data, null, 2));
+      setMappingMessage('');
+    } catch (error) {
+      console.error('Failed to load LED mapping:', error);
+      setMappingMessage('Fehler beim Laden des LED-Mappings.');
+    } finally {
+      setMappingLoading(false);
     }
   };
 
@@ -71,6 +120,62 @@ export function LEDSettingsTab() {
       setMessage('Fehler: ' + (error.response?.data?.error || error.message));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const updateJobAppearance = (section: 'required' | 'non_required', patch: Partial<LEDAppearance>) => {
+    setJobSettings((prev) => ({
+      ...prev,
+      [section]: { ...prev[section], ...patch },
+    }));
+  };
+
+  const handleJobSettingsSave = async () => {
+    setJobSaving(true);
+    setJobMessage('');
+
+    try {
+      await ledApi.updateJobSettings(jobSettings);
+      setJobMessage('✓ Job-Highlight gespeichert');
+      setTimeout(() => setJobMessage(''), 3000);
+    } catch (error: any) {
+      setJobMessage('Fehler: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setJobSaving(false);
+    }
+  };
+
+  const handleMappingValidate = async () => {
+    setMappingValidating(true);
+    setMappingMessage('');
+    try {
+      const parsed = JSON.parse(mappingJSON);
+      const { data } = await ledApi.validateMapping(parsed);
+      if (data.valid) {
+        setMappingMessage(`✓ Mapping gültig (${data.total_bins ?? 0} Bins, ${data.total_shelves ?? 0} Regale)`);
+      } else {
+        const errors = Array.isArray(data.errors) ? data.errors.join(', ') : 'Unbekannter Fehler';
+        setMappingMessage('⚠️ ' + errors);
+      }
+    } catch (error: any) {
+      setMappingMessage('Fehler: ' + (error.response?.data?.error || error.message || error.toString()));
+    } finally {
+      setMappingValidating(false);
+    }
+  };
+
+  const handleMappingSave = async () => {
+    setMappingSaving(true);
+    setMappingMessage('');
+    try {
+      const parsed = JSON.parse(mappingJSON);
+      await ledApi.updateMapping(parsed);
+      setMappingMessage('✓ Mapping gespeichert');
+      setTimeout(() => setMappingMessage(''), 4000);
+    } catch (error: any) {
+      setMappingMessage('Fehler: ' + (error.response?.data?.error || error.message || error.toString()));
+    } finally {
+      setMappingSaving(false);
     }
   };
 
@@ -261,8 +366,235 @@ export function LEDSettingsTab() {
         @keyframes blink {
           0%, 49% { opacity: ${defaults.intensity / 255}; }
           50%, 100% { opacity: 0; }
-        }
+      }
       `}</style>
+
+      {/* Job highlight behaviour */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="w-5 h-5 text-accent-red" />
+          <h3 className="text-lg font-semibold text-white">Job-Highlight Einstellungen</h3>
+        </div>
+        <p className="text-sm text-gray-400">
+          Steuere, wie die Regalfächer leuchten, wenn ein Job ausgewählt ist. Du kannst zwischen
+          einer kompletten Visualisierung aller Fächer und einem Fokus auf die zu packenden Fächer wählen.
+        </p>
+
+        <div className="glass rounded-xl p-5 space-y-5">
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => setJobSettings((prev) => ({ ...prev, mode: 'all_bins' }))}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                jobSettings.mode === 'all_bins'
+                  ? 'bg-accent-red text-white shadow-lg shadow-accent-red/30'
+                  : 'glass text-gray-300 hover:text-white'
+              }`}
+            >
+              Alle Fächer markieren
+            </button>
+            <button
+              onClick={() => setJobSettings((prev) => ({ ...prev, mode: 'required_only' }))}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                jobSettings.mode === 'required_only'
+                  ? 'bg-accent-red text-white shadow-lg shadow-accent-red/30'
+                  : 'glass text-gray-300 hover:text-white'
+              }`}
+            >
+              Nur benötigte Fächer
+            </button>
+          </div>
+          <p className="text-xs text-gray-500">
+            {jobSettings.mode === 'all_bins'
+              ? 'Alle Fächer leuchten: benötigte Fächer heben sich durch andere Farben/Pattern hervor.'
+              : 'Nur Fächer mit noch zu packenden Geräten leuchten – alle anderen werden ausgeschaltet.'}
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {[{
+              key: 'required' as const,
+              title: 'Fächer mit fehlenden Geräten',
+              description: 'Wird verwendet, wenn in einem Fach noch Geräte gepackt werden müssen.',
+            }, {
+              key: 'non_required' as const,
+              title: 'Fächer ohne Bedarf',
+              description: 'Fächer, die für den aktuellen Job nicht benötigt werden.',
+            }].map((cfg) => {
+              const appearance = jobSettings[cfg.key];
+              return (
+                <div key={cfg.key} className="glass-dark rounded-xl p-5 space-y-4 border border-white/5">
+                  <div>
+                    <h4 className="text-white font-semibold">{cfg.title}</h4>
+                    <p className="text-xs text-gray-400 mt-1">{cfg.description}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-400 mb-2">Farbe</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={appearance.color}
+                        onChange={(e) => updateJobAppearance(cfg.key, { color: e.target.value })}
+                        className="w-14 h-14 rounded-lg cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={appearance.color}
+                        onChange={(e) => updateJobAppearance(cfg.key, { color: e.target.value })}
+                        className="flex-1 px-3 py-2 rounded-lg glass text-white font-mono"
+                        placeholder="#00FF00"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-400 mb-2">Muster</label>
+                    <select
+                      value={appearance.pattern}
+                      onChange={(e) => updateJobAppearance(cfg.key, { pattern: e.target.value as LEDAppearance['pattern'] })}
+                      className="w-full px-3 py-2 rounded-lg glass text-white"
+                    >
+                      <option value="solid">Durchgehend</option>
+                      <option value="breathe">Atmen</option>
+                      <option value="blink">Blinken</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-400 mb-2">
+                      Intensität: {appearance.intensity} / 255
+                    </label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={255}
+                      value={appearance.intensity}
+                      onChange={(e) => updateJobAppearance(cfg.key, { intensity: parseInt(e.target.value, 10) })}
+                      className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer"
+                      style={{
+                        background: `linear-gradient(to right, ${appearance.color} 0%, ${appearance.color} ${(appearance.intensity / 255) * 100}%, rgba(255,255,255,0.1) ${(appearance.intensity / 255) * 100}%, rgba(255,255,255,0.1) 100%)`,
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-400 mb-2">
+                      Geschwindigkeit{appearance.pattern === 'solid' ? '' : `: ${appearance.speed} ms`}
+                    </label>
+                    <input
+                      type="range"
+                      min={200}
+                      max={3000}
+                      step={100}
+                      value={appearance.pattern === 'solid' ? 1200 : appearance.speed}
+                      disabled={appearance.pattern === 'solid'}
+                      onChange={(e) => updateJobAppearance(cfg.key, { speed: parseInt(e.target.value, 10) })}
+                      className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer disabled:opacity-40"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {appearance.pattern === 'solid'
+                        ? 'Keine Animation — keine Geschwindigkeit erforderlich.'
+                        : 'Niedrige Werte = schnelleres Atmen/Blinken.'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <button
+              onClick={handleJobSettingsSave}
+              disabled={jobSaving}
+              className={`px-4 py-2 rounded-lg font-semibold text-white flex items-center justify-center gap-2 ${
+                jobSaving ? 'bg-gray-600 cursor-not-allowed' : 'bg-accent-red hover:bg-red-600 transition-colors'
+              }`}
+            >
+              <Save className="w-4 h-4" />
+              <span>{jobSaving ? 'Speichert...' : 'Job-Highlight speichern'}</span>
+            </button>
+            {jobMessage && (
+              <div
+                className={`px-3 py-2 rounded-lg text-sm font-semibold ${
+                  jobMessage.startsWith('✓') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                }`}
+              >
+                {jobMessage}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* LED mapping editor */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <FileText className="w-5 h-5 text-accent-red" />
+          <h3 className="text-lg font-semibold text-white">LED-Mapping (Expertenmodus)</h3>
+        </div>
+        <p className="text-sm text-gray-400">
+          Bearbeite die vollständige Zuordnung von Regalfächern zu LED-Pixeln. Änderungen wirken sich direkt auf die Hardware aus – bitte mit Vorsicht nutzen.
+        </p>
+
+        <div className="glass rounded-xl p-5 space-y-4">
+          <div className="flex justify-between items-center gap-3 flex-wrap">
+            <span className="text-xs text-gray-500">JSON-Konfiguration aus <code>internal/led/config/led_mapping.json</code></span>
+            <button
+              onClick={loadMapping}
+              disabled={mappingLoading}
+              className="flex items-center gap-2 px-3 py-2 glass text-gray-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCcw className="w-4 h-4" /> Neu laden
+            </button>
+          </div>
+
+          {mappingLoading ? (
+            <div className="text-sm text-gray-400">Mapping wird geladen...</div>
+          ) : (
+            <textarea
+              value={mappingJSON}
+              onChange={(e) => setMappingJSON(e.target.value)}
+              rows={16}
+              className="w-full font-mono text-sm bg-black/40 text-gray-100 border border-white/10 rounded-lg p-4 focus:outline-none focus:border-accent-red"
+            />
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleMappingValidate}
+              disabled={mappingLoading || mappingValidating}
+              className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${
+                mappingLoading || mappingValidating
+                  ? 'bg-gray-600 cursor-not-allowed text-gray-200'
+                  : 'glass text-gray-200 hover:text-white'
+              }`}
+            >
+              {mappingValidating ? 'Validiere...' : 'Mapping prüfen'}
+            </button>
+            <button
+              onClick={handleMappingSave}
+              disabled={mappingLoading || mappingSaving}
+              className={`px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2 ${
+                mappingLoading || mappingSaving
+                  ? 'bg-gray-600 cursor-not-allowed'
+                  : 'bg-accent-red hover:bg-red-600 transition-colors'
+              }`}
+            >
+              <Save className="w-4 h-4" />
+              <span>{mappingSaving ? 'Speichert...' : 'Mapping speichern'}</span>
+            </button>
+          </div>
+
+          {mappingMessage && (
+            <div
+              className={`px-3 py-2 rounded-lg text-sm font-semibold ${
+                mappingMessage.startsWith('✓')
+                  ? 'bg-green-500/20 text-green-400'
+                  : mappingMessage.startsWith('⚠️')
+                    ? 'bg-yellow-500/20 text-yellow-400'
+                    : 'bg-red-500/20 text-red-400'
+              }`}
+            >
+              {mappingMessage}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Zone type specific defaults */}
       <div className="space-y-3">

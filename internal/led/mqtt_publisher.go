@@ -11,15 +11,17 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+
+	"warehousecore/internal/models"
 )
 
 // Publisher handles MQTT publishing for LED commands
 type Publisher struct {
-	client      mqtt.Client
-	config      PublisherConfig
-	connected   bool
-	mu          sync.RWMutex
-	dryRun      bool
+	client    mqtt.Client
+	config    PublisherConfig
+	connected bool
+	mu        sync.RWMutex
+	dryRun    bool
 }
 
 // PublisherConfig holds MQTT connection configuration
@@ -191,8 +193,8 @@ func (p *Publisher) PublishCommand(cmd LEDCommand) error {
 	return nil
 }
 
-// PublishHighlight sends a highlight command for the given job
-func (p *Publisher) PublishHighlight(jobID string, mapping *LEDMapping, deviceZones map[string]string) error {
+// PublishHighlight sends a highlight command for the given job with the provided appearance settings
+func (p *Publisher) PublishHighlight(jobID string, mapping *LEDMapping, deviceZones map[string]string, settings *models.LEDJobHighlightSettings) error {
 	if mapping == nil {
 		return fmt.Errorf("mapping configuration not loaded")
 	}
@@ -202,6 +204,18 @@ func (p *Publisher) PublishHighlight(jobID string, mapping *LEDMapping, deviceZo
 		Op:          "highlight",
 		WarehouseID: mapping.WarehouseID,
 		Shelves:     []Shelf{},
+	}
+
+	if settings == nil {
+		settings = models.DefaultLEDJobHighlightSettings()
+	} else {
+		settings.Normalize(models.DefaultLEDJobHighlightSettings())
+	}
+
+	if settings.Mode == "required_only" {
+		if err := p.PublishClear(); err != nil {
+			log.Printf("[LED] Failed to clear LEDs before required-only highlight: %v", err)
+		}
 	}
 
 	// Create a map of zones that have job devices (for quick lookup)
@@ -219,22 +233,24 @@ func (p *Publisher) PublishHighlight(jobID string, mapping *LEDMapping, deviceZo
 			// Check if this bin has a job device
 			hasJobDevice := jobZones[binConfig.BinID]
 
-			var color string
+			appearance := settings.NonRequired
 			if hasJobDevice {
-				// Job device in this bin → GREEN
-				color = "#00FF00"
-			} else {
-				// No job device → RED
-				color = "#FF0000"
+				appearance = settings.Required
+			} else if settings.Mode == "required_only" {
+				// Skip bins without pending devices when operating in required-only mode
+				continue
 			}
 
 			// Create bin entry
 			bin := Bin{
 				BinID:     binConfig.BinID,
 				Pixels:    binConfig.Pixels,
-				Color:     color,
-				Pattern:   "solid",
-				Intensity: 200,
+				Color:     appearance.Color,
+				Pattern:   appearance.Pattern,
+				Intensity: int(appearance.Intensity),
+			}
+			if appearance.Speed > 0 {
+				bin.Speed = appearance.Speed
 			}
 
 			shelfBins[shelf.ShelfID] = append(shelfBins[shelf.ShelfID], bin)
@@ -253,10 +269,14 @@ func (p *Publisher) PublishHighlight(jobID string, mapping *LEDMapping, deviceZo
 		return fmt.Errorf("no bins configured in LED mapping")
 	}
 
-	log.Printf("[LED] Highlighting %d bins total (%d green job bins, %d red empty bins)",
-		len(jobZones) + (countTotalBins(shelfBins) - len(jobZones)),
-		len(jobZones),
-		countTotalBins(shelfBins) - len(jobZones))
+	if settings.Mode == "required_only" {
+		log.Printf("[LED] Highlighting %d required bins only", len(jobZones))
+	} else {
+		log.Printf("[LED] Highlighting %d bins total (%d required, %d non-required)",
+			countTotalBins(shelfBins),
+			len(jobZones),
+			countTotalBins(shelfBins)-len(jobZones))
+	}
 
 	return p.PublishCommand(cmd)
 }

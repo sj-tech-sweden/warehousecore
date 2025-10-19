@@ -20,6 +20,7 @@
   "defaults": {
     "color": "#00FF00",
     "pattern": "solid",
-    "intensity": 200
+    "intensity": 200,
+    "speed": 1200
   }
 }

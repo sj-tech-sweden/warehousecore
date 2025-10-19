@@ -225,7 +225,21 @@ export interface LEDMapping {
     color: string;
     pattern: string;
     intensity: number;
+    speed?: number;
   };
+}
+
+export interface LEDAppearance {
+  color: string;
+  pattern: string;
+  intensity: number;
+  speed: number;
+}
+
+export interface LEDJobHighlightSettings {
+  mode: 'all_bins' | 'required_only';
+  required: LEDAppearance;
+  non_required: LEDAppearance;
 }
 
 export const ledApi = {
@@ -237,7 +251,9 @@ export const ledApi = {
     api.post(`/led/test?shelf_id=${shelfId}&bin_id=${binId}`),
   locateBin: (binCode: string) =>
     api.post(`/led/locate?bin_code=${binCode}`),
-  getMapping: () => api.get<LEDMapping>('/led/mapping'),
-  updateMapping: (mapping: LEDMapping) => api.put('/led/mapping', mapping),
-  validateMapping: (mapping: LEDMapping) => api.post('/led/mapping/validate', mapping),
+  getJobSettings: () => api.get<LEDJobHighlightSettings>('/admin/led/job-highlights'),
+  updateJobSettings: (settings: LEDJobHighlightSettings) => api.put('/admin/led/job-highlights', settings),
+  getMapping: () => api.get<LEDMapping>('/admin/led/mapping'),
+  updateMapping: (mapping: LEDMapping) => api.put('/admin/led/mapping', mapping),
+  validateMapping: (mapping: LEDMapping) => api.post('/admin/led/mapping/validate', mapping),
 };

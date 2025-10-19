@@ -124,18 +124,18 @@ func (s *AdminService) SetSetting(scope, key string, value interface{}) error {
 
 // GetLEDSingleBinDefault retrieves LED defaults for single bin highlight
 func (s *AdminService) GetLEDSingleBinDefault() (*models.LEDSingleBinDefault, error) {
-    setting, err := s.GetSetting("warehousecore", "led.single_bin.default")
-    if err != nil {
-        // Return safe defaults if not found
-        if err == gorm.ErrRecordNotFound {
-            return &models.LEDSingleBinDefault{
-                Color:     "#FF7A00",
-                Pattern:   "breathe",
-                Intensity: 180,
-            }, nil
-        }
-        return nil, err
-    }
+	setting, err := s.GetSetting("warehousecore", "led.single_bin.default")
+	if err != nil {
+		// Return safe defaults if not found
+		if err == gorm.ErrRecordNotFound {
+			return &models.LEDSingleBinDefault{
+				Color:     "#FF7A00",
+				Pattern:   "breathe",
+				Intensity: 180,
+			}, nil
+		}
+		return nil, err
+	}
 
 	// Parse JSON to LEDSingleBinDefault
 	var ledDefault models.LEDSingleBinDefault
@@ -160,6 +160,42 @@ func (s *AdminService) SetLEDSingleBinDefault(color, pattern string, intensity u
 	}
 
 	return s.SetSetting("warehousecore", "led.single_bin.default", value)
+}
+
+// GetLEDJobHighlightSettings retrieves highlight configuration for job packing bins
+func (s *AdminService) GetLEDJobHighlightSettings() (*models.LEDJobHighlightSettings, error) {
+	defaults := models.DefaultLEDJobHighlightSettings()
+
+	setting, err := s.GetSetting("warehousecore", "led.job.highlight")
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return defaults, nil
+		}
+		return nil, err
+	}
+
+	var highlight models.LEDJobHighlightSettings
+	bytes, err := json.Marshal(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(bytes, &highlight); err != nil {
+		return nil, err
+	}
+
+	highlight.Normalize(defaults)
+	return &highlight, nil
+}
+
+// SetLEDJobHighlightSettings persists the highlight configuration for job packing bins
+func (s *AdminService) SetLEDJobHighlightSettings(settings *models.LEDJobHighlightSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	settings.Normalize(models.DefaultLEDJobHighlightSettings())
+	return s.SetSetting("warehousecore", "led.job.highlight", settings)
 }
 
 // ===========================

@@ -44,6 +44,7 @@ WarehouseCore manages the physical warehouse operations for Tsunami Events, sync
    - Track current location (zone, case, job)
    - Status management with history
    - Movement audit trail
+   - Produktzentrierte Geräteübersicht mit Schnellaktionen (Fach aufleuchten, Zone öffnen)
 
 2. **Storage Zones**
    - Hierarchical zone structure
@@ -85,7 +86,7 @@ Cross-Links Navbar:
 
 Screens (Beschreibung):
 - Admin > Zonentypen: Tabelle mit CRUD für Key/Label/Beschreibung; LED-Defaults werden auf der LED-Seite gepflegt.
-- Admin > LED-Verhalten: Globale Defaults plus zonentypspezifische Muster/Farben/Intensitäten inkl. Vorschau
+- Admin > LED-Verhalten: Globale Defaults, Job-Highlight-Modus (Farben/Pattern/Speed), zonentypspezifische Einstellungen und JSON-Mapping-Editor mit Validierung
 - Admin > Rollen: Benutzerliste, Rollen-Chips, Speichern
 - Profil: Avatar-URL, Anzeigename, UI-Prefs (dark-mode default on)
 - Sidebar: Profilseite wird ausschließlich über den Username im Benutzerbereich geöffnet, kein separater Menüeintrag.

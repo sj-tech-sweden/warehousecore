@@ -88,6 +88,12 @@
           "minimum": 0,
           "maximum": 255,
           "default": 180
+        },
+        "speed": {
+          "type": "integer",
+          "description": "Default animation speed in milliseconds",
+          "minimum": 0,
+          "default": 1200
         }
       }
     }
