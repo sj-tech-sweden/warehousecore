@@ -1029,13 +1029,32 @@ For issues or questions:
 
 ---
 
-**Version:** 1.49
+**Version:** 1.52
 **Last Updated:** 2025-10-19
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.52 (2025-10-19)
+- **Bug Fix: Device API JSON Serialization** 🐛
+  - Fixed React error #31 (Objects not valid as React child)
+  - Resolved sql.Null* types being serialized as objects in JSON
+  - Device API now returns clean JSON with proper types
+  - Added DeviceResponse struct with pointer types for nullable fields
+  - Fixed database joins for cases and jobs (using devicescases and jobdevices tables)
+  - API responses now properly handle nullable fields (serial_number, barcode, qr_code, etc.)
+  - Device details modal now renders correctly without browser console errors
+
+### Version 1.51 (2025-10-19)
+- **Bug Fix: Database Query Corrections**
+  - Fixed SQL query to use correct job table column (jobID instead of jobNumber)
+  - Added proper CAST for job ID to string conversion
+
+### Version 1.50 (2025-10-19)
+- **Bug Fix: Initial Device API Response Structure**
+  - Attempted fix for JSON serialization issues with Device model
 
 ### Version 1.49 (2025-10-19)
 - **Feature: Device Detail Modal on Devices Page** 📱

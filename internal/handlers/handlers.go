@@ -106,10 +106,15 @@ func GetDevices(w http.ResponseWriter, r *http.Request) {
 		       d.zone_id, d.condition_rating, d.usage_hours,
 		       COALESCE(p.name, '') as product_name,
 		       COALESCE(z.name, '') as zone_name,
-		       COALESCE(z.code, '') as zone_code
+		       COALESCE(z.code, '') as zone_code,
+		       COALESCE(c.name, '') as case_name,
+		       COALESCE(CAST(jd.jobID AS CHAR), '') as job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
+		LEFT JOIN cases c ON dc.caseID = c.caseID
+		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID AND jd.pack_status IN ('packed', 'issued')
 		WHERE 1=1`
 
 	args := []interface{}{}
@@ -132,12 +137,65 @@ func GetDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	devices := []models.DeviceWithDetails{}
+	// Response struct with clean JSON types
+	type DeviceResponse struct {
+		DeviceID        string   `json:"device_id"`
+		ProductID       *int64   `json:"product_id,omitempty"`
+		ProductName     string   `json:"product_name,omitempty"`
+		SerialNumber    *string  `json:"serial_number,omitempty"`
+		Barcode         *string  `json:"barcode,omitempty"`
+		QRCode          *string  `json:"qr_code,omitempty"`
+		Status          string   `json:"status"`
+		ZoneID          *int64   `json:"zone_id,omitempty"`
+		ZoneName        string   `json:"zone_name,omitempty"`
+		ZoneCode        string   `json:"zone_code,omitempty"`
+		CaseName        string   `json:"case_name,omitempty"`
+		JobNumber       string   `json:"job_number,omitempty"`
+		ConditionRating float64  `json:"condition_rating"`
+		UsageHours      float64  `json:"usage_hours"`
+	}
+
+	devices := []DeviceResponse{}
 	for rows.Next() {
 		var d models.DeviceWithDetails
-		rows.Scan(&d.DeviceID, &d.ProductID, &d.SerialNumber, &d.Status, &d.Barcode, &d.QRCode,
-			&d.ZoneID, &d.ConditionRating, &d.UsageHours, &d.ProductName, &d.ZoneName, &d.ZoneCode)
-		devices = append(devices, d)
+		var caseName, jobNumber string
+		if err := rows.Scan(&d.DeviceID, &d.ProductID, &d.SerialNumber, &d.Status, &d.Barcode, &d.QRCode,
+			&d.ZoneID, &d.ConditionRating, &d.UsageHours, &d.ProductName, &d.ZoneName, &d.ZoneCode,
+			&caseName, &jobNumber); err != nil {
+			log.Printf("Error scanning device row: %v", err)
+			continue
+		}
+
+		// Convert to clean response format
+		resp := DeviceResponse{
+			DeviceID:        d.DeviceID,
+			ProductName:     d.ProductName,
+			Status:          d.Status,
+			ZoneName:        d.ZoneName,
+			ZoneCode:        d.ZoneCode,
+			CaseName:        caseName,
+			JobNumber:       jobNumber,
+			ConditionRating: d.ConditionRating,
+			UsageHours:      d.UsageHours,
+		}
+
+		if d.ProductID.Valid {
+			resp.ProductID = &d.ProductID.Int64
+		}
+		if d.SerialNumber.Valid {
+			resp.SerialNumber = &d.SerialNumber.String
+		}
+		if d.Barcode.Valid {
+			resp.Barcode = &d.Barcode.String
+		}
+		if d.QRCode.Valid {
+			resp.QRCode = &d.QRCode.String
+		}
+		if d.ZoneID.Valid {
+			resp.ZoneID = &d.ZoneID.Int64
+		}
+
+		devices = append(devices, resp)
 	}
 
 	respondJSON(w, http.StatusOK, devices)
@@ -149,20 +207,45 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 	deviceID := vars["id"]
 
 	db := repository.GetSQLDB()
+
+	// Response struct with clean JSON types
+	type DeviceResponse struct {
+		DeviceID        string   `json:"device_id"`
+		ProductID       *int64   `json:"product_id,omitempty"`
+		ProductName     string   `json:"product_name,omitempty"`
+		SerialNumber    *string  `json:"serial_number,omitempty"`
+		Barcode         *string  `json:"barcode,omitempty"`
+		QRCode          *string  `json:"qr_code,omitempty"`
+		Status          string   `json:"status"`
+		ZoneID          *int64   `json:"zone_id,omitempty"`
+		ZoneName        string   `json:"zone_name,omitempty"`
+		ZoneCode        string   `json:"zone_code,omitempty"`
+		CaseName        string   `json:"case_name,omitempty"`
+		JobNumber       string   `json:"job_number,omitempty"`
+		ConditionRating float64  `json:"condition_rating"`
+		UsageHours      float64  `json:"usage_hours"`
+	}
+
 	var device models.DeviceWithDetails
+	var caseName, jobNumber string
 	err := db.QueryRow(`
 		SELECT d.deviceID, d.productID, d.serialnumber, d.status, d.barcode, d.qr_code,
 		       d.zone_id, d.condition_rating, d.usage_hours,
 		       COALESCE(p.name, '') as product_name,
 		       COALESCE(z.name, '') as zone_name,
-		       COALESCE(z.code, '') as zone_code
+		       COALESCE(z.code, '') as zone_code,
+		       COALESCE(c.name, '') as case_name,
+		       COALESCE(CAST(jd.jobID AS CHAR), '') as job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
+		LEFT JOIN cases c ON dc.caseID = c.caseID
+		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID AND jd.pack_status IN ('packed', 'issued')
 		WHERE d.deviceID = ?
 	`, deviceID).Scan(&device.DeviceID, &device.ProductID, &device.SerialNumber, &device.Status,
 		&device.Barcode, &device.QRCode, &device.ZoneID, &device.ConditionRating, &device.UsageHours,
-		&device.ProductName, &device.ZoneName, &device.ZoneCode)
+		&device.ProductName, &device.ZoneName, &device.ZoneCode, &caseName, &jobNumber)
 
 	if err == sql.ErrNoRows {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Device not found"})
@@ -173,7 +256,36 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, device)
+	// Convert to clean response format
+	resp := DeviceResponse{
+		DeviceID:        device.DeviceID,
+		ProductName:     device.ProductName,
+		Status:          device.Status,
+		ZoneName:        device.ZoneName,
+		ZoneCode:        device.ZoneCode,
+		CaseName:        caseName,
+		JobNumber:       jobNumber,
+		ConditionRating: device.ConditionRating,
+		UsageHours:      device.UsageHours,
+	}
+
+	if device.ProductID.Valid {
+		resp.ProductID = &device.ProductID.Int64
+	}
+	if device.SerialNumber.Valid {
+		resp.SerialNumber = &device.SerialNumber.String
+	}
+	if device.Barcode.Valid {
+		resp.Barcode = &device.Barcode.String
+	}
+	if device.QRCode.Valid {
+		resp.QRCode = &device.QRCode.String
+	}
+	if device.ZoneID.Valid {
+		resp.ZoneID = &device.ZoneID.Int64
+	}
+
+	respondJSON(w, http.StatusOK, resp)
 }
 
 // UpdateDeviceStatus updates device status
