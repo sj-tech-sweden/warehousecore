@@ -556,16 +556,11 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 		targetBinID = strings.TrimSpace(os.Getenv("LED_PREVIEW_BIN_ID"))
 	}
 
-	var selectedShelf ShelfConfig
-	var selectedBin BinConfig
-	found := false
-
 	if targetBinID != "" {
+		found := false
 		for _, shelf := range mapping.Shelves {
 			for _, bin := range shelf.Bins {
 				if strings.EqualFold(bin.BinID, targetBinID) {
-					selectedShelf = shelf
-					selectedBin = bin
 					found = true
 					break
 				}
@@ -579,19 +574,7 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 		}
 	}
 
-	if !found {
-		for _, shelf := range mapping.Shelves {
-			if len(shelf.Bins) == 0 {
-				continue
-			}
-			selectedShelf = shelf
-			selectedBin = shelf.Bins[0]
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	if len(mapping.Shelves) == 0 {
 		return fmt.Errorf("mapping contains no bins to preview")
 	}
 
@@ -601,37 +584,76 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 		}
 	}
 
-	appearance := appearances[0]
-
-	intensity := clampIntensity(int(appearance.Intensity))
-
-	bin := Bin{
-		BinID:     selectedBin.BinID,
-		Pixels:    selectedBin.Pixels,
-		Color:     appearance.Color,
-		Pattern:   appearance.Pattern,
-		Intensity: intensity,
+	appearanceCount := len(appearances)
+	primary := appearances[0]
+	var secondary *models.LEDAppearance
+	if len(appearances) > 1 {
+		secondary = &appearances[1]
 	}
-	if appearance.Speed > 0 {
-		bin.Speed = appearance.Speed
+
+	index := 0
+	shelves := make([]Shelf, 0, len(mapping.Shelves))
+
+	for _, shelf := range mapping.Shelves {
+		bins := make([]Bin, 0, len(shelf.Bins))
+		for _, binCfg := range shelf.Bins {
+			var appearance models.LEDAppearance
+			if targetBinID != "" {
+				if strings.EqualFold(binCfg.BinID, targetBinID) {
+					appearance = primary
+				} else if secondary != nil {
+					appearance = *secondary
+				} else {
+					continue
+				}
+			} else {
+				appearance = appearances[index%appearanceCount]
+				index++
+			}
+
+			intensity := clampIntensity(int(appearance.Intensity))
+			ledBin := Bin{
+				BinID:     binCfg.BinID,
+				Pixels:    binCfg.Pixels,
+				Color:     appearance.Color,
+				Pattern:   appearance.Pattern,
+				Intensity: intensity,
+			}
+			if appearance.Speed > 0 {
+				ledBin.Speed = appearance.Speed
+			}
+
+			bins = append(bins, ledBin)
+		}
+		if len(bins) > 0 {
+			shelves = append(shelves, Shelf{ShelfID: shelf.ShelfID, Bins: bins})
+		}
+	}
+
+	if len(shelves) == 0 {
+		return fmt.Errorf("no bins available for preview")
 	}
 
 	cmd := LEDCommand{
 		Op:          "highlight",
 		WarehouseID: mapping.WarehouseID,
-		Shelves: []Shelf{
-			{
-				ShelfID: selectedShelf.ShelfID,
-				Bins:    []Bin{bin},
-			},
-		},
+		Shelves:     shelves,
 	}
 
 	if err := s.publisher.PublishCommand(cmd); err != nil {
 		return err
 	}
 
-	log.Printf("[LED] Preview command sent for bin %s (shelf %s, %d pixels)", selectedBin.BinID, selectedShelf.ShelfID, len(selectedBin.Pixels))
+	totalBins := 0
+	for _, shelf := range cmd.Shelves {
+		totalBins += len(shelf.Bins)
+	}
+
+	if targetBinID != "" {
+		log.Printf("[LED] Preview command sent for bin %s across %d shelves (%d bins total)", targetBinID, len(cmd.Shelves), totalBins)
+	} else {
+		log.Printf("[LED] Preview command sent for %d shelves (%d bins total)", len(cmd.Shelves), totalBins)
+	}
 	return nil
 }
 

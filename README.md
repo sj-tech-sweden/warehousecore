@@ -979,7 +979,8 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
-- `1.53` - Admin-UI bietet Fachauswahl für LED-Vorschau (dataliste + Jobcode)
+- `1.54` - Vorschau nutzt Job-Highlight-Logik (optional mit gezieltem Fachcode + Fehlerfeedback)
+- `1.53` - Admin-UI bietet Fachauswahl für LED-Vorschau (Datalist + Eingabefeld)
 - `1.52` - LED Vorschau nutzt optionalen `LED_PREVIEW_BIN_ID` und Gerätekarte bietet Detail-Button
 - `1.51` - Geräte-Liste öffnet wieder Detailmodal per Klick
 - `1.50` - Admin LED preview always lights the first bin
