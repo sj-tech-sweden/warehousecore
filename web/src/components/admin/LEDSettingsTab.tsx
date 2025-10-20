@@ -831,21 +831,17 @@ export function LEDSettingsTab() {
                   triggerPreview(
                     [
                       toPreviewAppearance(
+                        jobSettings.non_required.color,
+                        jobSettings.non_required.pattern,
+                        jobSettings.non_required.intensity,
+                        jobSettings.non_required.speed
+                      ),
+                      toPreviewAppearance(
                         jobSettings.required.color,
                         jobSettings.required.pattern,
                         jobSettings.required.intensity,
                         jobSettings.required.speed
                       ),
-                      ...(jobSettings.mode === 'all_bins'
-                        ? [
-                            toPreviewAppearance(
-                              jobSettings.non_required.color,
-                              jobSettings.non_required.pattern,
-                              jobSettings.non_required.intensity,
-                              jobSettings.non_required.speed
-                            ),
-                          ]
-                        : []),
                     ]
                   )
                 }
