@@ -604,7 +604,7 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 				} else if secondary != nil {
 					appearance = *secondary
 				} else {
-					continue
+					appearance = primary
 				}
 			} else {
 				appearance = appearances[index%appearanceCount]
