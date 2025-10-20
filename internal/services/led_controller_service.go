@@ -168,3 +168,26 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string) error {
 	}
 	return nil
 }
+
+// GetPrimaryControllerForZoneType returns the first controller assigned to the given zone type ID
+func (s *LEDControllerService) GetPrimaryControllerForZoneType(zoneTypeID int) (*models.LEDController, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialised")
+	}
+
+	if zoneTypeID <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	var controller models.LEDController
+	err := s.db.Preload("ZoneTypes").
+		Joins("JOIN led_controller_zone_types lcz ON lcz.controller_id = led_controllers.id").
+		Where("lcz.zone_type_id = ?", zoneTypeID).
+		Order("led_controllers.id ASC").
+		First(&controller).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return &controller, nil
+}

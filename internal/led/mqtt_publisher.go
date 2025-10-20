@@ -181,12 +181,33 @@ func (p *Publisher) IsDryRun() bool {
 
 // PublishCommand publishes an LED command to the MQTT topic
 func (p *Publisher) PublishCommand(cmd LEDCommand) error {
-	// Ensure warehouse_id is set
 	if cmd.WarehouseID == "" {
 		cmd.WarehouseID = p.config.WarehouseID
 	}
+	return p.publishCommandWithTopic(cmd, cmd.WarehouseID)
+}
 
-	// Serialize command to JSON (compact to avoid exceeding firmware buffer)
+// PublishCommandToController publishes a command to the topic associated with a controller
+func (p *Publisher) PublishCommandToController(controller *models.LEDController, cmd LEDCommand) error {
+	if controller == nil {
+		return p.PublishCommand(cmd)
+	}
+
+	topicSuffix := controller.TopicSuffix
+	if topicSuffix == "" {
+		topicSuffix = controller.ControllerID
+	}
+	if topicSuffix == "" {
+		topicSuffix = cmd.WarehouseID
+	}
+	return p.publishCommandWithTopic(cmd, topicSuffix)
+}
+
+func (p *Publisher) publishCommandWithTopic(cmd LEDCommand, topicSuffix string) error {
+	if topicSuffix == "" {
+		topicSuffix = p.config.WarehouseID
+	}
+
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to marshal command: %w", err)
@@ -195,25 +216,21 @@ func (p *Publisher) PublishCommand(cmd LEDCommand) error {
 		log.Printf("[LED] Warning: command payload size %d bytes approaches firmware limit", len(payload))
 	}
 
-	// Build topic: <prefix>/<warehouse_id>/cmd
-	topic := fmt.Sprintf("%s/%s/cmd", p.config.TopicPrefix, cmd.WarehouseID)
+	topic := fmt.Sprintf("%s/%s/cmd", p.config.TopicPrefix, topicSuffix)
 
-	// Dry-run mode: just log
 	if p.dryRun {
 		log.Printf("[LED] DRY-RUN: Would publish to topic '%s': %s", topic, string(payload))
 		return nil
 	}
 
-	// Check connection
 	if !p.IsConnected() {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
 	if cmd.Op == "highlight" {
-		log.Printf("[LED] MQTT payload: %s", string(payload))
+		log.Printf("[LED] MQTT payload (%s): %s", topic, string(payload))
 	}
 
-	// Publish with QoS 1 (at least once delivery)
 	token := p.client.Publish(topic, 1, false, payload)
 	if token.Wait() && token.Error() != nil {
 		return fmt.Errorf("failed to publish: %w", token.Error())

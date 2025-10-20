@@ -1,6 +1,7 @@
 package led
 
 import (
+	"database/sql"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"gorm.io/gorm"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
@@ -24,6 +27,65 @@ type Service struct {
 	mappingPath string
 	publisher   *Publisher
 	mu          sync.RWMutex
+}
+
+type controllerCaches struct {
+	zoneTypeIDs map[string]int
+	controllers map[int]*models.LEDController
+}
+
+func newControllerCaches() *controllerCaches {
+	return &controllerCaches{
+		zoneTypeIDs: make(map[string]int),
+		controllers: make(map[int]*models.LEDController),
+	}
+}
+
+const defaultControllerKey = "__default__"
+
+type highlightGroup struct {
+	controller *models.LEDController
+	shelves    map[string]*Shelf
+}
+
+func newHighlightGroup(controller *models.LEDController) *highlightGroup {
+	return &highlightGroup{
+		controller: controller,
+		shelves:    make(map[string]*Shelf),
+	}
+}
+
+func (g *highlightGroup) addBin(shelfID string, bin Bin) {
+	shelf := g.shelves[shelfID]
+	if shelf == nil {
+		shelf = &Shelf{ShelfID: shelfID}
+		g.shelves[shelfID] = shelf
+	}
+	shelf.Bins = append(shelf.Bins, bin)
+}
+
+func (g *highlightGroup) toCommand(warehouseID string) LEDCommand {
+	cmd := LEDCommand{
+		Op:          "highlight",
+		WarehouseID: warehouseID,
+	}
+	for _, shelf := range g.shelves {
+		binCopy := make([]Bin, len(shelf.Bins))
+		copy(binCopy, shelf.Bins)
+		cmd.Shelves = append(cmd.Shelves, Shelf{
+			ShelfID: shelf.ShelfID,
+			Bins:    binCopy,
+		})
+	}
+	return cmd
+}
+
+func (g *highlightGroup) binCount() int {
+	total := 0
+	for _, shelf := range g.shelves {
+		total += len(shelf.Bins)
+	}
+	return total
 }
 
 var (
@@ -184,23 +246,111 @@ func (s *Service) ensureMappingFile(path string) error {
 
 // HighlightJobBins highlights bins for devices in a specific job
 func (s *Service) HighlightJobBins(jobID string) error {
-	// Get devices for this job from database
-	deviceZones, err := s.getJobDeviceZones(jobID)
+	zoneCounts, err := s.getJobDeviceZonesWithCounts(jobID)
 	if err != nil {
 		return fmt.Errorf("failed to get job devices: %w", err)
 	}
-
-	if len(deviceZones) == 0 {
+	if len(zoneCounts) == 0 {
 		return fmt.Errorf("no devices found for job %s", jobID)
 	}
 
 	s.mu.RLock()
 	mapping := s.mapping
 	s.mu.RUnlock()
+	if mapping == nil {
+		return fmt.Errorf("no mapping loaded")
+	}
 
 	settings := s.getJobHighlightSettings()
+	if settings == nil {
+		settings = models.DefaultLEDJobHighlightSettings()
+	} else {
+		settings.Normalize(models.DefaultLEDJobHighlightSettings())
+	}
 
-	return s.publisher.PublishHighlight(jobID, mapping, deviceZones, settings)
+	jobZones := make(map[string]bool)
+	for zoneCode := range zoneCounts {
+		jobZones[zoneCode] = true
+	}
+
+	caches := newControllerCaches()
+	groups := make(map[string]*highlightGroup)
+
+	for _, shelf := range mapping.Shelves {
+		for _, binConfig := range shelf.Bins {
+			hasJobDevice := jobZones[binConfig.BinID]
+
+			appearance := settings.NonRequired
+			if hasJobDevice {
+				appearance = settings.Required
+			} else if settings.Mode == "required_only" {
+				continue
+			}
+
+			ledBin := Bin{
+				BinID:     binConfig.BinID,
+				Pixels:    binConfig.Pixels,
+				Color:     appearance.Color,
+				Pattern:   appearance.Pattern,
+				Intensity: int(appearance.Intensity),
+			}
+			if appearance.Speed > 0 {
+				ledBin.Speed = appearance.Speed
+			}
+
+			controller, err := s.resolveControllerForZone(binConfig.BinID, caches)
+			if err != nil {
+				return err
+			}
+			key := defaultControllerKey
+			if controller != nil {
+				key = controller.ControllerID
+			}
+			group := groups[key]
+			if group == nil {
+				group = newHighlightGroup(controller)
+				groups[key] = group
+			}
+			group.addBin(shelf.ShelfID, ledBin)
+		}
+	}
+
+	if len(groups) == 0 {
+		return fmt.Errorf("no bins configured in LED mapping")
+	}
+
+	if settings.Mode == "required_only" {
+		for _, group := range groups {
+			if err := s.publishClearForGroup(group, mapping.WarehouseID); err != nil {
+				log.Printf("[LED] Failed to clear LEDs for controller group: %v", err)
+			}
+		}
+	}
+
+	requiredBins := len(zoneCounts)
+	totalBins := 0
+
+	for _, group := range groups {
+		cmd := group.toCommand(mapping.WarehouseID)
+		var err error
+		if group.controller != nil {
+			err = s.publisher.PublishCommandToController(group.controller, cmd)
+		} else {
+			err = s.publisher.PublishCommand(cmd)
+		}
+		if err != nil {
+			return err
+		}
+		totalBins += group.binCount()
+	}
+
+	if settings.Mode == "required_only" {
+		log.Printf("[LED] Highlighting %d required bins only", requiredBins)
+	} else {
+		log.Printf("[LED] Highlighting %d bins total (%d required, %d non-required)", totalBins, requiredBins, totalBins-requiredBins)
+	}
+
+	return nil
 }
 
 // ClearAllLEDs turns off all LEDs
@@ -265,7 +415,7 @@ func (s *Service) TestBin(shelfID, binID string) error {
 		},
 	}
 
-	return s.publisher.PublishCommand(cmd)
+	return s.publishCommandForBin(binID, cmd, newControllerCaches())
 }
 
 // LocateBin highlights a single bin with configurable pattern to help locate it
@@ -348,7 +498,7 @@ func (s *Service) LocateBin(binCode string) error {
 	}
 
 	log.Printf("[LED] Locating bin %s with %s %s pattern (intensity: %d)", binCode, color, pattern, intensity)
-	return s.publisher.PublishCommand(cmd)
+	return s.publishCommandForBin(binCode, cmd, newControllerCaches())
 }
 
 // GetStatus returns the current LED system status
@@ -561,6 +711,7 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 	}
 
 	primary := appearances[0]
+	caches := newControllerCaches()
 
 	if targetBinID != "" {
 		for _, shelf := range mapping.Shelves {
@@ -589,7 +740,13 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 						},
 					}
 
-					if err := s.publisher.PublishCommand(cmd); err != nil {
+					if clearBefore {
+						if err := s.publishCommandForBin(bin.BinID, LEDCommand{Op: "clear", WarehouseID: mapping.WarehouseID}, caches); err != nil {
+							log.Printf("[LED] Failed to clear LEDs before preview: %v", err)
+						}
+					}
+
+					if err := s.publishCommandForBin(bin.BinID, cmd, caches); err != nil {
 						return err
 					}
 
@@ -602,12 +759,6 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 		return fmt.Errorf("preview bin '%s' not found in mapping", targetBinID)
 	}
 
-	if clearBefore {
-		if err := s.publisher.PublishClear(); err != nil {
-			log.Printf("[LED] Failed to clear LEDs before preview: %v", err)
-		}
-	}
-
 	appearanceCount := len(appearances)
 	var secondary *models.LEDAppearance
 	if len(appearances) > 1 {
@@ -615,10 +766,9 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 	}
 
 	index := 0
-	shelves := make([]Shelf, 0, len(mapping.Shelves))
+	groups := make(map[string]*highlightGroup)
 
 	for _, shelf := range mapping.Shelves {
-		bins := make([]Bin, 0, len(shelf.Bins))
 		for _, binCfg := range shelf.Bins {
 			appearance := appearances[index%appearanceCount]
 			if index == 0 {
@@ -640,33 +790,49 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 				ledBin.Speed = appearance.Speed
 			}
 
-			bins = append(bins, ledBin)
-		}
-		if len(bins) > 0 {
-			shelves = append(shelves, Shelf{ShelfID: shelf.ShelfID, Bins: bins})
+			controller, err := s.resolveControllerForZone(binCfg.BinID, caches)
+			if err != nil {
+				return err
+			}
+			key := defaultControllerKey
+			if controller != nil {
+				key = controller.ControllerID
+			}
+			group := groups[key]
+			if group == nil {
+				group = newHighlightGroup(controller)
+				groups[key] = group
+			}
+			group.addBin(shelf.ShelfID, ledBin)
 		}
 	}
 
-	if len(shelves) == 0 {
+	if len(groups) == 0 {
 		return fmt.Errorf("no bins available for preview")
 	}
 
-	cmd := LEDCommand{
-		Op:          "highlight",
-		WarehouseID: mapping.WarehouseID,
-		Shelves:     shelves,
+	if clearBefore {
+		for _, group := range groups {
+			if err := s.publishClearForGroup(group, mapping.WarehouseID); err != nil {
+				log.Printf("[LED] Failed to clear LEDs before preview: %v", err)
+			}
+		}
 	}
 
-	if err := s.publisher.PublishCommand(cmd); err != nil {
-		return err
+	for _, group := range groups {
+		cmd := group.toCommand(mapping.WarehouseID)
+		var err error
+		if group.controller != nil {
+			err = s.publisher.PublishCommandToController(group.controller, cmd)
+		} else {
+			err = s.publisher.PublishCommand(cmd)
+		}
+		if err != nil {
+			return err
+		}
+		log.Printf("[LED] Preview command sent for %d shelves (%d bins total)", len(cmd.Shelves), group.binCount())
 	}
 
-	totalBins := 0
-	for _, shelf := range cmd.Shelves {
-		totalBins += len(shelf.Bins)
-	}
-
-	log.Printf("[LED] Preview command sent for %d shelves (%d bins total)", len(cmd.Shelves), totalBins)
 	return nil
 }
 
@@ -680,6 +846,99 @@ func (s *Service) countTotalBins() int {
 		count += len(shelf.Bins)
 	}
 	return count
+}
+
+func (s *Service) publishCommandForBin(binID string, cmd LEDCommand, caches *controllerCaches) error {
+	if caches == nil {
+		caches = newControllerCaches()
+	}
+	controller, err := s.resolveControllerForZone(binID, caches)
+	if err != nil {
+		return err
+	}
+	if controller != nil {
+		return s.publisher.PublishCommandToController(controller, cmd)
+	}
+	return s.publisher.PublishCommand(cmd)
+}
+
+func (s *Service) publishClearForGroup(group *highlightGroup, warehouseID string) error {
+	clearCmd := LEDCommand{Op: "clear", WarehouseID: warehouseID}
+	if group.controller != nil {
+		return s.publisher.PublishCommandToController(group.controller, clearCmd)
+	}
+	return s.publisher.PublishCommand(clearCmd)
+}
+
+func (s *Service) resolveControllerForZone(zoneCode string, caches *controllerCaches) (*models.LEDController, error) {
+	if zoneCode == "" {
+		return nil, nil
+	}
+	zoneTypeID, err := s.lookupZoneTypeID(zoneCode, caches)
+	if err != nil {
+		return nil, err
+	}
+	if zoneTypeID <= 0 {
+		return nil, nil
+	}
+	if controller, ok := caches.controllers[zoneTypeID]; ok {
+		return controller, nil
+	}
+	db := repository.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database not initialised")
+	}
+
+	var controller models.LEDController
+	err = db.Preload("ZoneTypes").
+		Joins("JOIN led_controller_zone_types lcz ON lcz.controller_id = led_controllers.id").
+		Where("lcz.zone_type_id = ?", zoneTypeID).
+		Order("led_controllers.id ASC").
+		First(&controller).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			caches.controllers[zoneTypeID] = nil
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	caches.controllers[zoneTypeID] = &controller
+	return &controller, nil
+}
+
+func (s *Service) lookupZoneTypeID(zoneCode string, caches *controllerCaches) (int, error) {
+	if caches != nil {
+		if cached, ok := caches.zoneTypeIDs[zoneCode]; ok {
+			return cached, nil
+		}
+	}
+
+	db := repository.GetDB()
+	if db == nil {
+		return 0, fmt.Errorf("database not initialised")
+	}
+
+	var result struct {
+		ZoneTypeID sql.NullInt64
+	}
+	if err := db.Table("storage_zones").
+		Select("zone_types.id AS zone_type_id").
+		Joins("LEFT JOIN zone_types ON zone_types.key = storage_zones.type").
+		Where("storage_zones.code = ?", zoneCode).
+		Scan(&result).Error; err != nil {
+		return 0, err
+	}
+
+	id := 0
+	if result.ZoneTypeID.Valid {
+		id = int(result.ZoneTypeID.Int64)
+	}
+	if caches != nil {
+		caches.zoneTypeIDs[zoneCode] = id
+	}
+	return id, nil
 }
 
 func clampIntensity(value int) int {
