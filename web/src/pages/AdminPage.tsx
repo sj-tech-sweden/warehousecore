@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Settings, Users, Layers, Lightbulb } from 'lucide-react';
+import { Settings, Users, Layers, Lightbulb, Cpu } from 'lucide-react';
 import { ZoneTypesTab } from '../components/admin/ZoneTypesTab';
 import { LEDSettingsTab } from '../components/admin/LEDSettingsTab';
 import { RolesTab } from '../components/admin/RolesTab';
+import { LEDControllersTab } from '../components/admin/LEDControllersTab';
 
-type TabType = 'zonetypes' | 'led' | 'roles';
+type TabType = 'zonetypes' | 'led' | 'controllers' | 'roles';
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('zonetypes');
@@ -12,6 +13,7 @@ export function AdminPage() {
   const tabs = [
     { id: 'zonetypes' as TabType, label: 'Zonentypen', icon: Layers },
     { id: 'led' as TabType, label: 'LED-Verhalten', icon: Lightbulb },
+    { id: 'controllers' as TabType, label: 'Mikrocontroller', icon: Cpu },
     { id: 'roles' as TabType, label: 'Rollen & Benutzer', icon: Users },
   ];
 
@@ -53,6 +55,7 @@ export function AdminPage() {
       <div className="glass-dark rounded-2xl p-6">
         {activeTab === 'zonetypes' && <ZoneTypesTab />}
         {activeTab === 'led' && <LEDSettingsTab />}
+        {activeTab === 'controllers' && <LEDControllersTab />}
         {activeTab === 'roles' && <RolesTab />}
       </div>
     </div>

@@ -265,6 +265,26 @@ export interface LEDJobHighlightSettings {
   non_required: LEDAppearance;
 }
 
+export interface LEDController {
+  id: number;
+  controller_id: string;
+  display_name: string;
+  topic_suffix: string;
+  is_active: boolean;
+  last_seen?: string | null;
+  metadata?: Record<string, unknown> | null;
+  zone_types?: ZoneTypeDefinition[];
+}
+
+export interface LEDControllerPayload {
+  controller_id?: string;
+  display_name?: string;
+  topic_suffix?: string;
+  is_active?: boolean;
+  metadata?: Record<string, unknown> | null;
+  zone_type_ids?: number[];
+}
+
 export const ledApi = {
   getStatus: () => api.get<LEDStatus>('/led/status'),
   highlightJob: (jobId: number) => api.post(`/led/highlight?job_id=${jobId}`),
@@ -291,4 +311,8 @@ export const ledApi = {
     }
     return api.post('/admin/led/preview', payload);
   },
+  getControllers: () => api.get<LEDController[]>('/admin/led/controllers'),
+  createController: (payload: LEDControllerPayload) => api.post('/admin/led/controllers', payload),
+  updateController: (id: number, payload: LEDControllerPayload) => api.put(`/admin/led/controllers/${id}`, payload),
+  deleteController: (id: number) => api.delete(`/admin/led/controllers/${id}`),
 };
