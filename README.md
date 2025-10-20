@@ -979,6 +979,7 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
+- `1.60` - Bin-Vorschau zielt exakt auf das gewählte Fach
 - `1.59` - Einzelvorschau beleuchtet nur das gewählte Fach (kein Clear)
 - `1.58` - Preview sendet keine Clear-Kommandos mehr
 - `1.57` - Vorschau lässt LEDs an; Clear-Befehl entfällt

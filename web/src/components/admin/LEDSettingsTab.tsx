@@ -96,6 +96,7 @@ export function LEDSettingsTab() {
   const [previewActive, setPreviewActive] = useState(false);
   const [stopLoading, setStopLoading] = useState(false);
   const [previewMessage, setPreviewMessage] = useState('');
+  const [previewTarget, setPreviewTarget] = useState<string | null>(null);
 
   useEffect(() => {
     loadDefaults();
@@ -385,16 +386,18 @@ export function LEDSettingsTab() {
     speed: speed && speed > 0 ? speed : 1200,
   });
 
-  const triggerPreview = async (appearances: LEDAppearance[], clearBefore: boolean = false) => {
+  const triggerPreview = async (appearances: LEDAppearance[], targetOverride?: string, clearBefore: boolean = false) => {
     if (appearances.length === 0) {
       return;
     }
     setPreviewLoading(true);
     setPreviewMessage('');
-    const target = previewBinId.trim();
+    const formTarget = previewBinId.trim();
+    const target = (targetOverride && targetOverride.trim().length > 0 ? targetOverride.trim() : '') || formTarget || undefined;
     try {
-      await ledApi.preview(appearances, clearBefore, target || undefined);
+      await ledApi.preview(appearances, clearBefore, target);
       setPreviewActive(true);
+      setPreviewTarget(target ?? 'all');
       setPreviewMessage(
         target
           ? `✓ Vorschau für ${target} gestartet – „Vorschau stoppen“ beendet das Leuchten.`
@@ -404,6 +407,7 @@ export function LEDSettingsTab() {
     } catch (error: any) {
       setPreviewMessage('Fehler bei der Vorschau: ' + (error.response?.data?.error || error.message));
       setPreviewActive(false);
+      setPreviewTarget(null);
     } finally {
       setPreviewLoading(false);
     }
@@ -414,6 +418,7 @@ export function LEDSettingsTab() {
     try {
       await ledApi.clear();
       setPreviewActive(false);
+      setPreviewTarget(null);
       setPreviewMessage('✓ Vorschau gestoppt.');
       setTimeout(() => setPreviewMessage(''), 3000);
     } catch (error: any) {
@@ -997,26 +1002,31 @@ export function LEDSettingsTab() {
                     className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer disabled:opacity-40"
                   />
                 </div>
-                <button
-                  onClick={() =>
-                    triggerPreview(
-                      [
-                        toPreviewAppearance(
-                          mapping.defaults.color,
-                          mapping.defaults.pattern,
-                          mapping.defaults.intensity,
-                          mapping.defaults.speed
-                        ),
-                      ]
-                    )
-                  }
-                  disabled={previewLoading}
-                  className={`w-full px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                    previewLoading ? 'bg-gray-600 cursor-not-allowed text-gray-300' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                >
-                  <Lightbulb className="w-4 h-4 text-yellow-300" /> Standard-Vorschau
-                </button>
+                  <button
+                    onClick={() =>
+                      triggerPreview(
+                        [
+                          toPreviewAppearance(
+                            mapping.defaults.color,
+                            mapping.defaults.pattern,
+                            mapping.defaults.intensity,
+                            mapping.defaults.speed
+                          ),
+                        ]
+                      )
+                    }
+                    disabled={previewLoading && previewTarget !== 'all'}
+                    className={`w-full px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                      previewActive && previewTarget === 'all'
+                        ? 'bg-red-600 text-white'
+                        : previewLoading
+                        ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                        : 'bg-white/10 text-white hover:bg-white/20'
+                    }`}
+                  >
+                    <Lightbulb className="w-4 h-4 text-yellow-300" />
+                    <span>{previewActive && previewTarget === 'all' ? 'Vorschau stoppen' : previewLoading ? 'Vorschau läuft…' : 'Standard-Vorschau'}</span>
+                  </button>
               </div>
             </div>
 
@@ -1105,23 +1115,31 @@ export function LEDSettingsTab() {
                               <div className="flex flex-col gap-2">
                                 <button
                                   onClick={() =>
-                                    triggerPreview(
-                                      [
-                                        toPreviewAppearance(
-                                          mapping.defaults.color,
-                                          mapping.defaults.pattern,
-                                          mapping.defaults.intensity,
-                                          mapping.defaults.speed
-                                        ),
-                                      ]
-                                    )
+                                    previewActive && previewTarget === bin.bin_id
+                                      ? handlePreviewStop()
+                                      : triggerPreview(
+                                          [
+                                            toPreviewAppearance(
+                                              mapping.defaults.color,
+                                              mapping.defaults.pattern,
+                                              mapping.defaults.intensity,
+                                              mapping.defaults.speed
+                                            ),
+                                          ],
+                                          bin.bin_id
+                                        )
                                   }
-                                  disabled={previewLoading}
+                                  disabled={previewLoading && previewTarget !== bin.bin_id}
                                   className={`px-3 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                                    previewLoading ? 'bg-gray-600 cursor-not-allowed text-gray-300' : 'bg-white/10 text-white hover:bg-white/20'
+                                    previewActive && previewTarget === bin.bin_id
+                                      ? 'bg-red-600 text-white'
+                                      : previewLoading
+                                      ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                                      : 'bg-white/10 text-white hover:bg-white/20'
                                   }`}
                                 >
-                                  <Lightbulb className="w-4 h-4 text-yellow-300" /> Vorschau
+                                  <Lightbulb className="w-4 h-4 text-yellow-300" />
+                                  <span>{previewActive && previewTarget === bin.bin_id ? 'Stoppen' : previewLoading && previewTarget !== bin.bin_id ? 'Wird geladen…' : 'Vorschau'}</span>
                                 </button>
                                 <button
                                   onClick={() => removeBin(shelfIndex, binIndex)}
@@ -1303,8 +1321,7 @@ export function LEDSettingsTab() {
                             zoneType.default_intensity ?? 180,
                             zoneType.default_led_pattern === 'solid' ? 1200 : 1200
                           ),
-                        ],
-                        true
+                        ]
                       )
                     }
                     disabled={previewLoading}
