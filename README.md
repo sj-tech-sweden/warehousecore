@@ -180,6 +180,7 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 - **Status Monitoring**: MQTT heartbeat shows ESP32 online/offline status
 - **Dry-Run Mode**: Backend works without MQTT for testing
 - **Admin Mapping Editor**: JSON-based bin-to-LED configuration
+- **Multi-Controller Support**: Mehrere ESP32-Controller können registriert und Zonentypen zugewiesen werden
 
 ### Components
 
@@ -218,6 +219,35 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 - `esp32_sk6812_leds.ino` - Main firmware
 - `secrets.h.template` - Config template (WiFi, MQTT credentials)
 - `README.md` - Flash instructions, hardware wiring
+
+#### 4. Controller-Registry & Heartbeat
+
+- **Admin > Mikrocontroller** (neuer Tab): Controller anlegen, bearbeiten, löschen, online/offline-Status einsehen und Zonentypen zuweisen.
+- Jeder Controller besitzt:
+  - `Controller ID` (z. B. `esp-regal-1`) – eindeutiger Identifier & Default-Topic-Suffix
+  - `Topic-Suffix` – überschreibt optional die ID beim Publizieren (`<LED_MQTT_TOPIC_PREFIX>/<suffix>/cmd`)
+  - `Zone-Typen` – legen fest, welche Speicherbereiche über diesen Controller angesteuert werden (z. B. Regale vs. Gitterboxen)
+- **Heartbeat**: Controller senden regelmäßig `POST /api/v1/led/controllers/{controller_id}/heartbeat`; bei unbekannter ID wird ein Datensatz auto-registriert.
+- LED-Kommandos werden automatisch pro Zone zum passenden Controller geroutet. Wird kein Controller gefunden, fällt das System auf das globale Topic (`LED_WAREHOUSE_ID`) zurück.
+- Vorschau-, Locate- und Job-Highlight-Befehle berücksichtigen nun Controller-Zuordnungen: das Ziel-Fach bleibt exklusiv auf „seinem“ Controller.
+
+##### Firmware-Anpassungen für mehrere Controller
+
+```cpp
+// Beispiel MQTT Setup (Arduino)
+const char* topicCmd   = "weidelbach/esp-regal-1/cmd";
+const char* topicState = "weidelbach/esp-regal-1/status";
+
+// Heartbeat alle 30s
+HTTPClient http;
+http.begin("https://<server>/api/v1/led/controllers/esp-regal-1/heartbeat");
+http.POST("");
+http.end();
+```
+
+- Jeder Controller hört auf das eigene Topic (`LED_MQTT_TOPIC_PREFIX/<suffix>/cmd`).
+- Heartbeat kann via HTTPS (empfohlen) oder plain HTTP erfolgen; bei Ausfall markiert das Backend den Controller als „Offline“.
+- Zonen-Typen in WarehouseCore (`storage_zones.type`) müssen dem Controller zugeordnet sein, damit Highlights / Locate-Befehle ankommen.
 
 **Features:**
 - WiFi auto-reconnect
@@ -977,8 +1007,10 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Repository:** `nobentie/warehousecore`
 
-**Tags:**
+- **Tags:**
 - `latest` - Latest stable build
+- `1.62` - LED-Befehle aufcontroller-spezifische Topics geroutet (Zonentyp-Zuordnung)
+- `1.61` - Admin-Tab „Mikrocontroller“ + Heartbeat-Registry
 - `1.60` - Bin-Vorschau zielt exakt auf das gewählte Fach
 - `1.59` - Einzelvorschau beleuchtet nur das gewählte Fach (kein Clear)
 - `1.58` - Preview sendet keine Clear-Kommandos mehr
