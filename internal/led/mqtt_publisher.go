@@ -209,6 +209,10 @@ func (p *Publisher) PublishCommand(cmd LEDCommand) error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
+	if cmd.Op == "highlight" {
+		log.Printf("[LED] MQTT payload: %s", string(payload))
+	}
+
 	// Publish with QoS 1 (at least once delivery)
 	token := p.client.Publish(topic, 1, false, payload)
 	if token.Wait() && token.Error() != nil {
