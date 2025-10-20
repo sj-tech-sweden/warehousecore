@@ -979,6 +979,7 @@ mysql -h tsunami-events.de -u tsweb -p RentalCore < migrations/XXX_new_feature.s
 
 **Tags:**
 - `latest` - Latest stable build
+- `1.52` - LED Vorschau nutzt optionalen `LED_PREVIEW_BIN_ID` und Gerätekarte bietet Detail-Button
 - `1.51` - Geräte-Liste öffnet wieder Detailmodal per Klick
 - `1.50` - Admin LED preview always lights the first bin
 - `1.49` - Device detail modal on devices page (current)
@@ -1562,6 +1563,7 @@ For issues or questions:
   - `LED_MQTT_PASS` - MQTT password
   - `LED_TOPIC_PREFIX` - Topic namespace
   - `WAREHOUSE_ID` - Warehouse identifier
+  - `LED_PREVIEW_BIN_ID` - Optional bin code for Admin-Preview (e.g. `Fach 1`)
 - **Testing:**
   - Dry-run mode logs commands without sending
   - Status endpoint shows connection state

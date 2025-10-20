@@ -273,6 +273,15 @@ export function DevicesPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      handleOpenDevice(device);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 transition-colors text-white"
+                  >
+                    <Package className="w-4 h-4" /> Details
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
                       handleLocateDevice(device);
                     }}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 transition-colors"

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"warehousecore/internal/models"
@@ -550,18 +551,44 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 		return fmt.Errorf("no mapping loaded")
 	}
 
-	targetShelfIndex := -1
-	targetBinIndex := -1
-	for sIdx, shelf := range mapping.Shelves {
-		if len(shelf.Bins) == 0 {
-			continue
+	targetBinID := strings.TrimSpace(os.Getenv("LED_PREVIEW_BIN_ID"))
+
+	var selectedShelf ShelfConfig
+	var selectedBin BinConfig
+	found := false
+
+	if targetBinID != "" {
+		for _, shelf := range mapping.Shelves {
+			for _, bin := range shelf.Bins {
+				if strings.EqualFold(bin.BinID, targetBinID) {
+					selectedShelf = shelf
+					selectedBin = bin
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
 		}
-		targetShelfIndex = sIdx
-		targetBinIndex = 0
-		break
+		if !found {
+			log.Printf("[LED] Preview bin '%s' not found in mapping, falling back to first available bin", targetBinID)
+		}
 	}
 
-	if targetShelfIndex == -1 || targetBinIndex == -1 {
+	if !found {
+		for _, shelf := range mapping.Shelves {
+			if len(shelf.Bins) == 0 {
+				continue
+			}
+			selectedShelf = shelf
+			selectedBin = shelf.Bins[0]
+			found = true
+			break
+		}
+	}
+
+	if !found {
 		return fmt.Errorf("mapping contains no bins to preview")
 	}
 
@@ -572,14 +599,12 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 	}
 
 	appearance := appearances[0]
-	targetShelf := mapping.Shelves[targetShelfIndex]
-	targetBin := targetShelf.Bins[targetBinIndex]
 
 	intensity := clampIntensity(int(appearance.Intensity))
 
 	bin := Bin{
-		BinID:     targetBin.BinID,
-		Pixels:    targetBin.Pixels,
+		BinID:     selectedBin.BinID,
+		Pixels:    selectedBin.Pixels,
 		Color:     appearance.Color,
 		Pattern:   appearance.Pattern,
 		Intensity: intensity,
@@ -593,7 +618,7 @@ func (s *Service) PreviewAppearances(appearances []models.LEDAppearance, clearBe
 		WarehouseID: mapping.WarehouseID,
 		Shelves: []Shelf{
 			{
-				ShelfID: targetShelf.ShelfID,
+				ShelfID: selectedShelf.ShelfID,
 				Bins:    []Bin{bin},
 			},
 		},
