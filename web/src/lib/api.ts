@@ -25,8 +25,45 @@ export interface Device {
   zone_code?: string;
   case_name?: string;
   job_number?: string;
-  condition_rating: number;
-  usage_hours: number;
+  condition_rating?: number;
+  usage_hours?: number;
+}
+
+export interface DeviceTreeDevice {
+  device_id: string;
+  product_name: string;
+  status: string;
+  barcode?: string;
+  serial_number?: string;
+  zone_id?: number;
+  zone_code?: string;
+}
+
+export interface DeviceTreeSubbiercategory {
+  id: string | number;
+  name: string;
+  devices: DeviceTreeDevice[];
+  device_count: number;
+}
+
+export interface DeviceTreeSubcategory {
+  id: string | number;
+  name: string;
+  subbiercategories: DeviceTreeSubbiercategory[];
+  direct_devices: DeviceTreeDevice[];
+  device_count: number;
+}
+
+export interface DeviceTreeCategory {
+  id: number;
+  name: string;
+  subcategories: DeviceTreeSubcategory[];
+  direct_devices: DeviceTreeDevice[];
+  device_count: number;
+}
+
+export interface DeviceTreeResponse {
+  treeData: DeviceTreeCategory[];
 }
 
 export interface Zone {
@@ -141,6 +178,7 @@ export const devicesApi = {
     api.get<Device[]>('/devices', { params }),
   getById: (id: string) => api.get<Device>(`/devices/${id}`),
   getMovements: (id: string) => api.get(`/devices/${id}/movements`),
+  getTree: () => api.get<DeviceTreeResponse>('/devices/tree'),
 };
 
 export const zonesApi = {

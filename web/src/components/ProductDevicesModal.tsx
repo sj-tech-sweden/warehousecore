@@ -1,5 +1,6 @@
 import { Package, MapPin, Lightbulb } from 'lucide-react';
 import type { Device } from '../lib/api';
+import { formatStatus, getStatusColor } from '../lib/utils';
 
 interface ProductDevicesModalProps {
   productName: string;
@@ -63,8 +64,10 @@ export function ProductDevicesModal({
                         {device.device_id}
                       </span>
                       {device.status && (
-                        <span className="text-[10px] sm:text-xs font-semibold px-2 py-1 rounded-full bg-white/10 text-gray-300">
-                          {device.status}
+                        <span
+                          className={`text-[10px] sm:text-xs font-semibold px-2 py-1 rounded-full bg-white/10 uppercase tracking-wide ${getStatusColor(device.status)}`}
+                        >
+                          {formatStatus(device.status)}
                         </span>
                       )}
                     </div>
