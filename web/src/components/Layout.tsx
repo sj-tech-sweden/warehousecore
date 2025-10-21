@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings, Boxes } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -98,6 +98,7 @@ export function Layout({ children }: LayoutProps) {
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/scan', icon: ScanLine, label: 'Scan' },
     { path: '/devices', icon: Package, label: 'Geräte' },
+    { path: '/cases', icon: Boxes, label: 'Cases' },
     { path: '/zones', icon: MapPin, label: 'Zonen' },
     { path: '/jobs', icon: Briefcase, label: 'Jobs' },
     { path: '/maintenance', icon: Wrench, label: 'Wartung' },

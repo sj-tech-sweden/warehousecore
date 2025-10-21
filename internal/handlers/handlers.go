@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -945,15 +946,355 @@ func CompleteJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetCases(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, []map[string]string{})
+	db := repository.GetSQLDB()
+
+	search := strings.TrimSpace(r.URL.Query().Get("search"))
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	limit := 200
+
+	query := `
+		SELECT 
+			c.caseID,
+			c.name,
+			c.description,
+			c.status,
+			c.width,
+			c.height,
+			c.depth,
+			c.weight,
+			c.zone_id,
+			COALESCE(z.name, '') AS zone_name,
+			COALESCE(z.code, '') AS zone_code,
+			COUNT(dc.deviceID) AS device_count
+		FROM cases c
+		LEFT JOIN devicescases dc ON c.caseID = dc.caseID
+		LEFT JOIN storage_zones z ON c.zone_id = z.zone_id
+		WHERE 1=1
+	`
+
+	args := []interface{}{}
+
+	if search != "" {
+		query += " AND (c.name LIKE ? OR c.description LIKE ?)"
+		searchTerm := "%" + search + "%"
+		args = append(args, searchTerm, searchTerm)
+	}
+
+	if status != "" {
+		query += " AND c.status = ?"
+		args = append(args, status)
+	}
+
+	query += `
+		GROUP BY c.caseID, c.name, c.description, c.status, c.width, c.height, c.depth, c.weight, c.zone_id, zone_name, zone_code
+		ORDER BY c.name ASC
+		LIMIT ?
+	`
+	args = append(args, limit)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		log.Printf("GetCases query error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load cases"})
+		return
+	}
+	defer rows.Close()
+
+	type CaseSummary struct {
+		CaseID      int      `json:"case_id"`
+		Name        string   `json:"name"`
+		Description *string  `json:"description,omitempty"`
+		Status      string   `json:"status"`
+		Width       *float64 `json:"width,omitempty"`
+		Height      *float64 `json:"height,omitempty"`
+		Depth       *float64 `json:"depth,omitempty"`
+		Weight      *float64 `json:"weight,omitempty"`
+		ZoneID      *int     `json:"zone_id,omitempty"`
+		ZoneName    *string  `json:"zone_name,omitempty"`
+		ZoneCode    *string  `json:"zone_code,omitempty"`
+		DeviceCount int      `json:"device_count"`
+	}
+
+	cases := []CaseSummary{}
+
+	for rows.Next() {
+		var item CaseSummary
+		var description sql.NullString
+		var width, height, depth, weight sql.NullFloat64
+		var zoneID sql.NullInt64
+		var zoneName, zoneCode sql.NullString
+		var deviceCount sql.NullInt64
+
+		err := rows.Scan(
+			&item.CaseID,
+			&item.Name,
+			&description,
+			&item.Status,
+			&width,
+			&height,
+			&depth,
+			&weight,
+			&zoneID,
+			&zoneName,
+			&zoneCode,
+			&deviceCount,
+		)
+		if err != nil {
+			log.Printf("GetCases scan error: %v", err)
+			continue
+		}
+
+		if description.Valid {
+			item.Description = &description.String
+		}
+		if width.Valid {
+			value := width.Float64
+			item.Width = &value
+		}
+		if height.Valid {
+			value := height.Float64
+			item.Height = &value
+		}
+		if depth.Valid {
+			value := depth.Float64
+			item.Depth = &value
+		}
+		if weight.Valid {
+			value := weight.Float64
+			item.Weight = &value
+		}
+		if zoneID.Valid {
+			value := int(zoneID.Int64)
+			item.ZoneID = &value
+		}
+		if zoneName.Valid && zoneName.String != "" {
+			val := zoneName.String
+			item.ZoneName = &val
+		}
+		if zoneCode.Valid && zoneCode.String != "" {
+			val := zoneCode.String
+			item.ZoneCode = &val
+		}
+		if deviceCount.Valid {
+			item.DeviceCount = int(deviceCount.Int64)
+		}
+
+		cases = append(cases, item)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"cases": cases,
+		"meta": map[string]interface{}{
+			"count": len(cases),
+		},
+	})
 }
 
 func GetCase(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]string{})
+	db := repository.GetSQLDB()
+	vars := mux.Vars(r)
+	caseID := vars["id"]
+
+	query := `
+		SELECT 
+			c.caseID,
+			c.name,
+			c.description,
+			c.status,
+			c.width,
+			c.height,
+			c.depth,
+			c.weight,
+			c.zone_id,
+			COALESCE(z.name, '') AS zone_name,
+			COALESCE(z.code, '') AS zone_code,
+			COUNT(dc.deviceID) AS device_count
+		FROM cases c
+		LEFT JOIN devicescases dc ON c.caseID = dc.caseID
+		LEFT JOIN storage_zones z ON c.zone_id = z.zone_id
+		WHERE c.caseID = ?
+		GROUP BY c.caseID, c.name, c.description, c.status, c.width, c.height, c.depth, c.weight, c.zone_id, zone_name, zone_code
+	`
+
+	var description sql.NullString
+	var width, height, depth, weight sql.NullFloat64
+	var zoneID sql.NullInt64
+	var zoneName, zoneCode sql.NullString
+	var deviceCount sql.NullInt64
+
+	type CaseDetail struct {
+		CaseID      int      `json:"case_id"`
+		Name        string   `json:"name"`
+		Description *string  `json:"description,omitempty"`
+		Status      string   `json:"status"`
+		Width       *float64 `json:"width,omitempty"`
+		Height      *float64 `json:"height,omitempty"`
+		Depth       *float64 `json:"depth,omitempty"`
+		Weight      *float64 `json:"weight,omitempty"`
+		ZoneID      *int     `json:"zone_id,omitempty"`
+		ZoneName    *string  `json:"zone_name,omitempty"`
+		ZoneCode    *string  `json:"zone_code,omitempty"`
+		DeviceCount int      `json:"device_count"`
+	}
+
+	var item CaseDetail
+
+	err := db.QueryRow(query, caseID).Scan(
+		&item.CaseID,
+		&item.Name,
+		&description,
+		&item.Status,
+		&width,
+		&height,
+		&depth,
+		&weight,
+		&zoneID,
+		&zoneName,
+		&zoneCode,
+		&deviceCount,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "Case not found"})
+			return
+		}
+		log.Printf("GetCase query error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load case"})
+		return
+	}
+
+	if description.Valid {
+		item.Description = &description.String
+	}
+	if width.Valid {
+		value := width.Float64
+		item.Width = &value
+	}
+	if height.Valid {
+		value := height.Float64
+		item.Height = &value
+	}
+	if depth.Valid {
+		value := depth.Float64
+		item.Depth = &value
+	}
+	if weight.Valid {
+		value := weight.Float64
+		item.Weight = &value
+	}
+	if zoneID.Valid {
+		value := int(zoneID.Int64)
+		item.ZoneID = &value
+	}
+	if zoneName.Valid && zoneName.String != "" {
+		val := zoneName.String
+		item.ZoneName = &val
+	}
+	if zoneCode.Valid && zoneCode.String != "" {
+		val := zoneCode.String
+		item.ZoneCode = &val
+	}
+	if deviceCount.Valid {
+		item.DeviceCount = int(deviceCount.Int64)
+	}
+
+	respondJSON(w, http.StatusOK, item)
 }
 
 func GetCaseContents(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, []map[string]string{})
+	db := repository.GetSQLDB()
+	vars := mux.Vars(r)
+	caseID := vars["id"]
+
+	query := `
+		SELECT 
+			d.deviceID,
+			d.status,
+			d.serialnumber,
+			d.barcode,
+			d.zone_id,
+			COALESCE(z.name, '') AS zone_name,
+			COALESCE(z.code, '') AS zone_code,
+			COALESCE(p.name, '') AS product_name
+		FROM devicescases dc
+		INNER JOIN devices d ON dc.deviceID = d.deviceID
+		LEFT JOIN products p ON d.productID = p.productID
+		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		WHERE dc.caseID = ?
+		ORDER BY d.deviceID ASC
+	`
+
+	rows, err := db.Query(query, caseID)
+	if err != nil {
+		log.Printf("GetCaseContents query error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load case devices"})
+		return
+	}
+	defer rows.Close()
+
+	type CaseDevice struct {
+		DeviceID     string  `json:"device_id"`
+		Status       string  `json:"status"`
+		SerialNumber *string `json:"serial_number,omitempty"`
+		Barcode      *string `json:"barcode,omitempty"`
+		ProductName  *string `json:"product_name,omitempty"`
+		ZoneID       *int    `json:"zone_id,omitempty"`
+		ZoneName     *string `json:"zone_name,omitempty"`
+		ZoneCode     *string `json:"zone_code,omitempty"`
+	}
+
+	devices := []CaseDevice{}
+
+	for rows.Next() {
+		var device CaseDevice
+		var serialNumber, barcode, productName sql.NullString
+		var zoneID sql.NullInt64
+		var zoneName, zoneCode sql.NullString
+
+		err := rows.Scan(
+			&device.DeviceID,
+			&device.Status,
+			&serialNumber,
+			&barcode,
+			&zoneID,
+			&zoneName,
+			&zoneCode,
+			&productName,
+		)
+		if err != nil {
+			log.Printf("GetCaseContents scan error: %v", err)
+			continue
+		}
+
+		if serialNumber.Valid && serialNumber.String != "" {
+			val := serialNumber.String
+			device.SerialNumber = &val
+		}
+		if barcode.Valid && barcode.String != "" {
+			val := barcode.String
+			device.Barcode = &val
+		}
+		if productName.Valid && productName.String != "" {
+			val := productName.String
+			device.ProductName = &val
+		}
+		if zoneID.Valid {
+			value := int(zoneID.Int64)
+			device.ZoneID = &value
+		}
+		if zoneName.Valid && zoneName.String != "" {
+			val := zoneName.String
+			device.ZoneName = &val
+		}
+		if zoneCode.Valid && zoneCode.String != "" {
+			val := zoneCode.String
+			device.ZoneCode = &val
+		}
+
+		devices = append(devices, device)
+	}
+
+	respondJSON(w, http.StatusOK, devices)
 }
 
 // GetDefects returns defect reports with filters

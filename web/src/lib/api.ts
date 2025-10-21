@@ -66,6 +66,41 @@ export interface DeviceTreeResponse {
   treeData: DeviceTreeCategory[];
 }
 
+export interface CaseSummary {
+  case_id: number;
+  name: string;
+  description?: string;
+  status: string;
+  width?: number;
+  height?: number;
+  depth?: number;
+  weight?: number;
+  zone_id?: number;
+  zone_name?: string;
+  zone_code?: string;
+  device_count: number;
+}
+
+export interface CaseDetail extends CaseSummary {}
+
+export interface CaseDevice {
+  device_id: string;
+  status: string;
+  serial_number?: string;
+  barcode?: string;
+  product_name?: string;
+  zone_id?: number;
+  zone_name?: string;
+  zone_code?: string;
+}
+
+export interface CasesResponse {
+  cases: CaseSummary[];
+  meta?: {
+    count: number;
+  };
+}
+
 export interface Zone {
   zone_id: number;
   code: string;
@@ -179,6 +214,13 @@ export const devicesApi = {
   getById: (id: string) => api.get<Device>(`/devices/${id}`),
   getMovements: (id: string) => api.get(`/devices/${id}/movements`),
   getTree: () => api.get<DeviceTreeResponse>('/devices/tree'),
+};
+
+export const casesApi = {
+  list: (params?: { search?: string; status?: string }) =>
+    api.get<CasesResponse>('/cases', { params }),
+  getById: (id: number) => api.get<CaseDetail>(`/cases/${id}`),
+  getDevices: (id: number) => api.get<CaseDevice[]>(`/cases/${id}/contents`),
 };
 
 export const zonesApi = {

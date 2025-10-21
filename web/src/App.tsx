@@ -11,6 +11,7 @@ import { ZonesPage } from './pages/ZonesPage';
 import { ZoneDetailPage } from './pages/ZoneDetailPage';
 import { JobsPage } from './pages/JobsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
+import { CasesPage } from './pages/CasesPage';
 import { AdminPage } from './pages/AdminPage';
 import { ProfilePage } from './pages/ProfilePage';
 
@@ -28,6 +29,7 @@ function App() {
           <Route path="/devices" element={<ProtectedRoute><Layout><DevicesPage /></Layout></ProtectedRoute>} />
           <Route path="/zones" element={<ProtectedRoute><Layout><ZonesPage /></Layout></ProtectedRoute>} />
           <Route path="/zones/:id" element={<ProtectedRoute><Layout><ZoneDetailPage /></Layout></ProtectedRoute>} />
+          <Route path="/cases" element={<ProtectedRoute><Layout><CasesPage /></Layout></ProtectedRoute>} />
           <Route path="/jobs" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />
           <Route path="/maintenance" element={<ProtectedRoute><Layout><MaintenancePage /></Layout></ProtectedRoute>} />
           <Route
