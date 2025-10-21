@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
+import { RoleGuard } from './components/RoleGuard';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { ScanPage } from './pages/ScanPage';
@@ -29,7 +30,18 @@ function App() {
           <Route path="/zones/:id" element={<ProtectedRoute><Layout><ZoneDetailPage /></Layout></ProtectedRoute>} />
           <Route path="/jobs" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />
           <Route path="/maintenance" element={<ProtectedRoute><Layout><MaintenancePage /></Layout></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><Layout><AdminPage /></Layout></ProtectedRoute>} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin']}>
+                    <AdminPage />
+                  </RoleGuard>
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
           <Route path="/profile" element={<ProtectedRoute><Layout><ProfilePage /></Layout></ProtectedRoute>} />
         </Routes>
       </AuthProvider>

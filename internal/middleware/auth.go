@@ -9,6 +9,7 @@ import (
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
+	"warehousecore/internal/services"
 )
 
 type contextKey string
@@ -67,6 +68,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Load user roles for reuse in downstream handlers
+		rbacService := services.NewRBACService()
+		if roles, err := rbacService.GetUserRoles(session.User.UserID); err == nil {
+			session.User.Roles = roles
+		} else {
+			fmt.Printf("DEBUG [WarehouseCore]: Failed to load roles for user %d: %v\n", session.User.UserID, err)
+		}
+
 		// Add user to request context
 		ctx := context.WithValue(r.Context(), UserContextKey, &session.User)
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -101,6 +110,11 @@ func OptionalAuthMiddleware(next http.Handler) http.Handler {
 				First(&session).Error
 
 			if err == nil && session.User.IsActive {
+				// Load roles for optional contexts too
+				rbacService := services.NewRBACService()
+				if roles, roleErr := rbacService.GetUserRoles(session.User.UserID); roleErr == nil {
+					session.User.Roles = roles
+				}
 				// Valid session - add user to context
 				ctx := context.WithValue(r.Context(), UserContextKey, &session.User)
 				r = r.WithContext(ctx)

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface LayoutProps {
@@ -86,15 +86,30 @@ export function Layout({ children }: LayoutProps) {
   // Debug log
   console.log('RentalCore URL:', rentalCoreURL);
 
-  const navItems = [
+  const userRoles = (user?.Roles ?? user?.roles ?? []) as any[];
+  const hasAdminAccess = useMemo(() => {
+    return userRoles.some((role) => {
+      const name = (role?.name || role?.Name || '').toString().toLowerCase();
+      return name === 'admin' || name === 'manager' || name === 'warehouse_admin';
+    });
+  }, [userRoles]);
+
+  const baseNavItems = useMemo(() => ([
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/scan', icon: ScanLine, label: 'Scan' },
     { path: '/devices', icon: Package, label: 'Geräte' },
     { path: '/zones', icon: MapPin, label: 'Zonen' },
     { path: '/jobs', icon: Briefcase, label: 'Jobs' },
     { path: '/maintenance', icon: Wrench, label: 'Wartung' },
-    { path: '/admin', icon: Settings, label: 'Admin' },
-  ];
+  ]), []);
+
+  const navItems = useMemo(() => {
+    const items = [...baseNavItems];
+    if (hasAdminAccess) {
+      items.push({ path: '/admin', icon: Settings, label: 'Admin' });
+    }
+    return items;
+  }, [baseNavItems, hasAdminAccess]);
 
   return (
     <div className="min-h-screen bg-dark">

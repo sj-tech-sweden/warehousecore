@@ -1,6 +1,13 @@
 // Auth API Service
 const API_BASE = '/api/v1';
 
+export interface Role {
+  id: number;
+  name: string;
+  display_name?: string;
+  description?: string;
+}
+
 export interface User {
   UserID: number;
   Username: string;
@@ -8,6 +15,8 @@ export interface User {
   FirstName: string;
   LastName: string;
   IsActive: boolean;
+  Roles?: Role[];
+  roles?: Role[];
 }
 
 export interface LoginRequest {

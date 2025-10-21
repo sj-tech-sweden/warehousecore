@@ -14,6 +14,7 @@ type User struct {
 	CreatedAt    time.Time  `gorm:"column:created_at"`
 	UpdatedAt    time.Time  `gorm:"column:updated_at"`
 	LastLogin    *time.Time `gorm:"column:last_login"`
+	Roles        []Role     `json:"roles,omitempty" gorm:"-"`
 }
 
 // TableName specifies the table name for User model

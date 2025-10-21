@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Users, Shield, Save } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Role {
   id: number;
@@ -18,11 +19,26 @@ interface UserWithRoles {
 }
 
 export function RolesTab() {
+  const { user } = useAuth();
   const [users, setUsers] = useState<UserWithRoles[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserWithRoles | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
+
+  const currentRoles = useMemo(
+    () => (user?.Roles ?? user?.roles ?? []) as Role[],
+    [user]
+  );
+  const restrictedRoleNames = useMemo(() => ['admin', 'manager', 'super_admin'], []);
+  const canManageRestricted = useMemo(
+    () =>
+      currentRoles.some(role => {
+        const name = (role.name ?? '').toLowerCase();
+        return name === 'admin' || name === 'super_admin';
+      }),
+    [currentRoles]
+  );
 
   useEffect(() => {
     loadData();
@@ -47,6 +63,14 @@ export function RolesTab() {
   };
 
   const toggleRole = (roleId: number) => {
+    const role = roles.find(r => r.id === roleId);
+    if (!role) return;
+
+    const isRestricted = restrictedRoleNames.includes((role.name ?? '').toLowerCase());
+    if (isRestricted && !canManageRestricted) {
+      return;
+    }
+
     setSelectedRoles(prev =>
       prev.includes(roleId)
         ? prev.filter(id => id !== roleId)
@@ -133,26 +157,39 @@ export function RolesTab() {
               </div>
 
               <div className="space-y-2">
-                {roles.map(role => (
-                  <label
-                    key={role.id}
-                    className="flex items-center gap-3 p-3 rounded-lg glass cursor-pointer hover:bg-white/5"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedRoles.includes(role.id)}
-                      onChange={() => toggleRole(role.id)}
-                      className="w-5 h-5 rounded accent-accent-red"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4 text-blue-400" />
-                        <span className="text-white font-semibold">{role.name}</span>
+                {roles.map(role => {
+                  const isRestricted = restrictedRoleNames.includes((role.name ?? '').toLowerCase());
+                  const disabled = isRestricted && !canManageRestricted;
+                  return (
+                    <label
+                      key={role.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg glass transition-colors ${
+                        disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:bg-white/5'
+                      }`}
+                      title={disabled ? 'Nur System-Admins dürfen diese Rolle ändern' : undefined}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedRoles.includes(role.id)}
+                        onChange={() => toggleRole(role.id)}
+                        className="w-5 h-5 rounded accent-accent-red"
+                        disabled={disabled}
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-blue-400" />
+                          <span className="text-white font-semibold">{role.name}</span>
+                        </div>
+                        <p className="text-gray-400 text-sm">{role.description}</p>
+                        {disabled && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Diese Rolle kann nur durch System-Admins angepasst werden.
+                          </p>
+                        )}
                       </div>
-                      <p className="text-gray-400 text-sm">{role.description}</p>
-                    </div>
-                  </label>
-                ))}
+                    </label>
+                  );
+                })}
               </div>
 
               <button

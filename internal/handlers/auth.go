@@ -12,6 +12,7 @@ import (
 	"warehousecore/internal/middleware"
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
+	"warehousecore/internal/services"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -103,6 +104,10 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	// Return success (without password hash)
 	user.PasswordHash = ""
+	rbacService := services.NewRBACService()
+	if roles, err := rbacService.GetUserRoles(user.UserID); err == nil {
+		user.Roles = roles
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{
 		Success: true,

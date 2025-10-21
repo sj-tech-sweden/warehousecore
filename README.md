@@ -107,6 +107,7 @@ Migrations
    - Device packing status
    - Missing item detection
    - Job completion workflow
+   - Job-Code Scans (`JOB000123`) laden Aufträge direkt in den Pack-Workflow
 
 5. **Maintenance Engine**
    - Defect reporting with severity

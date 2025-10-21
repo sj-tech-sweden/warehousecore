@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -28,7 +29,7 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status": "healthy",
+		"status":  "healthy",
 		"service": "WarehouseCore",
 	})
 }
@@ -139,20 +140,20 @@ func GetDevices(w http.ResponseWriter, r *http.Request) {
 
 	// Response struct with clean JSON types
 	type DeviceResponse struct {
-		DeviceID        string   `json:"device_id"`
-		ProductID       *int64   `json:"product_id,omitempty"`
-		ProductName     string   `json:"product_name,omitempty"`
-		SerialNumber    *string  `json:"serial_number,omitempty"`
-		Barcode         *string  `json:"barcode,omitempty"`
-		QRCode          *string  `json:"qr_code,omitempty"`
-		Status          string   `json:"status"`
-		ZoneID          *int64   `json:"zone_id,omitempty"`
-		ZoneName        string   `json:"zone_name,omitempty"`
-		ZoneCode        string   `json:"zone_code,omitempty"`
-		CaseName        string   `json:"case_name,omitempty"`
-		JobNumber       string   `json:"job_number,omitempty"`
-		ConditionRating float64  `json:"condition_rating"`
-		UsageHours      float64  `json:"usage_hours"`
+		DeviceID        string  `json:"device_id"`
+		ProductID       *int64  `json:"product_id,omitempty"`
+		ProductName     string  `json:"product_name,omitempty"`
+		SerialNumber    *string `json:"serial_number,omitempty"`
+		Barcode         *string `json:"barcode,omitempty"`
+		QRCode          *string `json:"qr_code,omitempty"`
+		Status          string  `json:"status"`
+		ZoneID          *int64  `json:"zone_id,omitempty"`
+		ZoneName        string  `json:"zone_name,omitempty"`
+		ZoneCode        string  `json:"zone_code,omitempty"`
+		CaseName        string  `json:"case_name,omitempty"`
+		JobNumber       string  `json:"job_number,omitempty"`
+		ConditionRating float64 `json:"condition_rating"`
+		UsageHours      float64 `json:"usage_hours"`
 	}
 
 	devices := []DeviceResponse{}
@@ -210,20 +211,20 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 
 	// Response struct with clean JSON types
 	type DeviceResponse struct {
-		DeviceID        string   `json:"device_id"`
-		ProductID       *int64   `json:"product_id,omitempty"`
-		ProductName     string   `json:"product_name,omitempty"`
-		SerialNumber    *string  `json:"serial_number,omitempty"`
-		Barcode         *string  `json:"barcode,omitempty"`
-		QRCode          *string  `json:"qr_code,omitempty"`
-		Status          string   `json:"status"`
-		ZoneID          *int64   `json:"zone_id,omitempty"`
-		ZoneName        string   `json:"zone_name,omitempty"`
-		ZoneCode        string   `json:"zone_code,omitempty"`
-		CaseName        string   `json:"case_name,omitempty"`
-		JobNumber       string   `json:"job_number,omitempty"`
-		ConditionRating float64  `json:"condition_rating"`
-		UsageHours      float64  `json:"usage_hours"`
+		DeviceID        string  `json:"device_id"`
+		ProductID       *int64  `json:"product_id,omitempty"`
+		ProductName     string  `json:"product_name,omitempty"`
+		SerialNumber    *string `json:"serial_number,omitempty"`
+		Barcode         *string `json:"barcode,omitempty"`
+		QRCode          *string `json:"qr_code,omitempty"`
+		Status          string  `json:"status"`
+		ZoneID          *int64  `json:"zone_id,omitempty"`
+		ZoneName        string  `json:"zone_name,omitempty"`
+		ZoneCode        string  `json:"zone_code,omitempty"`
+		CaseName        string  `json:"case_name,omitempty"`
+		JobNumber       string  `json:"job_number,omitempty"`
+		ConditionRating float64 `json:"condition_rating"`
+		UsageHours      float64 `json:"usage_hours"`
 	}
 
 	var device models.DeviceWithDetails
@@ -344,10 +345,12 @@ func GetDeviceMovements(w http.ResponseWriter, r *http.Request) {
 func GetZones(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 	rows, err := db.Query(`
-		SELECT zone_id, code, barcode, name, type, description, parent_zone_id, capacity, is_active
-		FROM storage_zones
-		WHERE is_active = TRUE
-		ORDER BY name
+		SELECT z.zone_id, z.code, z.barcode, z.name, z.type, z.description, z.parent_zone_id, z.capacity, z.is_active
+		FROM storage_zones z
+		LEFT JOIN storage_zones parent ON parent.zone_id = z.parent_zone_id
+		WHERE z.is_active = TRUE
+		  AND (z.parent_zone_id IS NULL OR parent.is_active = TRUE)
+		ORDER BY z.name
 	`)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -748,7 +751,9 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 	query := `
-		SELECT j.jobID, j.description, j.startDate, j.endDate, s.status,
+		SELECT j.jobID,
+		       COALESCE(j.job_code, CONCAT('JOB', LPAD(j.jobID, 6, '0'))) AS job_code,
+		       j.description, j.startDate, j.endDate, s.status,
 		       COALESCE(c.firstName, '') as customer_first_name,
 		       COALESCE(c.lastName, '') as customer_last_name,
 		       COUNT(DISTINCT jd.deviceID) as device_count
@@ -776,6 +781,7 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 
 	type JobResponse struct {
 		JobID             int     `json:"job_id"`
+		JobCode           string  `json:"job_code"`
 		Description       *string `json:"description,omitempty"`
 		StartDate         *string `json:"start_date,omitempty"`
 		EndDate           *string `json:"end_date,omitempty"`
@@ -790,7 +796,7 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		var j JobResponse
 		var description, startDate, endDate sql.NullString
 
-		if err := rows.Scan(&j.JobID, &description, &startDate, &endDate, &j.Status,
+		if err := rows.Scan(&j.JobID, &j.JobCode, &description, &startDate, &endDate, &j.Status,
 			&j.CustomerFirstName, &j.CustomerLastName, &j.DeviceCount); err != nil {
 			log.Printf("Error scanning job row: %v", err)
 			continue
@@ -814,26 +820,32 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 
 func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	jobID := vars["id"]
+	jobIDStr := vars["id"]
+	jobID, err := strconv.Atoi(jobIDStr)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid job ID"})
+		return
+	}
 
 	db := repository.GetSQLDB()
 
 	// Get job details
 	var (
-		description, startDate, endDate sql.NullString
-		status                          string
+		jobCode                             sql.NullString
+		description, startDate, endDate     sql.NullString
+		status                              string
 		customerFirstName, customerLastName string
 	)
 
-	err := db.QueryRow(`
-		SELECT j.description, j.startDate, j.endDate, s.status,
+	err = db.QueryRow(`
+		SELECT j.job_code, j.description, j.startDate, j.endDate, s.status,
 		       COALESCE(c.firstName, '') as customer_first_name,
 		       COALESCE(c.lastName, '') as customer_last_name
 		FROM jobs j
 		LEFT JOIN status s ON j.statusID = s.statusID
 		LEFT JOIN customers c ON j.customerID = c.customerID
 		WHERE j.jobID = ?
-	`, jobID).Scan(&description, &startDate, &endDate, &status, &customerFirstName, &customerLastName)
+	`, jobID).Scan(&jobCode, &description, &startDate, &endDate, &status, &customerFirstName, &customerLastName)
 
 	if err == sql.ErrNoRows {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Job not found"})
@@ -901,8 +913,14 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		devices = append(devices, jd)
 	}
 
+	jobCodeValue := fmt.Sprintf("JOB%06d", jobID)
+	if jobCode.Valid && jobCode.String != "" {
+		jobCodeValue = jobCode.String
+	}
+
 	response := map[string]interface{}{
 		"job_id":              jobID,
+		"job_code":            jobCodeValue,
 		"status":              status,
 		"customer_first_name": customerFirstName,
 		"customer_last_name":  customerLastName,
@@ -979,17 +997,17 @@ func GetDefects(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type DefectResponse struct {
-		DefectID    int64   `json:"defect_id"`
-		DeviceID    string  `json:"device_id"`
-		Severity    string  `json:"severity"`
-		Status      string  `json:"status"`
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		ReportedAt  string  `json:"reported_at"`
+		DefectID    int64    `json:"defect_id"`
+		DeviceID    string   `json:"device_id"`
+		Severity    string   `json:"severity"`
+		Status      string   `json:"status"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		ReportedAt  string   `json:"reported_at"`
 		RepairCost  *float64 `json:"repair_cost,omitempty"`
-		RepairedAt  *string `json:"repaired_at,omitempty"`
-		ClosedAt    *string `json:"closed_at,omitempty"`
-		ProductName string  `json:"product_name,omitempty"`
+		RepairedAt  *string  `json:"repaired_at,omitempty"`
+		ClosedAt    *string  `json:"closed_at,omitempty"`
+		ProductName string   `json:"product_name,omitempty"`
 	}
 
 	defects := []DefectResponse{}
@@ -1028,11 +1046,11 @@ func GetDefects(w http.ResponseWriter, r *http.Request) {
 
 func CreateDefect(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		DeviceID    string  `json:"device_id"`
-		Severity    string  `json:"severity"`
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		AssignedTo  *int64  `json:"assigned_to,omitempty"`
+		DeviceID    string `json:"device_id"`
+		Severity    string `json:"severity"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		AssignedTo  *int64 `json:"assigned_to,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -1187,16 +1205,16 @@ func GetInspections(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type InspectionResponse struct {
-		ScheduleID      int64   `json:"schedule_id"`
-		DeviceID        *string `json:"device_id,omitempty"`
-		ProductID       *int64  `json:"product_id,omitempty"`
-		InspectionType  string  `json:"inspection_type"`
-		IntervalDays    int     `json:"interval_days"`
-		LastInspection  *string `json:"last_inspection,omitempty"`
-		NextInspection  *string `json:"next_inspection,omitempty"`
-		IsActive        bool    `json:"is_active"`
-		ProductName     string  `json:"product_name,omitempty"`
-		DeviceName      string  `json:"device_name,omitempty"`
+		ScheduleID     int64   `json:"schedule_id"`
+		DeviceID       *string `json:"device_id,omitempty"`
+		ProductID      *int64  `json:"product_id,omitempty"`
+		InspectionType string  `json:"inspection_type"`
+		IntervalDays   int     `json:"interval_days"`
+		LastInspection *string `json:"last_inspection,omitempty"`
+		NextInspection *string `json:"next_inspection,omitempty"`
+		IsActive       bool    `json:"is_active"`
+		ProductName    string  `json:"product_name,omitempty"`
+		DeviceName     string  `json:"device_name,omitempty"`
 	}
 
 	inspections := []InspectionResponse{}
@@ -1252,7 +1270,170 @@ func GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetMovements(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, []map[string]string{})
+	limit := parseInt(r.URL.Query().Get("limit"), 10)
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	db := repository.GetSQLDB()
+	rows, err := db.Query(`
+		SELECT
+			dm.movement_id,
+			dm.device_id,
+			dm.action,
+			dm.from_zone_id,
+			dm.to_zone_id,
+			dm.from_job_id,
+			dm.to_job_id,
+			dm.timestamp,
+			d.barcode,
+			d.serialnumber,
+			p.name,
+			fz.name,
+			tz.name,
+			fj.description,
+			tj.description,
+			COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.username) as performed_by
+		FROM device_movements dm
+		LEFT JOIN devices d ON dm.device_id = d.deviceID
+		LEFT JOIN products p ON d.productID = p.productID
+		LEFT JOIN storage_zones fz ON dm.from_zone_id = fz.zone_id
+		LEFT JOIN storage_zones tz ON dm.to_zone_id = tz.zone_id
+		LEFT JOIN jobs fj ON dm.from_job_id = fj.jobID
+		LEFT JOIN jobs tj ON dm.to_job_id = tj.jobID
+		LEFT JOIN users u ON dm.user_id = u.userID
+		ORDER BY dm.timestamp DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		log.Printf("Error querying movements: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load movements"})
+		return
+	}
+	defer rows.Close()
+
+	type movementResponse struct {
+		MovementID         int64     `json:"movement_id"`
+		DeviceID           string    `json:"device_id"`
+		Action             string    `json:"action"`
+		Timestamp          time.Time `json:"timestamp"`
+		FromZoneID         *int64    `json:"from_zone_id,omitempty"`
+		ToZoneID           *int64    `json:"to_zone_id,omitempty"`
+		FromJobID          *int64    `json:"from_job_id,omitempty"`
+		ToJobID            *int64    `json:"to_job_id,omitempty"`
+		Barcode            *string   `json:"barcode,omitempty"`
+		SerialNumber       *string   `json:"serial_number,omitempty"`
+		ProductName        *string   `json:"product_name,omitempty"`
+		FromZoneName       *string   `json:"from_zone_name,omitempty"`
+		ToZoneName         *string   `json:"to_zone_name,omitempty"`
+		FromJobDescription *string   `json:"from_job_description,omitempty"`
+		ToJobDescription   *string   `json:"to_job_description,omitempty"`
+		PerformedBy        *string   `json:"performed_by,omitempty"`
+	}
+
+	movements := []movementResponse{}
+
+	for rows.Next() {
+		var (
+			movement     movementResponse
+			fromZoneID   sql.NullInt64
+			toZoneID     sql.NullInt64
+			fromJobID    sql.NullInt64
+			toJobID      sql.NullInt64
+			barcode      sql.NullString
+			serial       sql.NullString
+			product      sql.NullString
+			fromZoneName sql.NullString
+			toZoneName   sql.NullString
+			fromJobDesc  sql.NullString
+			toJobDesc    sql.NullString
+			performedBy  sql.NullString
+		)
+
+		if err := rows.Scan(
+			&movement.MovementID,
+			&movement.DeviceID,
+			&movement.Action,
+			&fromZoneID,
+			&toZoneID,
+			&fromJobID,
+			&toJobID,
+			&movement.Timestamp,
+			&barcode,
+			&serial,
+			&product,
+			&fromZoneName,
+			&toZoneName,
+			&fromJobDesc,
+			&toJobDesc,
+			&performedBy,
+		); err != nil {
+			log.Printf("Error scanning movement row: %v", err)
+			continue
+		}
+
+		if fromZoneID.Valid {
+			value := fromZoneID.Int64
+			movement.FromZoneID = &value
+		}
+		if toZoneID.Valid {
+			value := toZoneID.Int64
+			movement.ToZoneID = &value
+		}
+		if fromJobID.Valid {
+			value := fromJobID.Int64
+			movement.FromJobID = &value
+		}
+		if toJobID.Valid {
+			value := toJobID.Int64
+			movement.ToJobID = &value
+		}
+		if barcode.Valid {
+			value := barcode.String
+			movement.Barcode = &value
+		}
+		if serial.Valid {
+			value := serial.String
+			movement.SerialNumber = &value
+		}
+		if product.Valid {
+			value := product.String
+			movement.ProductName = &value
+		}
+		if fromZoneName.Valid {
+			value := fromZoneName.String
+			movement.FromZoneName = &value
+		}
+		if toZoneName.Valid {
+			value := toZoneName.String
+			movement.ToZoneName = &value
+		}
+		if fromJobDesc.Valid {
+			value := fromJobDesc.String
+			movement.FromJobDescription = &value
+		}
+		if toJobDesc.Valid {
+			value := toJobDesc.String
+			movement.ToJobDescription = &value
+		}
+		if performedBy.Valid {
+			value := performedBy.String
+			movement.PerformedBy = &value
+		}
+
+		movements = append(movements, movement)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating movement rows: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to process movements"})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, movements)
 }
 
 // GetDeviceTree returns devices organized in a hierarchical tree structure by categories
@@ -1322,11 +1503,11 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 		catID := int(categoryID.Int64)
 		if _, exists := categories[catID]; !exists {
 			categories[catID] = &map[string]interface{}{
-				"id":              catID,
-				"name":            categoryName.String,
-				"subcategories":   []interface{}{},
-				"direct_devices":  []interface{}{},
-				"device_count":    0,
+				"id":             catID,
+				"name":           categoryName.String,
+				"subcategories":  []interface{}{},
+				"direct_devices": []interface{}{},
+				"device_count":   0,
 			}
 		}
 
@@ -1335,11 +1516,11 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 			subCatID := subcategoryID.String
 			if _, exists := subcategories[subCatID]; !exists {
 				subcategories[subCatID] = &map[string]interface{}{
-					"id":                 subCatID,
-					"name":               subcategoryName.String,
-					"subbiercategories":  []interface{}{},
-					"direct_devices":     []interface{}{},
-					"device_count":       0,
+					"id":                subCatID,
+					"name":              subcategoryName.String,
+					"subbiercategories": []interface{}{},
+					"direct_devices":    []interface{}{},
+					"device_count":      0,
 				}
 				// Add subcategory to category
 				cat := *categories[catID]
@@ -1470,9 +1651,9 @@ func AssignDevicesToZone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"success":       successCount,
-		"total":         len(input.DeviceIDs),
-		"failed_count":  len(failedDevices),
+		"success":      successCount,
+		"total":        len(input.DeviceIDs),
+		"failed_count": len(failedDevices),
 	}
 
 	if len(failedDevices) > 0 {
@@ -1500,7 +1681,7 @@ func parseInt(s string, defaultVal int) int {
 	return val
 }
 
-// GetMaintenanceStats returns maintenance dashboard statistics  
+// GetMaintenanceStats returns maintenance dashboard statistics
 func GetMaintenanceStats(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 
@@ -1514,10 +1695,10 @@ func GetMaintenanceStats(w http.ResponseWriter, r *http.Request) {
 	db.QueryRow(`SELECT COUNT(*) FROM inspection_schedules WHERE next_inspection >= NOW() AND next_inspection <= DATE_ADD(NOW(), INTERVAL 30 DAY) AND is_active = 1`).Scan(&upcomingInspections)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"open_defects":        openDefects,
-		"in_progress_defects": inProgressDefects,
-		"repaired_defects":    repairedDefects,
-		"overdue_inspections": overdueInspections,
+		"open_defects":         openDefects,
+		"in_progress_defects":  inProgressDefects,
+		"repaired_defects":     repairedDefects,
+		"overdue_inspections":  overdueInspections,
 		"upcoming_inspections": upcomingInspections,
 	})
 }

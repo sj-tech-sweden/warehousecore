@@ -3,6 +3,8 @@ import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, L
 import { jobsApi, scansApi, ledApi } from '../lib/api';
 import type { Job, JobSummary, JobDevice, LEDStatus } from '../lib/api';
 
+const JOB_CODE_PATTERN = /^JOB\d+$/i;
+
 export function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobSummary | null>(null);
@@ -89,11 +91,22 @@ export function JobsPage() {
     }
   };
 
-  const loadJobDetails = async (jobId: number) => {
+  const loadJobDetails = async (jobId: number, options: { highlight?: boolean } = {}) => {
     try {
       setLoading(true);
       const { data } = await jobsApi.getById(jobId);
       setSelectedJob(data);
+
+      if (options.highlight !== false) {
+        setLedActive(false);
+        try {
+          await ledApi.highlightJob(jobId);
+          setLedActive(true);
+        } catch (error) {
+          console.error('Failed to highlight job LEDs:', error);
+          setLedActive(false);
+        }
+      }
     } catch (error) {
       console.error('Failed to load job details:', error);
     } finally {
@@ -101,9 +114,9 @@ export function JobsPage() {
     }
   };
 
-  const refreshJobDetails = async (jobId: string) => {
+  const refreshJobDetails = async (jobId: number) => {
     try {
-      const { data } = await jobsApi.getById(parseInt(jobId));
+      const { data } = await jobsApi.getById(jobId);
       setSelectedJob(data);
     } catch (error) {
       console.error('Failed to refresh job:', error);
@@ -112,7 +125,50 @@ export function JobsPage() {
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scanCode.trim() || !selectedJob) return;
+    const rawCode = scanCode.trim();
+    if (!rawCode) {
+      return;
+    }
+
+    const normalizedCode = rawCode.toUpperCase();
+
+    // Detect job code scans (e.g., JOB0001)
+    if (JOB_CODE_PATTERN.test(normalizedCode)) {
+      setScanLoading(true);
+      setScanResult(null);
+
+      try {
+        const numericPart = parseInt(normalizedCode.replace(/\D/g, ''), 10);
+        if (Number.isNaN(numericPart)) {
+          throw new Error('Ungültige Job-ID');
+        }
+
+        await loadJobDetails(numericPart, { highlight: true });
+        setScanResult({ success: true, message: `Job ${normalizedCode} geladen` });
+      } catch (error: any) {
+        console.error('Job scan failed:', error);
+        setScanResult({
+          success: false,
+          message: error.response?.data?.error || error.message || 'Job nicht gefunden',
+        });
+      } finally {
+        setScanCode('');
+        setScanLoading(false);
+        setTimeout(() => setScanResult(null), 3000);
+      }
+
+      return;
+    }
+
+    if (!selectedJob) {
+      setScanResult({
+        success: false,
+        message: 'Bitte zuerst einen Job auswählen oder scannen.',
+      });
+      setScanLoading(false);
+      setTimeout(() => setScanResult(null), 3000);
+      return;
+    }
 
     setScanLoading(true);
     setScanResult(null);
@@ -122,7 +178,7 @@ export function JobsPage() {
       const { data } = await scansApi.process({
         scan_code: scanCode,
         action: 'outtake',
-        job_id: parseInt(selectedJob.job_id),
+        job_id: selectedJob.job_id,
       });
 
       setScanResult({
@@ -177,7 +233,7 @@ export function JobsPage() {
         setLedActive(false);
       } else {
         // Turn on LEDs for this job
-        await ledApi.highlightJob(parseInt(selectedJob.job_id));
+        await ledApi.highlightJob(selectedJob.job_id);
         setLedActive(true);
       }
     } catch (error: any) {
@@ -220,7 +276,7 @@ export function JobsPage() {
               {jobs.map((job) => (
                 <button
                   key={job.job_id}
-                  onClick={() => loadJobDetails(job.job_id)}
+                  onClick={() => loadJobDetails(job.job_id, { highlight: false })}
                   className="glass-dark rounded-2xl p-6 border-2 border-white/10 hover:border-accent-red transition-all text-left group hover:scale-105"
                 >
                   <div className="flex items-start justify-between mb-4">
@@ -233,7 +289,7 @@ export function JobsPage() {
                   </div>
 
                   <h3 className="text-xl font-bold text-white mb-2">
-                    Job #{job.job_id}
+                    Job {job.job_code}
                   </h3>
 
                   {job.description && (
@@ -294,7 +350,7 @@ export function JobsPage() {
           <div className="glass-dark rounded-2xl p-6 border-2 border-white/10">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Job #{selectedJob.job_id}</h1>
+                <h1 className="text-3xl font-bold text-white mb-2">Job {selectedJob.job_code}</h1>
                 {selectedJob.description && (
                   <p className="text-gray-400">{selectedJob.description}</p>
                 )}

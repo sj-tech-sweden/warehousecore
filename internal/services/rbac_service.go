@@ -1,11 +1,11 @@
 package services
 
 import (
-    "fmt"
-    "log"
-    "os"
-
+	"fmt"
 	"gorm.io/gorm"
+	"log"
+	"os"
+	"time"
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 )
@@ -24,67 +24,67 @@ func NewRBACService() *RBACService {
 
 // GetUserRoles returns all roles for a specific user
 func (s *RBACService) GetUserRoles(userID uint) ([]models.Role, error) {
-    var roles []models.Role
-    err := s.db.Table("roles").
-        Joins("JOIN user_roles ON user_roles.roleID = roles.roleID").
-        Where("user_roles.userID = ?", userID).
-        Find(&roles).Error
+	var roles []models.Role
+	err := s.db.Table("roles").
+		Joins("JOIN user_roles ON user_roles.roleID = roles.roleID").
+		Where("user_roles.userID = ?", userID).
+		Find(&roles).Error
 
-    return roles, err
+	return roles, err
 }
 
 // HasRole checks if a user has a specific role
 func (s *RBACService) HasRole(userID uint, roleName string) (bool, error) {
-    var count int64
-    err := s.db.Table("user_roles").
-        Joins("JOIN roles ON roles.roleID = user_roles.roleID").
-        Where("user_roles.userID = ? AND roles.name = ?", userID, roleName).
-        Count(&count).Error
+	var count int64
+	err := s.db.Table("user_roles").
+		Joins("JOIN roles ON roles.roleID = user_roles.roleID").
+		Where("user_roles.userID = ? AND roles.name = ?", userID, roleName).
+		Count(&count).Error
 
-    return count > 0, err
+	return count > 0, err
 }
 
 // HasAnyRole checks if a user has any of the specified roles
 func (s *RBACService) HasAnyRole(userID uint, roleNames []string) (bool, error) {
-    var count int64
-    err := s.db.Table("user_roles").
-        Joins("JOIN roles ON roles.roleID = user_roles.roleID").
-        Where("user_roles.userID = ? AND roles.name IN ?", userID, roleNames).
-        Count(&count).Error
+	var count int64
+	err := s.db.Table("user_roles").
+		Joins("JOIN roles ON roles.roleID = user_roles.roleID").
+		Where("user_roles.userID = ? AND roles.name IN ?", userID, roleNames).
+		Count(&count).Error
 
-    return count > 0, err
+	return count > 0, err
 }
 
 // AssignRole assigns a role to a user
 func (s *RBACService) AssignRole(userID uint, roleID int) error {
-    userRole := models.UserRole{UserID: userID, RoleID: roleID, IsActive: true}
-    return s.db.Create(&userRole).Error
+	userRole := models.UserRole{UserID: userID, RoleID: roleID, AssignedAt: time.Now().UTC(), IsActive: true}
+	return s.db.Create(&userRole).Error
 }
 
 // RemoveRole removes a role from a user
 func (s *RBACService) RemoveRole(userID uint, roleID int) error {
-    return s.db.Where("userID = ? AND roleID = ?", userID, roleID).
-        Delete(&models.UserRole{}).Error
+	return s.db.Where("userID = ? AND roleID = ?", userID, roleID).
+		Delete(&models.UserRole{}).Error
 }
 
 // SetUserRoles replaces all user roles with the provided list
 func (s *RBACService) SetUserRoles(userID uint, roleIDs []int) error {
-    return s.db.Transaction(func(tx *gorm.DB) error {
-        // Delete existing roles
-        if err := tx.Where("userID = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
-            return err
-        }
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Delete existing roles
+		if err := tx.Where("userID = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
+			return err
+		}
 
-        // Insert new roles
-        for _, roleID := range roleIDs {
-            userRole := models.UserRole{UserID: userID, RoleID: roleID, IsActive: true}
-            if err := tx.Create(&userRole).Error; err != nil {
-                return err
-            }
-        }
+		// Insert new roles
+		for _, roleID := range roleIDs {
+			userRole := models.UserRole{UserID: userID, RoleID: roleID, IsActive: true}
+			if err := tx.Create(&userRole).Error; err != nil {
+				return err
+			}
+		}
 
-        return nil
-    })
+		return nil
+	})
 }
 
 // GetAllRoles returns all available roles
@@ -189,14 +189,14 @@ func (s *RBACService) FindUserByNamePattern(pattern string) (*models.User, error
 
 // EnsureAutoAdminFromEnv assigns admin role to the user matching ADMIN_NAME_MATCH (default: "N. Thielmann")
 func (s *RBACService) EnsureAutoAdminFromEnv() error {
-    match := os.Getenv("ADMIN_NAME_MATCH")
-    if match == "" {
-        match = "N. Thielmann"
-    }
-    user, err := s.FindUserByNamePattern(match)
-    if err != nil {
-        log.Printf("[RBAC] Auto-admin: no user matching %q found: %v", match, err)
-        return nil
-    }
-    return s.EnsureAdminForUser(user.UserID)
+	match := os.Getenv("ADMIN_NAME_MATCH")
+	if match == "" {
+		match = "N. Thielmann"
+	}
+	user, err := s.FindUserByNamePattern(match)
+	if err != nil {
+		log.Printf("[RBAC] Auto-admin: no user matching %q found: %v", match, err)
+		return nil
+	}
+	return s.EnsureAdminForUser(user.UserID)
 }
