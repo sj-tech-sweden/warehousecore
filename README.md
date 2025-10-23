@@ -232,6 +232,8 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 
 **Multi-ESP32 Quick Start:**
 
+> 📖 **Für eine detaillierte Anleitung mit Hardware-Anforderungen, Verkabelung, Troubleshooting und mehr, siehe [MULTI_ESP32_GUIDE.md](MULTI_ESP32_GUIDE.md)**
+
 1. **Flash Firmware** (same firmware on all ESP32s):
    - Follow detailed instructions in [firmware/esp32_sk6812_leds/README.md](firmware/esp32_sk6812_leds/README.md)
    - Configure WiFi & MQTT in `secrets.h`
@@ -1147,13 +1149,27 @@ For issues or questions:
 
 ---
 
-**Version:** 1.56
+**Version:** 1.57
 **Last Updated:** 2025-10-23
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.57 (2025-10-23)
+- **Feature: Comprehensive Multi-ESP32 Setup Guide** 📚
+  - Created detailed standalone guide MULTI_ESP32_GUIDE.md
+  - Includes hardware requirements, shopping list with prices
+  - Step-by-step Arduino IDE setup and library installation
+  - Wiring diagrams with ASCII art for ESP32 → Level Shifter → LEDs
+  - Complete firmware configuration with secrets.h template
+  - Flashing instructions with troubleshooting
+  - Admin panel management workflow
+  - Zone type assignment and multi-controller routing explanation
+  - Testing procedures (Identify, Fach-Test, Job-Highlight)
+  - Comprehensive troubleshooting section with error codes
+  - Added reference link in main README for easy access
 
 ### Version 1.56 (2025-10-23)
 - **Feature: Multi ESP32 Documentation** 📚
