@@ -382,6 +382,25 @@ export default function LabelDesignerPage() {
 
                     <label>Schriftart</label>
                     <select
+                      value={selectedElem.style.font_family}
+                      onChange={(e) =>
+                        updateElement(selectedElem.id, {
+                          style: { ...selectedElem.style, font_family: e.target.value },
+                        })
+                      }
+                      className="input-field-small"
+                    >
+                      <option value="Arial">Arial</option>
+                      <option value="Ubuntu">Ubuntu</option>
+                      <option value="Aptos">Aptos</option>
+                      <option value="Times New Roman">Times New Roman</option>
+                      <option value="Courier New">Courier New</option>
+                      <option value="Verdana">Verdana</option>
+                      <option value="Georgia">Georgia</option>
+                    </select>
+
+                    <label>Schriftstil</label>
+                    <select
                       value={selectedElem.style.font_weight}
                       onChange={(e) =>
                         updateElement(selectedElem.id, {
