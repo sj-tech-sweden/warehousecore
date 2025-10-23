@@ -1157,6 +1157,14 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.86 (2025-10-23)
+- **Bug Fix: Device Modal Scrolling** 🐛
+  - Made Device Modal scrollable for long content
+  - Changed outer container from items-center to items-start
+  - Added overflow-y-auto to enable vertical scrolling
+  - Added my-8 margin to prevent modal from touching viewport edges
+  - Modal now properly scrolls when content exceeds viewport height
+
 ### Version 1.85 (2025-10-23)
 - **Bug Fix: Modal z-index Layering** 🐛
   - Fixed Device Modal z-index from z-50 to z-[70]
