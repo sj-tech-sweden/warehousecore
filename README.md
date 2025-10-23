@@ -1149,13 +1149,35 @@ For issues or questions:
 
 ---
 
-**Version:** 1.58
+**Version:** 1.59
 **Last Updated:** 2025-10-23
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.59 (2025-10-23)
+- **Major Redesign: Label Designer UI/UX Overhaul** 🎨
+  - Complete visual redesign with Dark Theme and Glassmorphism effects
+  - Matches global app theme (dark background, glass panels, red accent color)
+  - GUI-based designer: Add elements via buttons, no JSON editing required
+  - Simplified workflow: One global template for ALL devices automatically
+  - Automatic bulk export: Generate labels for ALL devices without manual selection
+  - Three-column layout: Settings | Live Preview | Elements & Actions
+  - Visual element management: Icon-based element list with click-to-select
+  - Property editor with real-time preview updates
+  - Preset label sizes with custom dimension support
+  - Improved UX: Template save, preview device selector, live canvas rendering
+  - Enhanced accessibility: Larger buttons, better contrast, clearer labels
+  - Responsive design with breakpoints for mobile/tablet/desktop
+
+  **Design System:**
+  - Dark background (#0B0B0B)
+  - Glass-dark panels with backdrop blur
+  - Red accent color (#D0021B) for primary actions
+  - Smooth transitions and hover effects
+  - Custom scrollbar styling
 
 ### Version 1.58 (2025-10-23)
 - **Feature: Barcode & Label Generation System** 🏷️
