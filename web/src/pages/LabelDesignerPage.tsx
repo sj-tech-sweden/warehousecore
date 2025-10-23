@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Trash2, Download, Printer, QrCode, Barcode, Type, Save } from 'lucide-react';
+import { Trash2, Download, Printer, QrCode, Barcode, Type, Save, Image as ImageIcon } from 'lucide-react';
 import { labelsApi, devicesApi } from '../lib/api';
 import type { LabelTemplate, LabelElement, Device } from '../lib/api';
 import './LabelDesignerPage.css';
 
 interface DesignElement extends LabelElement {
   id: string;
+  image_data?: string; // Base64 encoded image data
 }
 
 const PRESET_SIZES = [
@@ -60,16 +61,16 @@ export default function LabelDesignerPage() {
     }
   };
 
-  const addElement = (type: 'qrcode' | 'barcode' | 'text') => {
+  const addElement = (type: 'qrcode' | 'barcode' | 'text' | 'image') => {
     const newElement: DesignElement = {
       id: `elem-${Date.now()}`,
       type,
       x: 5,
       y: 5,
-      width: type === 'qrcode' ? 25 : type === 'barcode' ? 50 : 30,
-      height: type === 'qrcode' ? 25 : type === 'barcode' ? 15 : 6,
+      width: type === 'qrcode' ? 25 : type === 'barcode' ? 50 : type === 'image' ? 20 : 30,
+      height: type === 'qrcode' ? 25 : type === 'barcode' ? 15 : type === 'image' ? 20 : 6,
       rotation: 0,
-      content: type === 'text' ? 'device_id' : 'device_id',
+      content: type === 'text' ? 'device_id' : type === 'image' ? '' : 'device_id',
       style: {
         font_size: 10,
         font_weight: 'normal',
@@ -81,6 +82,15 @@ export default function LabelDesignerPage() {
     };
     setElements([...elements, newElement]);
     setSelectedElement(newElement.id);
+  };
+
+  const handleImageUpload = (elementId: string, file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      updateElement(elementId, { image_data: base64, content: file.name });
+    };
+    reader.readAsDataURL(file);
   };
 
   const deleteElement = (id: string) => {
@@ -185,6 +195,21 @@ export default function LabelDesignerPage() {
         } catch (err) {
           console.error('Barcode generation failed:', err);
         }
+      } else if (elem.type === 'image') {
+        if (elem.image_data) {
+          try {
+            const img = new Image();
+            await new Promise<void>((resolve) => {
+              img.onload = () => {
+                ctx.drawImage(img, x, y, w, h);
+                resolve();
+              };
+              img.src = elem.image_data!;
+            });
+          } catch (err) {
+            console.error('Image rendering failed:', err);
+          }
+        }
       } else if (elem.type === 'text') {
         ctx.fillStyle = elem.style.color || '#000000';
         ctx.font = `${elem.style.font_weight || 'normal'} ${(elem.style.font_size || 10) * (dpi / 96)}px ${elem.style.font_family || 'Arial'}`;
@@ -284,17 +309,18 @@ export default function LabelDesignerPage() {
                 type="number"
                 value={labelWidth}
                 onChange={(e) => setLabelWidth(Number(e.target.value))}
-                className="input-field"
-                placeholder="Breite (mm)"
+                className="input-field-small"
+                placeholder="Breite"
               />
               <span>×</span>
               <input
                 type="number"
                 value={labelHeight}
                 onChange={(e) => setLabelHeight(Number(e.target.value))}
-                className="input-field"
-                placeholder="Höhe (mm)"
+                className="input-field-small"
+                placeholder="Höhe"
               />
+              <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>mm</span>
             </div>
           </div>
 
@@ -309,6 +335,9 @@ export default function LabelDesignerPage() {
               </button>
               <button onClick={() => addElement('text')} className="btn-add">
                 <Type size={18} /> Text
+              </button>
+              <button onClick={() => addElement('image')} className="btn-add">
+                <ImageIcon size={18} /> Bild / Logo
               </button>
             </div>
           </div>
@@ -355,16 +384,41 @@ export default function LabelDesignerPage() {
                   className="input-field-small"
                 />
 
-                <label>Inhalt</label>
-                <select
-                  value={selectedElem.content}
-                  onChange={(e) => updateElement(selectedElem.id, { content: e.target.value })}
-                  className="input-field-small"
-                >
-                  <option value="device_id">Device ID</option>
-                  <option value="product_name">Produktname</option>
-                  <option value="device_name">Device Name</option>
-                </select>
+                {selectedElem.type !== 'image' && (
+                  <>
+                    <label>Inhalt</label>
+                    <select
+                      value={selectedElem.content}
+                      onChange={(e) => updateElement(selectedElem.id, { content: e.target.value })}
+                      className="input-field-small"
+                    >
+                      <option value="device_id">Device ID</option>
+                      <option value="product_name">Produktname</option>
+                      <option value="device_name">Device Name</option>
+                    </select>
+                  </>
+                )}
+
+                {selectedElem.type === 'image' && (
+                  <>
+                    <label>Bild hochladen</label>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageUpload(selectedElem.id, file);
+                      }}
+                      className="input-field-small"
+                      style={{ padding: '0.25rem' }}
+                    />
+                    {selectedElem.image_data && (
+                      <div style={{ gridColumn: '1 / -1', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                        ✓ {selectedElem.content}
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {selectedElem.type === 'text' && (
                   <>
@@ -471,10 +525,11 @@ export default function LabelDesignerPage() {
                     {elem.type === 'qrcode' && <QrCode size={16} />}
                     {elem.type === 'barcode' && <Barcode size={16} />}
                     {elem.type === 'text' && <Type size={16} />}
+                    {elem.type === 'image' && <ImageIcon size={16} />}
                   </div>
                   <div className="element-info">
-                    <div className="element-type">{elem.type === 'qrcode' ? 'QR-Code' : elem.type === 'barcode' ? 'Barcode' : 'Text'}</div>
-                    <div className="element-content">{elem.content}</div>
+                    <div className="element-type">{elem.type === 'qrcode' ? 'QR-Code' : elem.type === 'barcode' ? 'Barcode' : elem.type === 'image' ? 'Bild/Logo' : 'Text'}</div>
+                    <div className="element-content">{elem.content || 'Kein Bild'}</div>
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); deleteElement(elem.id); }} className="btn-delete-mini">
                     <Trash2 size={14} />
