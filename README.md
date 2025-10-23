@@ -1157,6 +1157,13 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.85 (2025-10-23)
+- **Bug Fix: Modal z-index Layering** 🐛
+  - Fixed Device Modal z-index from z-50 to z-[70]
+  - Device Modal now appears in front of Product Modal (z-[60])
+  - Proper modal stacking when opening device from product view
+  - Improved user experience with correct modal layering
+
 ### Version 1.84 (2025-10-23)
 - **Feature: Multiple Label Templates** 🏷️✨
   - Added full template management system
