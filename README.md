@@ -228,7 +228,24 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 
 - `esp32_sk6812_leds.ino` - Main firmware
 - `secrets.h.template` - Config template (WiFi, MQTT credentials)
-- `README.md` - Flash instructions, hardware wiring
+- **[README.md](firmware/esp32_sk6812_leds/README.md)** - **📘 Complete Setup Guide: Flashing, Hardware Wiring, Configuration**
+
+**Multi-ESP32 Quick Start:**
+
+1. **Flash Firmware** (same firmware on all ESP32s):
+   - Follow detailed instructions in [firmware/esp32_sk6812_leds/README.md](firmware/esp32_sk6812_leds/README.md)
+   - Configure WiFi & MQTT in `secrets.h`
+   - Each ESP32 auto-generates unique `controller_id` based on MAC address
+
+2. **Manage Controllers in Admin Panel**:
+   - Navigate to Admin → ESP-Controller
+   - View online status, IP, hostname, firmware version, WiFi RSSI, uptime
+   - Assign friendly display names (e.g., "Shelf A Controller", "Rack B LEDs")
+   - Assign zone types per controller (e.g., "Shelf A" → Controller 1, "Shelf B" → Controller 2)
+
+3. **Zone Routing**:
+   - When highlighting bins, WarehouseCore automatically routes commands to the correct ESP32 based on zone type assignment
+   - Multiple ESP32s can control different warehouse areas independently
 
 #### 4. Controller-Registry & Heartbeat
 
@@ -1130,13 +1147,23 @@ For issues or questions:
 
 ---
 
-**Version:** 1.55
+**Version:** 1.56
 **Last Updated:** 2025-10-23
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 1.56 (2025-10-23)
+- **Feature: Multi ESP32 Documentation** 📚
+  - Added comprehensive Multi-ESP32 Quick Start guide in main README
+  - Clear step-by-step instructions for flashing, configuring, and managing multiple ESP32s
+  - Links to detailed firmware documentation
+  - Zone routing explanation for multi-controller setups
+  - Admin panel feature overview for controller management
+  - Display name and zone type assignment instructions
+  - Fixes GitLab Issue #4: Multi ESP32 Support documentation
 
 ### Version 1.55 (2025-10-23)
 - **Feature: Job-Code Scan Functionality** 🎯
