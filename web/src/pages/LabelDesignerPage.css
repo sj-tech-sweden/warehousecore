@@ -71,7 +71,7 @@
 /* Input Styles */
 .input-select,
 .input-field {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-dark-200);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 0.75rem;
@@ -83,18 +83,18 @@
 .input-select:hover,
 .input-field:hover {
   border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-dark-300);
 }
 
 .input-select:focus,
 .input-field:focus {
   outline: none;
   border-color: var(--color-accent-red);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-dark-300);
 }
 
 .input-select-small {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-dark-200);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 0.5rem;
@@ -103,13 +103,22 @@
 }
 
 .input-field-small {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-dark-200);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 0.5rem;
   color: var(--color-light);
   font-size: 0.85rem;
   width: 100%;
+}
+
+/* Dropdown Options */
+.input-select option,
+.input-select-small option,
+.input-field-small option {
+  background: var(--color-dark-200);
+  color: var(--color-light);
+  padding: 0.5rem;
 }
 
 .input-group {
