@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff } from 'lucide-react';
 import { jobsApi, scansApi, ledApi } from '../lib/api';
 import type { Job, JobSummary, JobDevice, LEDStatus } from '../lib/api';
@@ -6,6 +7,7 @@ import type { Job, JobSummary, JobDevice, LEDStatus } from '../lib/api';
 const JOB_CODE_PATTERN = /^JOB\d+$/i;
 
 export function JobsPage() {
+  const { id: urlJobId } = useParams<{ id: string }>();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,6 +25,16 @@ export function JobsPage() {
     loadJobs();
     loadLEDStatus();
   }, []);
+
+  // Load job from URL parameter if present
+  useEffect(() => {
+    if (urlJobId) {
+      const jobId = parseInt(urlJobId, 10);
+      if (!isNaN(jobId)) {
+        loadJobDetails(jobId, { highlight: true });
+      }
+    }
+  }, [urlJobId]);
 
   const loadLEDStatus = async () => {
     try {

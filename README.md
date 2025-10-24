@@ -1157,6 +1157,15 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.91 (2025-10-24)
+- **Bug Fix: Job Redirect After Scanning** 🐛 **[Issue #7]**
+  - Fixed job page staying empty after scanning job ID barcode
+  - Added route for `/jobs/:id` to support direct job links
+  - JobsPage now uses useParams to detect job ID from URL
+  - Automatically loads job details when accessed via direct link
+  - LED highlighting still works correctly on redirect
+  - Page now properly loads after scanning JOB codes
+
 ### Version 1.90 (2025-10-24)
 - **Bug Fix: Scanned Item Highlight Persistence** 🐛 **[Issue #8]**
   - Fixed green highlight remaining on devices after being scanned back into warehouse

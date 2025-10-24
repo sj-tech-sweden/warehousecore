@@ -33,6 +33,7 @@ function App() {
           <Route path="/zones/:id" element={<ProtectedRoute><Layout><ZoneDetailPage /></Layout></ProtectedRoute>} />
           <Route path="/cases" element={<ProtectedRoute><Layout><CasesPage /></Layout></ProtectedRoute>} />
           <Route path="/jobs" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />
+          <Route path="/jobs/:id" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />
           <Route path="/maintenance" element={<ProtectedRoute><Layout><MaintenancePage /></Layout></ProtectedRoute>} />
           <Route
             path="/admin"
