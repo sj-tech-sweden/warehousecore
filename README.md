@@ -1157,6 +1157,15 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.96 (2025-10-24)
+- **Bug Fix: Case Label Static Images** 🐛
+  - Fixed 500 error when label templates contain static image elements
+  - Added ImageData field to LabelElement struct for proper JSON unmarshaling
+  - Backend now copies static image data from templates to processed elements
+  - Frontend updated to render static image elements
+  - Resolves issue with Template ID 4 containing logo/watermark images
+  - Complete fix for case label generation with device templates
+
 ### Version 1.95 (2025-10-24)
 - **Bug Fix: Case Label Field Mapping** 🐛
   - Fixed case label generation not working with device templates
