@@ -1157,6 +1157,17 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.97 (2025-10-24)
+- **Feature: Case Label Image Saving** 💾
+  - Added `label_path` column to cases table for persistent label storage
+  - Created SaveCaseLabelImage function for saving case label images to disk
+  - New backend endpoint: POST /api/v1/labels/save-case
+  - Case labels saved to separate directory: /labels/cases/
+  - Case records updated with label_path after generation
+  - Frontend API updated with saveCaseLabel function
+  - Enables reuse of generated labels without regeneration
+  - Consistent with device label handling
+
 ### Version 1.96 (2025-10-24)
 - **Bug Fix: Case Label Static Images** 🐛
   - Fixed 500 error when label templates contain static image elements
