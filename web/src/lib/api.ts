@@ -453,4 +453,6 @@ export const labelsApi = {
     api.post(`/labels/case/${caseId}`, { template_id: templateId }),
   saveLabel: (deviceId: string, imageData: string) =>
     api.post<{ label_path: string; message: string }>('/labels/save', { device_id: deviceId, image_data: imageData }),
+  saveCaseLabel: (caseId: number, imageData: string) =>
+    api.post<{ label_path: string; message: string }>('/labels/save-case', { case_id: caseId, image_data: imageData }),
 };

@@ -275,3 +275,35 @@ func SaveDeviceLabel(w http.ResponseWriter, r *http.Request) {
 		"message":    "Label saved successfully",
 	})
 }
+
+// SaveCaseLabel saves a generated label image for a case
+// POST /api/v1/labels/save-case
+// Body: {"case_id": 1001, "image_data": "data:image/png;base64,..."}
+func SaveCaseLabel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CaseID    int    `json:"case_id"`
+		ImageData string `json:"image_data"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.CaseID == 0 || req.ImageData == "" {
+		http.Error(w, "Case ID and image data are required", http.StatusBadRequest)
+		return
+	}
+
+	labelPath, err := labelService.SaveCaseLabelImage(req.CaseID, req.ImageData)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"label_path": labelPath,
+		"message":    "Case label saved successfully",
+	})
+}

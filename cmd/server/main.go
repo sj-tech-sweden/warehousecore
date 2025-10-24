@@ -191,6 +191,7 @@ func main() {
 	api.HandleFunc("/labels/device/{device_id}", handlers.GenerateDeviceLabel).Methods("POST")
 	api.HandleFunc("/labels/case/{case_id}", handlers.GenerateCaseLabel).Methods("POST")
 	api.HandleFunc("/labels/save", handlers.SaveDeviceLabel).Methods("POST")
+	api.HandleFunc("/labels/save-case", handlers.SaveCaseLabel).Methods("POST")
 
     // Admin routes (RBAC protected)
     // Read-only admin routes (admin or manager)

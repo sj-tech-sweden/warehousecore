@@ -429,3 +429,41 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 
 	return labelPath, nil
 }
+
+// SaveCaseLabelImage saves a base64-encoded label image to disk and updates the case record
+func (s *LabelService) SaveCaseLabelImage(caseID int, base64Image string) (string, error) {
+	// Remove base64 prefix if present
+	if len(base64Image) > 22 && base64Image[:22] == "data:image/png;base64," {
+		base64Image = base64Image[22:]
+	}
+
+	// Decode base64
+	imageData, err := base64.StdEncoding.DecodeString(base64Image)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64 image: %w", err)
+	}
+
+	// Create labels/cases directory if it doesn't exist
+	labelsDir := "./web/dist/labels/cases"
+	if err := os.MkdirAll(labelsDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create labels directory: %w", err)
+	}
+
+	// Save file
+	filename := fmt.Sprintf("CASE-%d_label.png", caseID)
+	filePath := filepath.Join(labelsDir, filename)
+
+	if err := os.WriteFile(filePath, imageData, 0644); err != nil {
+		return "", fmt.Errorf("failed to write label file: %w", err)
+	}
+
+	// Update case record with label path
+	labelPath := fmt.Sprintf("/labels/cases/%s", filename)
+	db := repository.GetDB()
+	result := db.Exec("UPDATE cases SET label_path = ? WHERE caseID = ?", labelPath, caseID)
+	if result.Error != nil {
+		return "", fmt.Errorf("failed to update case label path: %w", result.Error)
+	}
+
+	return labelPath, nil
+}
