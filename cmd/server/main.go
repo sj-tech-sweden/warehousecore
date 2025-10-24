@@ -28,13 +28,20 @@ func spaHandler(w http.ResponseWriter, r *http.Request) {
 	path := "./web/dist" + r.URL.Path
 
 	// Check if file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	fileInfo, err := os.Stat(path)
+	if os.IsNotExist(err) {
 		// File doesn't exist - serve index.html with injected config
 		serveIndexWithConfig(w, r)
 		return
 	}
 
-	// File exists - serve it
+	// If path is a directory (not a file), serve index.html for SPA routing
+	if err == nil && fileInfo.IsDir() {
+		serveIndexWithConfig(w, r)
+		return
+	}
+
+	// File exists and is not a directory - serve it
 	http.FileServer(http.Dir("./web/dist")).ServeHTTP(w, r)
 }
 

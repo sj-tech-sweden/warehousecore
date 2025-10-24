@@ -1157,6 +1157,14 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.87 (2025-10-24)
+- **Bug Fix: /labels Page Routing Issue** 🐛 **[Issue #13]**
+  - Fixed /labels page showing directory content after hard reload
+  - Updated spaHandler to check if path is a directory
+  - Directories now properly serve index.html for SPA routing
+  - Label images remain accessible while preventing directory listing
+  - Improves routing consistency across all SPA pages
+
 ### Version 1.86 (2025-10-23)
 - **Bug Fix: Device Modal Scrolling** 🐛
   - Made Device Modal scrollable for long content
