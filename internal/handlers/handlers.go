@@ -1209,8 +1209,9 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 			jd.QRCode = &qrCode.String
 		}
 
-		// Mark as scanned if device is on_job or pack_status is issued
-		jd.Scanned = jd.Status == "on_job" || jd.PackStatus == "issued"
+		// Mark as scanned only if device is currently on_job
+		// If device is back in storage, it should not be highlighted as scanned
+		jd.Scanned = jd.Status == "on_job"
 
 		devices = append(devices, jd)
 	}

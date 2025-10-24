@@ -1157,6 +1157,14 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.90 (2025-10-24)
+- **Bug Fix: Scanned Item Highlight Persistence** 🐛 **[Issue #8]**
+  - Fixed green highlight remaining on devices after being scanned back into warehouse
+  - Updated scanned flag logic to only highlight devices currently on_job
+  - Devices returned to storage (in_storage status) no longer show as scanned
+  - Improved visual feedback accuracy in job packing workflow
+  - Changed logic from `status == "on_job" || pack_status == "issued"` to `status == "on_job"`
+
 ### Version 1.89 (2025-10-24)
 - **UI Update: Renamed "Zonen" to "Lager"** 🎨 **[Issue #10]**
   - Renamed all occurrences of "Zonen" to "Lager" throughout the app
