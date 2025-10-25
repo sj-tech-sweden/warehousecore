@@ -26,8 +26,9 @@ export function ProductDevicesModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="glass-dark w-full max-w-4xl rounded-2xl shadow-2xl border border-white/10 flex flex-col max-h-[85vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm overflow-y-auto">
+      <div className="flex justify-center pt-8 pb-8 px-4">
+        <div className="glass-dark w-full max-w-4xl rounded-2xl shadow-2xl border border-white/10 flex flex-col max-h-[85vh]">
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div>
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -112,6 +113,7 @@ export function ProductDevicesModal({
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
