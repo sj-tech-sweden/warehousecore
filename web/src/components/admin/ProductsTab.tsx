@@ -257,7 +257,7 @@ export function ProductsTab() {
                 <div>
                   <label className="block text-sm font-semibold text-white mb-2">Kategorie</label>
                   <select
-                    value={formData.category_id || ''}
+                    value={formData.category_id?.toString() || ''}
                     onChange={(e) => setFormData({
                       ...formData,
                       category_id: e.target.value ? parseInt(e.target.value) : undefined,
@@ -276,7 +276,7 @@ export function ProductsTab() {
                 <div>
                   <label className="block text-sm font-semibold text-white mb-2">Unterkategorie</label>
                   <select
-                    value={formData.subcategory_id || ''}
+                    value={formData.subcategory_id?.toString() || ''}
                     onChange={(e) => setFormData({
                       ...formData,
                       subcategory_id: e.target.value ? parseInt(e.target.value) : undefined,
@@ -295,7 +295,7 @@ export function ProductsTab() {
                 <div>
                   <label className="block text-sm font-semibold text-white mb-2">Sub-Unterkategorie</label>
                   <select
-                    value={formData.subbiercategory_id || ''}
+                    value={formData.subbiercategory_id?.toString() || ''}
                     onChange={(e) => setFormData({
                       ...formData,
                       subbiercategory_id: e.target.value ? parseInt(e.target.value) : undefined,
