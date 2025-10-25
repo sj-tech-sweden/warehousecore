@@ -100,8 +100,8 @@ export function DeviceTreeModal({ isOpen, onClose, onConfirm, zoneId }: DeviceTr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="glass-dark rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+      <div className="glass-dark rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl my-8">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">

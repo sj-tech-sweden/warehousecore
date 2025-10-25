@@ -45,8 +45,8 @@ export function CaseDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="glass-dark w-full max-w-5xl rounded-2xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="glass-dark w-full max-w-5xl rounded-2xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh] my-8">
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div>
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">

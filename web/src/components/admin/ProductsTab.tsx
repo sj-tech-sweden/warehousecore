@@ -36,6 +36,8 @@ interface ProductFormData {
   subcategory_id?: number;
   subbiercategory_id?: number;
   item_cost_per_day?: number;
+  device_quantity?: number;
+  device_prefix?: string;
 }
 
 export function ProductsTab() {
@@ -99,11 +101,30 @@ export function ProductsTab() {
 
     setSubmitting(true);
     try {
+      let productId: number;
+
       if (editingProduct) {
         await api.put(`/admin/products/${editingProduct}`, formData);
+        productId = editingProduct;
       } else {
-        await api.post('/admin/products', formData);
+        const { data } = await api.post('/admin/products', formData);
+        productId = data.product_id;
       }
+
+      // Create devices if quantity is specified
+      if (formData.device_quantity && formData.device_quantity > 0 && !editingProduct) {
+        try {
+          await api.post('/products/create-devices', {
+            product_id: productId,
+            quantity: formData.device_quantity,
+            prefix: formData.device_prefix || '',
+          });
+        } catch (deviceError) {
+          console.error('Failed to create devices:', deviceError);
+          alert('Produkt erstellt, aber Fehler beim Erstellen der Geräte');
+        }
+      }
+
       setModalOpen(false);
       await loadProducts();
     } catch (error) {
@@ -194,8 +215,8 @@ export function ProductsTab() {
 
       {/* Product Form Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="glass-dark rounded-2xl w-full max-w-2xl shadow-2xl">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <div className="glass-dark rounded-2xl w-full max-w-2xl shadow-2xl my-8">
             <div className="flex items-center justify-between p-6 border-b border-white/10">
               <h2 className="text-2xl font-bold text-white">
                 {editingProduct ? 'Produkt bearbeiten' : 'Neues Produkt'}
@@ -306,6 +327,46 @@ export function ProductsTab() {
                   className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
                 />
               </div>
+
+              {!editingProduct && (
+                <>
+                  <div className="border-t border-white/10 pt-4">
+                    <h3 className="text-lg font-semibold text-white mb-3">Geräte erstellen (optional)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-white mb-2">Anzahl Geräte</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.device_quantity || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            device_quantity: e.target.value ? parseInt(e.target.value) : undefined,
+                          })}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
+                          placeholder="z.B. 10"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-white mb-2">Geräte-Präfix</label>
+                        <input
+                          type="text"
+                          value={formData.device_prefix || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            device_prefix: e.target.value,
+                          })}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
+                          placeholder="z.B. LED"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Geräte werden automatisch mit IDs wie {formData.device_prefix || 'XXX'}0001, {formData.device_prefix || 'XXX'}0002, etc. erstellt
+                    </p>
+                  </div>
+                </>
+              )}
 
               <div className="flex gap-3 pt-4">
                 <button
