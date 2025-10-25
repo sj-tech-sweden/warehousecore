@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Trash2, Download, Printer, QrCode, Barcode, Type, Save, Image as ImageIcon } from 'lucide-react';
-import { labelsApi, devicesApi } from '../lib/api';
-import type { LabelTemplate, LabelElement, Device } from '../lib/api';
+import { labelsApi, devicesApi, casesApi } from '../lib/api';
+import type { LabelTemplate, LabelElement, Device, CaseSummary } from '../lib/api';
 import './LabelDesignerPage.css';
 
 interface DesignElement extends LabelElement {
@@ -22,6 +22,7 @@ export default function LabelDesignerPage() {
   const [elements, setElements] = useState<DesignElement[]>([]);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [cases, setCases] = useState<CaseSummary[]>([]);
   const [previewDevice, setPreviewDevice] = useState<Device | null>(null);
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,6 +33,7 @@ export default function LabelDesignerPage() {
 
   useEffect(() => {
     loadDevices();
+    loadCases();
     loadTemplates();
   }, []);
 
@@ -44,6 +46,15 @@ export default function LabelDesignerPage() {
       }
     } catch (error) {
       console.error('Failed to load devices:', error);
+    }
+  };
+
+  const loadCases = async () => {
+    try {
+      const { data } = await casesApi.list({});
+      setCases(data.cases || []);
+    } catch (error) {
+      console.error('Failed to load cases:', error);
     }
   };
 
@@ -292,8 +303,9 @@ export default function LabelDesignerPage() {
   }, [elements, labelWidth, labelHeight, previewDevice]);
 
   const generateAllLabels = async () => {
-    if (devices.length === 0) {
-      alert('Keine Devices gefunden!');
+    const totalItems = devices.length + cases.length;
+    if (totalItems === 0) {
+      alert('Keine Devices oder Cases gefunden!');
       return;
     }
 
@@ -309,11 +321,13 @@ export default function LabelDesignerPage() {
 
     setExporting(true);
     let successCount = 0;
+    let failCount = 0;
     try {
       // Load default template temporarily
       loadTemplate(defaultTemplate);
       await new Promise((r) => setTimeout(r, 500)); // Wait for render
 
+      // Generate labels for all devices
       for (const device of devices) {
         setPreviewDevice(device);
         await new Promise((r) => setTimeout(r, 300));
@@ -326,10 +340,48 @@ export default function LabelDesignerPage() {
             successCount++;
           } catch (error) {
             console.error(`Failed to save label for ${device.device_id}:`, error);
+            failCount++;
           }
         }
       }
-      alert(`${successCount}/${devices.length} Labels mit Standard-Template generiert!`);
+
+      // Generate labels for all cases
+      for (const caseItem of cases) {
+        // Convert case to device-like object for rendering
+        const caseAsDevice: Device = {
+          device_id: `CASE-${caseItem.case_id}`,
+          product_name: caseItem.name,
+          category: 'Case',
+          status: caseItem.status,
+          zone_code: caseItem.zone_code || undefined,
+          serial_number: undefined,
+          manufacturer: undefined,
+          model: undefined,
+          purchase_date: undefined,
+          purchase_price: undefined,
+          condition: undefined,
+          label_path: undefined,
+          created_at: undefined,
+          updated_at: undefined,
+        };
+
+        setPreviewDevice(caseAsDevice);
+        await new Promise((r) => setTimeout(r, 300));
+
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const imageData = canvas.toDataURL('image/png');
+          try {
+            await labelsApi.saveCaseLabel(caseItem.case_id, imageData);
+            successCount++;
+          } catch (error) {
+            console.error(`Failed to save label for CASE-${caseItem.case_id}:`, error);
+            failCount++;
+          }
+        }
+      }
+
+      alert(`${successCount}/${totalItems} Labels generiert!\n(${devices.length} Devices + ${cases.length} Cases)${failCount > 0 ? `\n${failCount} Fehler` : ''}`);
     } catch (error) {
       console.error('Generation failed:', error);
       alert('Fehler beim Generieren');
@@ -718,8 +770,8 @@ export default function LabelDesignerPage() {
               <button onClick={handlePrint} disabled={!previewDevice} className="btn-action">
                 <Printer size={18} /> Vorschau Drucken
               </button>
-              <button onClick={generateAllLabels} disabled={exporting || devices.length === 0} className="btn-action btn-primary">
-                <Save size={18} /> {exporting ? `Generiere ${devices.length}...` : `Alle ${devices.length} Labels Generieren`}
+              <button onClick={generateAllLabels} disabled={exporting || (devices.length === 0 && cases.length === 0)} className="btn-action btn-primary">
+                <Save size={18} /> {exporting ? `Generiere ${devices.length + cases.length}...` : `Alle Labels Generieren (${devices.length} Devices + ${cases.length} Cases)`}
               </button>
               <button onClick={exportAllLabels} disabled={exporting || devices.length === 0} className="btn-action">
                 <Download size={18} /> {exporting ? `Exportiere ${devices.length}...` : `Alle Labels Exportieren`}
