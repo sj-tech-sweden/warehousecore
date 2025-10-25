@@ -67,7 +67,7 @@ export function CaseDetailModal({
         </div>
 
         {caseInfo && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 border-b border-white/10 bg-white/[0.02]">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-6 border-b border-white/10 bg-white/[0.02]">
             <div className="glass rounded-xl p-4 border border-white/10">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Status</p>
               <p className={`inline-flex items-center gap-2 text-sm font-semibold ${getStatusColor(caseInfo.status)}`}>
@@ -111,6 +111,32 @@ export function CaseDetailModal({
                   )}
                 </div>
               </div>
+            </div>
+
+            <div className="glass rounded-xl p-4 border border-white/10">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <Tag className="w-3 h-3" />
+                Label
+              </p>
+              {caseInfo.label_path ? (
+                <div className="flex flex-col gap-2">
+                  <img
+                    src={caseInfo.label_path}
+                    alt={`Label für Case ${caseInfo.case_id}`}
+                    className="w-full h-auto rounded border border-white/10 shadow-sm"
+                  />
+                  <a
+                    href={caseInfo.label_path}
+                    download={`CASE-${caseInfo.case_id}_label.png`}
+                    className="flex items-center justify-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white"
+                  >
+                    <Download className="w-3 h-3" />
+                    Download
+                  </a>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">Kein Label vorhanden</p>
+              )}
             </div>
           </div>
         )}
@@ -210,33 +236,6 @@ export function CaseDetailModal({
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* Label Preview Section */}
-          {caseInfo?.label_path && (
-            <div className="pt-6 mt-6 border-t border-white/10">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Tag className="w-5 h-5 text-accent-red" />
-                  Case-Label
-                </h3>
-                <a
-                  href={caseInfo.label_path}
-                  download={`CASE-${caseInfo.case_id}_label.png`}
-                  className="px-4 py-2 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-lg hover:shadow-blue-500/50 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Herunterladen
-                </a>
-              </div>
-              <div className="flex justify-center p-4 bg-black/20 rounded-xl">
-                <img
-                  src={caseInfo.label_path}
-                  alt={`Label für Case ${caseInfo.case_id}`}
-                  className="max-w-sm h-auto border border-white/10 rounded shadow-lg"
-                />
-              </div>
             </div>
           )}
         </div>
