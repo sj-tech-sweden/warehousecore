@@ -1157,6 +1157,28 @@ For issues or questions:
 
 ## Changelog
 
+### Version 2.0 (2025-10-24)
+- **Major Feature: Unified Label Generation for Devices & Cases** ✨
+  - Label Designer now generates labels for BOTH devices and cases with single button
+  - "Alle Labels Generieren" creates labels for entire inventory at once
+  - Cases use same template as devices for consistent appearance
+  - Automatic field mapping: device_id → CASE-{id}, product_name → case.name
+  - Button shows breakdown: "(X Devices + Y Cases)"
+  - Complete workflow: Design template → Generate all → Labels saved automatically
+  - Streamlines inventory labeling process significantly
+
+### Version 1.99 (2025-10-24)
+- **Critical Fix: Case Label Generation** 🔧
+  - Removed zones table dependency from case label query
+  - Fixed barcode size calculation with proper mm to pixels conversion at 300 DPI
+  - Added minimum size constraints for Code128 barcodes and QR codes
+  - Resolves 500 errors and 'barcode too small' issues
+
+### Version 1.98 (2025-10-24)
+- **Bug Fix: Zones Table Dependency** 🐛
+  - Removed LEFT JOIN on zones table from case label query
+  - Fixes "Table 'RentalCore.zones' doesn't exist" error
+
 ### Version 1.97 (2025-10-24)
 - **Feature: Case Label Image Saving** 💾
   - Added `label_path` column to cases table for persistent label storage
