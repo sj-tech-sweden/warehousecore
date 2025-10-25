@@ -1157,6 +1157,12 @@ For issues or questions:
 
 ## Changelog
 
+### Version 2.1 (2025-10-24)
+- **Bug Fix: Frontend Build for Label Generation** 🔧
+  - Fixed TypeScript error in Device interface usage
+  - Rebuilt React frontend with corrected field mapping
+  - Frontend bundle updated with working case label generation
+
 ### Version 2.0 (2025-10-24)
 - **Major Feature: Unified Label Generation for Devices & Cases** ✨
   - Label Designer now generates labels for BOTH devices and cases with single button
