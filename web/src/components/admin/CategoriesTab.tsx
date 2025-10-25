@@ -128,22 +128,22 @@ export function CategoriesTab() {
       <h2 className="text-xl font-bold text-white">Kategorien verwalten</h2>
 
       {/* Level Selector */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 overflow-x-auto scrollbar-thin">
         <button
           onClick={() => setActiveLevel('category')}
-          className={`px-4 py-2 rounded-lg font-semibold ${activeLevel === 'category' ? 'bg-accent-red text-white' : 'bg-white/10 text-gray-400'}`}
+          className={`px-3 sm:px-4 py-2 rounded-lg font-semibold whitespace-nowrap flex-shrink-0 text-sm sm:text-base ${activeLevel === 'category' ? 'bg-accent-red text-white' : 'bg-white/10 text-gray-400'}`}
         >
           Kategorien
         </button>
         <button
           onClick={() => setActiveLevel('subcategory')}
-          className={`px-4 py-2 rounded-lg font-semibold ${activeLevel === 'subcategory' ? 'bg-accent-red text-white' : 'bg-white/10 text-gray-400'}`}
+          className={`px-3 sm:px-4 py-2 rounded-lg font-semibold whitespace-nowrap flex-shrink-0 text-sm sm:text-base ${activeLevel === 'subcategory' ? 'bg-accent-red text-white' : 'bg-white/10 text-gray-400'}`}
         >
           Unterkategorien
         </button>
         <button
           onClick={() => setActiveLevel('subbiercategory')}
-          className={`px-4 py-2 rounded-lg font-semibold ${activeLevel === 'subbiercategory' ? 'bg-accent-red text-white' : 'bg-white/10 text-gray-400'}`}
+          className={`px-3 sm:px-4 py-2 rounded-lg font-semibold whitespace-nowrap flex-shrink-0 text-sm sm:text-base ${activeLevel === 'subbiercategory' ? 'bg-accent-red text-white' : 'bg-white/10 text-gray-400'}`}
         >
           Sub-Unterkategorien
         </button>
