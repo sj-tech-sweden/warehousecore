@@ -1157,6 +1157,15 @@ For issues or questions:
 
 ## Changelog
 
+### Version 2.2 (2025-10-24)
+- **Bug Fix: Case Label Size Rendering** 🔧
+  - Fixed case labels not using correct template dimensions
+  - Increased template load wait time from 500ms to 1000ms for proper initialization
+  - Increased per-item render wait from 300ms to 500ms for consistent canvas rendering
+  - Prevents race conditions where template size wasn't applied before generating
+  - Cases now get same label size (e.g., 62x29mm) as devices
+  - Ensures uniform label appearance across all inventory items
+
 ### Version 2.1 (2025-10-24)
 - **Bug Fix: Frontend Build for Label Generation** 🔧
   - Fixed TypeScript error in Device interface usage
