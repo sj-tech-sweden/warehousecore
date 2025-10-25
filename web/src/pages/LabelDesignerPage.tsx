@@ -351,18 +351,10 @@ export default function LabelDesignerPage() {
         const caseAsDevice: Device = {
           device_id: `CASE-${caseItem.case_id}`,
           product_name: caseItem.name,
-          category: 'Case',
           status: caseItem.status,
-          zone_code: caseItem.zone_code || undefined,
-          serial_number: undefined,
-          manufacturer: undefined,
-          model: undefined,
-          purchase_date: undefined,
-          purchase_price: undefined,
-          condition: undefined,
-          label_path: undefined,
-          created_at: undefined,
-          updated_at: undefined,
+          zone_code: caseItem.zone_code,
+          zone_name: caseItem.zone_name,
+          zone_id: caseItem.zone_id,
         };
 
         setPreviewDevice(caseAsDevice);
