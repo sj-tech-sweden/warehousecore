@@ -325,12 +325,12 @@ export default function LabelDesignerPage() {
     try {
       // Load default template temporarily
       loadTemplate(defaultTemplate);
-      await new Promise((r) => setTimeout(r, 500)); // Wait for render
+      await new Promise((r) => setTimeout(r, 1000)); // Wait for template to fully load
 
       // Generate labels for all devices
       for (const device of devices) {
         setPreviewDevice(device);
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 500)); // Longer wait for canvas render
 
         const canvas = canvasRef.current;
         if (canvas) {
@@ -358,7 +358,7 @@ export default function LabelDesignerPage() {
         };
 
         setPreviewDevice(caseAsDevice);
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 500)); // Same wait time as devices for consistent rendering
 
         const canvas = canvasRef.current;
         if (canvas) {
