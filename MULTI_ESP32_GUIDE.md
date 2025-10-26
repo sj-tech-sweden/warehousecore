@@ -387,7 +387,7 @@ Wiederhole Schritte 4.1 - 4.5 für jeden weiteren ESP32:
 
 ### 5.2 Controller überprüfen
 
-Du siehst nun eine Liste aller ESP32-Controller:
+Du siehst nun eine Liste aller ESP32-Controller. **Sobald ein frisch geflashter Controller per MQTT sein Status-Topic (`…/status`) veröffentlicht, legt WarehouseCore automatisch einen Eintrag an – du musst keine IDs mehr per Hand anlegen.** Alles was noch fehlt, ist ein sprechender Anzeigename und die Zuordnung zu den passenden Lagerbereichen.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -417,6 +417,17 @@ Für bessere Übersicht kannst du jedem Controller einen freundlichen Namen gebe
    - Vorher: `esp-a1b2c3`
    - Nachher: `Regal A - Links`
 3. Klick **Speichern**
+
+### 5.4 Lagerzonen zuweisen
+
+Jeder Controller darf eine oder mehrere **Lagertypen/Zonenarten** (z. B. Regal, Eurobox, Fahrzeug) bedienen. Die Zuordnung geschieht jetzt bequem über ein Multi-Select-Dropdown:
+
+1. Klicke erneut auf **Bearbeiten**
+2. Öffne das Feld **„Zuständige Lagerzonen“**
+3. Wähle alle passenden Zonenarten (Tipp: halte `Strg`/`Cmd` zum Mehrfachauswählen)
+4. Speichern – fertig!
+
+Im Dashboard erscheinen die gewählten Zonen als kleine Badges, sodass sofort ersichtlich ist, welcher Controller welchen Bereich beleuchtet.
 
 **Beispiel-Namen:**
 - `Regal A - Untere Etage`

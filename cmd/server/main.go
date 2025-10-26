@@ -18,8 +18,8 @@ import (
 	"warehousecore/internal/handlers"
 	"warehousecore/internal/led"
 	"warehousecore/internal/middleware"
-	"warehousecore/internal/services"
 	"warehousecore/internal/repository"
+	"warehousecore/internal/services"
 )
 
 // spaHandler serves the SPA and falls back to index.html for client-side routes
@@ -91,19 +91,24 @@ func main() {
 	}
 	defer repository.CloseDatabase()
 
-    // Initialize LED service
-    log.Println("[LED] Initializing LED service...")
-    _ = led.GetService() // Initialize singleton at startup
-    log.Println("[LED] LED service initialization complete")
+	// Initialize LED service
+	log.Println("[LED] Initializing LED service...")
+	_ = led.GetService() // Initialize singleton at startup
+	log.Println("[LED] LED service initialization complete")
 
-    // Ensure auto-admin assignment based on ENV (ADMIN_NAME_MATCH)
-    go func() {
-        // Run asynchronously to not block startup
-        r := services.NewRBACService()
-        if err := r.EnsureAutoAdminFromEnv(); err != nil {
-            log.Printf("[RBAC] Auto-admin assignment failed: %v", err)
-        }
-    }()
+	controllerListener := led.NewControllerListener()
+	if controllerListener != nil {
+		controllerListener.Start()
+	}
+
+	// Ensure auto-admin assignment based on ENV (ADMIN_NAME_MATCH)
+	go func() {
+		// Run asynchronously to not block startup
+		r := services.NewRBACService()
+		if err := r.EnsureAutoAdminFromEnv(); err != nil {
+			log.Printf("[RBAC] Auto-admin assignment failed: %v", err)
+		}
+	}()
 
 	// Setup router
 	router := mux.NewRouter()
@@ -139,8 +144,8 @@ func main() {
 	// Zone endpoints
 	api.HandleFunc("/zones", handlers.GetZones).Methods("GET")
 	api.HandleFunc("/zones", handlers.CreateZone).Methods("POST")
-	api.HandleFunc("/zones/scan", handlers.GetZoneByBarcode).Methods("GET") // Zone barcode lookup
-	api.HandleFunc("/zones/{id}/devices", handlers.GetZoneDevices).Methods("GET") // Must be before /zones/{id}
+	api.HandleFunc("/zones/scan", handlers.GetZoneByBarcode).Methods("GET")             // Zone barcode lookup
+	api.HandleFunc("/zones/{id}/devices", handlers.GetZoneDevices).Methods("GET")       // Must be before /zones/{id}
 	api.HandleFunc("/zones/{id}/devices", handlers.AssignDevicesToZone).Methods("POST") // Assign devices to zone
 	api.HandleFunc("/zones/{id}", handlers.GetZone).Methods("GET")
 	api.HandleFunc("/zones/{id}", handlers.UpdateZone).Methods("PUT")
@@ -195,11 +200,11 @@ func main() {
 	api.HandleFunc("/labels/save", handlers.SaveDeviceLabel).Methods("POST")
 	api.HandleFunc("/labels/save-case", handlers.SaveCaseLabel).Methods("POST")
 
-    // Admin routes (RBAC protected)
-    // Read-only admin routes (admin or manager)
-    adminRead := api.PathPrefix("/admin").Subrouter()
-    adminRead.Use(middleware.AuthMiddleware)
-    adminRead.Use(middleware.RequireAdminOrManager)
+	// Admin routes (RBAC protected)
+	// Read-only admin routes (admin or manager)
+	adminRead := api.PathPrefix("/admin").Subrouter()
+	adminRead.Use(middleware.AuthMiddleware)
+	adminRead.Use(middleware.RequireAdminOrManager)
 	adminRead.HandleFunc("/zone-types", handlers.GetZoneTypes).Methods("GET")
 	adminRead.HandleFunc("/zone-types/{id}", handlers.GetZoneType).Methods("GET")
 	adminRead.HandleFunc("/led/single-bin-default", handlers.GetLEDSingleBinDefault).Methods("GET")
@@ -216,9 +221,9 @@ func main() {
 	adminRead.HandleFunc("/products/{id}", handlers.GetProduct).Methods("GET")
 
 	// Admin-only routes (write operations)
-    admin := api.PathPrefix("/admin").Subrouter()
-    admin.Use(middleware.AuthMiddleware)
-    admin.Use(middleware.RequireAdmin)
+	admin := api.PathPrefix("/admin").Subrouter()
+	admin.Use(middleware.AuthMiddleware)
+	admin.Use(middleware.RequireAdmin)
 	admin.HandleFunc("/zone-types", handlers.CreateZoneType).Methods("POST")
 	admin.HandleFunc("/zone-types/{id}", handlers.UpdateZoneType).Methods("PUT")
 	admin.HandleFunc("/zone-types/{id}", handlers.DeleteZoneType).Methods("DELETE")
@@ -290,6 +295,9 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
+	if controllerListener != nil {
+		controllerListener.Close()
+	}
 	repository.CloseDatabase()
 	log.Println("Server stopped")
 }

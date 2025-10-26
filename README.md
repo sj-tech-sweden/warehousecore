@@ -174,7 +174,8 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 ### Key Features
 
 - **Unlimited ESP Controllers**: Jede ESP32-Firmware erzeugt automatisch eine eindeutige `controller_id` und erhält ein eigenes MQTT-Topic. Zone-Typen lassen sich pro Controller routen.
-- **Admin ESP-Dashboard**: Neuer Tab „ESP-Controller“ zeigt IP, Hostname, Firmware, RSSI und Uptime an, erlaubt freundliche Namen und Mehrfach-Zonentypzuweisungen per Checkbox.
+- **Zero-Touch Discovery**: Sobald ein Controller sein MQTT-Status-Topic abonniert und eine Heartbeat-Nachricht sendet, legt WarehouseCore ihn automatisch in der Datenbank an – ganz ohne zusätzliche Firmware-Konfiguration oder manuelle Stammdatenpflege.
+- **Admin ESP-Dashboard**: Neuer Tab „ESP-Controller“ zeigt IP, Hostname, Firmware, RSSI und Uptime an, erlaubt freundliche Namen und Mehrfach-Zonentypzuweisungen über ein komfortables Multi-Select-Dropdown.
 - **Telemetry Heartbeats**: MQTT + REST Heartbeat (`/api/v1/led/controllers/{id}/heartbeat`) halten Statusdaten im Backend aktuell – inklusive LED-Anzahl, WiFi-RSSI, Firmwarestand.
 - **No Port Forwarding Required**: ESP32 uses outbound MQTT connection, works from any network
 - **Cloud-Ready**: WarehouseCore can run on external servers, ESP32 connects via internet

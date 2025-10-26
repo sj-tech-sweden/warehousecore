@@ -94,16 +94,6 @@ export function LEDControllersTab() {
     setSaving(false);
   };
 
-  const handleCheckboxToggle = (id: number) => {
-    setForm((prev) => {
-      const exists = prev.zoneTypeIds.includes(id);
-      return {
-        ...prev,
-        zoneTypeIds: exists ? prev.zoneTypeIds.filter((zid) => zid !== id) : [...prev.zoneTypeIds, id],
-      };
-    });
-  };
-
   const parseMetadata = (): Record<string, unknown> | null => {
     if (!form.metadata.trim()) return null;
     try {
@@ -112,6 +102,17 @@ export function LEDControllersTab() {
       alert('Ungültiges Metadata JSON: ' + (error as Error).message);
       throw error;
     }
+  };
+
+  const sortedZoneTypes = useMemo(() => zoneTypes.slice().sort((a, b) => a.label.localeCompare(b.label, 'de')), [zoneTypes]);
+
+  const selectedZones = useMemo(
+    () => sortedZoneTypes.filter((zone) => form.zoneTypeIds.includes(zone.id)),
+    [sortedZoneTypes, form.zoneTypeIds],
+  );
+
+  const handleZoneSelectChange = (values: number[]) => {
+    setForm((prev) => ({ ...prev, zoneTypeIds: values }));
   };
 
   const handleSave = async () => {
@@ -175,8 +176,6 @@ export function LEDControllersTab() {
     }
     return { label: 'Offline', className: 'text-gray-400' };
   };
-
-  const sortedZoneTypes = useMemo(() => zoneTypes.slice().sort((a, b) => a.label.localeCompare(b.label, 'de')), [zoneTypes]);
 
   return (
     <div className="space-y-4">
@@ -244,21 +243,37 @@ export function LEDControllersTab() {
             </label>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-300 mb-2">Zugeordnete Lagertypen</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-gray-300">Zuständige Lagerzonen</label>
+            {selectedZones.length > 0 ? (
+              <div className="flex flex-wrap gap-2 text-xs">
+                {selectedZones.map((zone) => (
+                  <span key={zone.id} className="bg-accent-red/20 text-accent-red px-2 py-1 rounded-full">
+                    {zone.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">Noch keine Zonen zugewiesen.</p>
+            )}
+            <select
+              multiple
+              value={form.zoneTypeIds.map(String)}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions).map((opt) => Number(opt.value));
+                handleZoneSelectChange(selected);
+              }}
+              className="w-full rounded-lg glass text-white px-3 py-2 bg-white/5 focus:outline-none focus:ring-2 focus:ring-accent-red"
+            >
               {sortedZoneTypes.map((zone) => (
-                <label key={zone.id} className="flex items-center gap-2 text-sm text-gray-200 bg-white/5 rounded-lg px-3 py-2">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4"
-                    checked={form.zoneTypeIds.includes(zone.id)}
-                    onChange={() => handleCheckboxToggle(zone.id)}
-                  />
-                  <span>{zone.label}</span>
-                </label>
+                <option key={zone.id} value={zone.id}>
+                  {zone.label}
+                </option>
               ))}
-            </div>
+            </select>
+            <p className="text-xs text-gray-500">
+              Tipp: Halte <span className="font-semibold">Strg / Cmd</span>, um mehrere Zonen auszuwählen.
+            </p>
           </div>
 
           <div>

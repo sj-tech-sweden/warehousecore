@@ -41,6 +41,22 @@ var (
 	publisherOnce     sync.Once
 )
 
+func buildMQTTConfig(clientPrefix string) PublisherConfig {
+	if clientPrefix == "" {
+		clientPrefix = "warehousecore"
+	}
+	return PublisherConfig{
+		Host:        os.Getenv("LED_MQTT_HOST"),
+		Port:        getEnvInt("LED_MQTT_PORT", 1883),
+		UseTLS:      getEnvBool("LED_MQTT_TLS", false),
+		Username:    os.Getenv("LED_MQTT_USER"),
+		Password:    os.Getenv("LED_MQTT_PASS"),
+		TopicPrefix: getEnvString("LED_MQTT_TOPIC_PREFIX", "weidelbach"),
+		WarehouseID: getEnvString("LED_WAREHOUSE_ID", "WDL"),
+		ClientID:    fmt.Sprintf("%s-%d", clientPrefix, time.Now().UnixNano()),
+	}
+}
+
 // GetPublisher returns the singleton MQTT publisher instance
 func GetPublisher() *Publisher {
 	publisherOnce.Do(func() {
@@ -51,16 +67,7 @@ func GetPublisher() *Publisher {
 
 // NewPublisher creates a new MQTT publisher from environment variables
 func NewPublisher() *Publisher {
-	config := PublisherConfig{
-		Host:        os.Getenv("LED_MQTT_HOST"),
-		Port:        getEnvInt("LED_MQTT_PORT", 1883),
-		UseTLS:      getEnvBool("LED_MQTT_TLS", false),
-		Username:    os.Getenv("LED_MQTT_USER"),
-		Password:    os.Getenv("LED_MQTT_PASS"),
-		TopicPrefix: getEnvString("LED_MQTT_TOPIC_PREFIX", "weidelbach"),
-		WarehouseID: getEnvString("LED_WAREHOUSE_ID", "WDL"),
-		ClientID:    fmt.Sprintf("storagecore-%d", time.Now().Unix()),
-	}
+	config := buildMQTTConfig("warehousecore-publisher")
 
 	// Check if MQTT is configured (dry-run mode if not)
 	dryRun := config.Host == ""
