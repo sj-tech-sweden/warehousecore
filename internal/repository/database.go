@@ -27,10 +27,11 @@ func InitDatabase(cfg *config.Config) error {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	// Configure connection pool - optimized for production
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(10 * time.Minute)
 
 	// Test connection
 	if err := db.Ping(); err != nil {
@@ -44,6 +45,7 @@ func InitDatabase(cfg *config.Config) error {
 	gormDB, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		SkipDefaultTransaction: true,
 		PrepareStmt:            true,
+		CreateBatchSize:        500,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize GORM: %w", err)

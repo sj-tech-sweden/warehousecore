@@ -239,16 +239,22 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
    - Follow detailed instructions in [firmware/esp32_sk6812_leds/README.md](firmware/esp32_sk6812_leds/README.md)
    - Configure WiFi & MQTT in `secrets.h`
    - Each ESP32 auto-generates unique `controller_id` based on MAC address
+   - ✅ You can flash *exactly the same binary* to every controller; WarehouseCore handles discovery and naming
 
 2. **Manage Controllers in Admin Panel**:
    - Navigate to Admin → ESP-Controller
    - View online status, IP, hostname, firmware version, WiFi RSSI, uptime
    - Assign friendly display names (e.g., "Shelf A Controller", "Rack B LEDs")
    - Assign zone types per controller (e.g., "Shelf A" → Controller 1, "Shelf B" → Controller 2)
+   - New controllers appear automatically after their first MQTT + heartbeat handshake—no manual database entry required
 
 3. **Zone Routing**:
    - When highlighting bins, WarehouseCore automatically routes commands to the correct ESP32 based on zone type assignment
    - Multiple ESP32s can control different warehouse areas independently
+
+
+> Note: Set `API_BASE_URL` in `secrets.h` (or directly inside `esp32_sk6812_leds.ino`) to the WarehouseCore API base URL that is reachable from the ESP32 network, including `/api/v1` (for example `https://warehousecore.example.com/api/v1` or `http://192.168.10.5:8081/api/v1`).
+> The ESP32 uses this value only for the heartbeat POST requests to `/led/controllers/{controller_id}/heartbeat`, and the firmware automatically trims a trailing slash if present.
 
 #### 4. Controller-Registry & Heartbeat
 

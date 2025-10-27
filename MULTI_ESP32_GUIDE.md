@@ -261,6 +261,8 @@ Trage deine Daten ein:
 | `API_BASE_URL` | WarehouseCore API URL | "http://server:8081/api/v1" |
 | `LED_LENGTH` | Anzahl LEDs am Strip | 300 (für 5m @ 60 LEDs/m) |
 
+> Hinweis: `API_BASE_URL` muss genau den aus dem ESP32-Netz erreichbaren Basis-Pfad deiner WarehouseCore-Instanz enthalten – inklusive `/api/v1`. Verwende HTTP oder HTTPS passend zu deiner Installation (z. B. `https://warehousecore.example.com/api/v1` für Produktion oder `http://192.168.10.5:8081/api/v1` im lokalen Netz). Die Firmware nutzt diesen Wert ausschließlich für die Heartbeat-POSTs und kürzt einen abschließenden Slash automatisch.
+
 Speichern: **STRG+O**, **Enter**, **STRG+X**
 
 ---
@@ -388,6 +390,8 @@ Wiederhole Schritte 4.1 - 4.5 für jeden weiteren ESP32:
 ### 5.2 Controller überprüfen
 
 Du siehst nun eine Liste aller ESP32-Controller. **Sobald ein frisch geflashter Controller per MQTT sein Status-Topic (`…/status`) veröffentlicht, legt WarehouseCore automatisch einen Eintrag an – du musst keine IDs mehr per Hand anlegen.** Alles was noch fehlt, ist ein sprechender Anzeigename und die Zuordnung zu den passenden Lagerbereichen.
+
+> Tipp: Du kannst wirklich auf jedem ESP32 denselben build flashen. Die Auto-ID (MAC-basiert) stellt sicher, dass WarehouseCore jeden Controller eindeutig erkennt und ohne manuelle Vorarbeit im Admin-Panel anlegt.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
