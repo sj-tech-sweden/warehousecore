@@ -253,8 +253,7 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
    - Multiple ESP32s can control different warehouse areas independently
 
 
-> Note: Set `API_BASE_URL` in `secrets.h` (or directly inside `esp32_sk6812_leds.ino`) to the WarehouseCore base URL that is reachable from the ESP32 network (for example `https://warehousecore.example.com` or `http://192.168.10.5:8081`).
-> The ESP32 uses this value only for the heartbeat POST requests to `/led/controllers/{controller_id}/heartbeat`, and the firmware automatically trims a trailing slash if present.
+> Heartbeats laufen ausschließlich über MQTT – stelle sicher, dass `TOPIC_PREFIX`, `WAREHOUSE_ID` und die Broker-Zugangsdaten in `secrets.h` zum WarehouseCore-Setup passen. Sobald ein Controller seinen Status auf `<prefix>/<controller>/status` veröffentlicht, wird er automatisch erkannt und im Admin-Panel angezeigt.
 
 #### 4. Controller-Registry & Heartbeat
 

@@ -43,6 +43,7 @@ func (LEDControllerZoneType) TableName() string {
 type LEDControllerHeartbeat struct {
 	ControllerID    string  `json:"controller_id"`
 	TopicSuffix     string  `json:"topic_suffix"`
+	WarehouseID     string  `json:"warehouse_id"`
 	IPAddress       string  `json:"ip_address"`
 	Hostname        string  `json:"hostname"`
 	FirmwareVersion string  `json:"firmware_version"`
@@ -50,5 +51,6 @@ type LEDControllerHeartbeat struct {
 	WifiRSSI        *int    `json:"wifi_rssi"`
 	UptimeSeconds   *int64  `json:"uptime_seconds"`
 	LedCount        *int    `json:"led_count"`
+	ActiveLEDs      *int    `json:"active_leds"`
 	Status          JSONMap `json:"status,omitempty"`
 }

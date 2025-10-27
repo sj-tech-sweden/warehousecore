@@ -187,20 +187,15 @@ Last Will Testament (offline):
 }
 ```
 
-### REST Heartbeat Endpoint (optional)
+### Controller Heartbeat
 
-Set `API_BASE_URL` in `secrets.h` to the WarehouseCore URL (e.g. `https://warehouse.server-nt.de/api/v1`). The firmware will mirror the heartbeat payload via HTTP `POST`:
+Jeder ESP32 veröffentlicht seinen Status ausschließlich über MQTT auf
 
 ```
-POST {API_BASE_URL}/led/controllers/{controller_id}/heartbeat
-Content-Type: application/json
-
-{ ...payload wie oben... }
+{TOPIC_PREFIX}/{CONTROLLER_ID}/status
 ```
 
-- Blank `API_BASE_URL` disables HTTP heartbeats (only MQTT remains).
-- HTTPS is supported; certificates are accepted via `setInsecure()` by default. Provide your own trust anchors for production.
-- WarehouseCore persists the payload (`status_data`) and aktualisiert `last_seen` / `is_active`.
+Die JSON-Nutzlast entspricht dem oben gezeigten Beispiel (`status`, `wifi_rssi`, `uptime_seconds`, …). WarehouseCore lauscht auf diesen Topics, legt fehlende Controller automatisch an und aktualisiert `last_seen`, `is_active`, IP, Firmware-Version usw.
 
 ## LED Patterns
 
@@ -217,12 +212,6 @@ Content-Type: application/json
 - `CONTROLLER_ID_PREFIX`: Präfix für automatisch generierte IDs (`esp-<macsuffix>`). Gleiche Firmware kann so auf beliebig viele Boards geflasht werden.
 - Optional `CONTROLLER_ID`: Erzwingt eine feste ID (z. B. `esp-regal-1`).
 - Optional `TOPIC_SUFFIX`: Überschreibt das Topic (Default = Controller-ID). Kommandos werden an `{TOPIC_PREFIX}/{TOPIC_SUFFIX}/cmd` gesendet.
-
-### REST Heartbeat (API Base)
-
-- Setze `API_BASE_URL` (z. B. `https://warehouse.server-nt.de/api/v1`), damit die Firmware zusätzlich eine HTTP-Heartbeat-Anfrage sendet.
-- Leer lassen, falls nur MQTT genutzt werden soll.
-- SSL ist möglich; standardmäßig wird `setInsecure()` verwendet (für produktiven Einsatz Zertifikate hinterlegen).
 
 ### LED Strip Settings
 

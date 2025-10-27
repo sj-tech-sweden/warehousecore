@@ -93,10 +93,10 @@ func LocateBin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    respondJSON(w, http.StatusOK, map[string]interface{}{
-        "message":  "Bin location command sent",
-        "bin_code": binCode,
-    })
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":  "Bin location command sent",
+		"bin_code": binCode,
+	})
 }
 
 // GetLEDStatus returns current LED system status
@@ -208,8 +208,8 @@ func ValidateLEDMapping(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"valid":        true,
-		"total_bins":   len(binIDs),
+		"valid":         true,
+		"total_bins":    len(binIDs),
 		"total_shelves": len(mapping.Shelves),
 	})
 }

@@ -19,7 +19,6 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
-#include <HTTPClient.h>
 
 // Include secrets (copy secrets.h.template to secrets.h and fill in your credentials)
 #include "secrets.h"
@@ -30,10 +29,6 @@
 
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "1.1.0"
-#endif
-
-#ifndef API_BASE_URL
-#define API_BASE_URL ""
 #endif
 
 // Pin configuration
@@ -60,7 +55,6 @@ PubSubClient mqttClient(espClient);
 // Controller identity & MQTT topics
 String controllerId;
 String controllerTopic;
-String apiBaseUrl = String(API_BASE_URL);
 String cmdTopic;
 String statusTopic;
 
@@ -131,14 +125,6 @@ void setup() {
 
   controllerId = determineControllerId();
   controllerTopic = determineTopicSuffix(controllerId);
-
-  if (apiBaseUrl.length() > 0) {
-    apiBaseUrl.trim();
-    if (apiBaseUrl.endsWith("/")) {
-      apiBaseUrl = apiBaseUrl.substring(0, apiBaseUrl.length() - 1);
-    }
-    Serial.printf("[HTTP] API base URL: %s\n", apiBaseUrl.c_str());
-  }
 
   cmdTopic = String(TOPIC_PREFIX) + "/" + controllerTopic + "/cmd";
   statusTopic = String(TOPIC_PREFIX) + "/" + controllerTopic + "/status";
@@ -436,78 +422,6 @@ uint32_t parseColor(const char* hexColor) {
   return color;
 }
 
-String extractHostFromURL(const String& url) {
-  if (url.length() == 0) {
-    return "";
-  }
-
-  int start = 0;
-  if (url.startsWith("https://")) {
-    start = 8;
-  } else if (url.startsWith("http://")) {
-    start = 7;
-  }
-
-  int slash = url.indexOf('/', start);
-  if (slash == -1) {
-    return url.substring(start);
-  }
-  return url.substring(start, slash);
-}
-
-void sendHTTPHeartbeat(const String& payload) {
-  if (apiBaseUrl.length() == 0) {
-    return;
-  }
-  if (WiFi.status() != WL_CONNECTED) {
-    return;
-  }
-
-  HTTPClient http;
-  String url = apiBaseUrl;
-  if (!url.endsWith("/")) {
-    url += "/";
-  }
-  url += "led/controllers/" + controllerId + "/heartbeat";
-
-  String host = extractHostFromURL(apiBaseUrl);
-  if (host.length() > 0) {
-    IPAddress resolved;
-    if (WiFi.hostByName(host.c_str(), resolved)) {
-      Serial.printf("[HTTP] Resolved host: %s -> %s\n", host.c_str(), resolved.toString().c_str());
-    } else {
-      Serial.printf("[HTTP] Failed to resolve host: %s\n", host.c_str());
-    }
-  }
-
-  Serial.printf("[HTTP] Heartbeat URL: %s\n", url.c_str());
-
-  bool began = false;
-  if (url.startsWith("https://")) {
-    WiFiClientSecure secureClient;
-    secureClient.setInsecure();
-    secureClient.setTimeout(4000);
-    began = http.begin(secureClient, url);
-  } else {
-    began = http.begin(url);
-  }
-
-  if (!began) {
-    Serial.println("[HTTP] Failed to initialise heartbeat request");
-    return;
-  }
-
-  http.setTimeout(4000);
-  http.addHeader("Content-Type", "application/json");
-
-  int code = http.POST(payload);
-  if (code <= 0 || code >= 400) {
-    Serial.printf("[HTTP] Heartbeat POST failed (%d): %s\n", code, http.errorToString(code).c_str());
-    Serial.printf("[HTTP] Response body: %s\n", http.getString().c_str());
-  }
-  http.end();
-}
-
 void sendHeartbeat() {
   StaticJsonDocument<512> doc;
   doc["status"] = "online";
@@ -539,5 +453,4 @@ void sendHeartbeat() {
     }
   }
 
-  sendHTTPHeartbeat(payload);
 }

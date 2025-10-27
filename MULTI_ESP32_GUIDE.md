@@ -217,9 +217,8 @@ Trage deine Daten ein:
 #define MQTT_PASS "mqtt_password"          // ← ÄNDERN!
 
 // ==========================================
-// API & Warehouse Konfiguration
+// Warehouse Konfiguration
 // ==========================================
-#define API_BASE_URL "http://tsunami-events.de:8081/api/v1"  // ← ÄNDERN falls nötig
 #define WAREHOUSE_ID "weidelbach"
 #define TOPIC_PREFIX "weidelbach"
 
@@ -258,10 +257,7 @@ Trage deine Daten ein:
 | `MQTT_HOST` | Server-Adresse | "tsunami-events.de" |
 | `MQTT_USER` | MQTT-Benutzername | "warehouse_mqtt" |
 | `MQTT_PASS` | MQTT-Passwort | "mqtt_secret_pw" |
-| `API_BASE_URL` | WarehouseCore API URL | "http://server:8081/api/v1" |
 | `LED_LENGTH` | Anzahl LEDs am Strip | 300 (für 5m @ 60 LEDs/m) |
-
-> Hinweis: `API_BASE_URL` muss genau den aus dem ESP32-Netz erreichbaren Basis-Pfad deiner WarehouseCore-Instanz enthalten – inklusive `/api/v1`. Verwende HTTP oder HTTPS passend zu deiner Installation (z. B. `https://warehousecore.example.com/api/v1` für Produktion oder `http://192.168.10.5:8081/api/v1` im lokalen Netz). Die Firmware nutzt diesen Wert ausschließlich für die Heartbeat-POSTs und kürzt einen abschließenden Slash automatisch.
 
 Speichern: **STRG+O**, **Enter**, **STRG+X**
 
@@ -708,20 +704,17 @@ Einzelnes Gerät finden:
 
 1. **Heartbeat prüfen** (Serial Monitor):
    ```
-   [HEARTBEAT] Sent (MQTT)
-   [HEARTBEAT] Sent (HTTP) → 200 OK    ← Wichtig!
+   [HEARTBEAT] MQTT sent (uptime: ...)
    ```
+   → Wenn diese Zeile erscheint, sendet der ESP32 seinen Status korrekt.
 
-2. **HTTP-Heartbeat fehlgeschlagen?**
-   ```
-   [HEARTBEAT] Sent (HTTP) → Error: -1
-   ```
-   → `API_BASE_URL` in `secrets.h` prüfen!
-   → Format: `http://server:8081/api/v1` (ohne "/" am Ende!)
+2. **MQTT-Topic kontrollieren**
+   - Topic muss `{TOPIC_PREFIX}/{controller_id}/status` sein
+   - Payload z. B. via `mosquitto_sub -t 'weidelbach/+/status' -v` nachprüfen
 
-3. **Auto-Registration aktiviert?**
-   - Backend muss unbekannte Controller automatisch anlegen
-   - Log prüfen: `docker logs warehousecore`
+3. **Backend-Logs prüfen**
+   - WarehouseCore muss die Heartbeats empfangen (`docker logs warehousecore`)
+   - Fehlermeldungen wie "failed to upsert LED controller" geben Hinweise
 
 4. **Manuell anlegen:**
    - Admin → ESP-Controller
