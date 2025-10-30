@@ -3,25 +3,17 @@
  *
  * Subscribes to MQTT commands from StorageCore server and controls
  * SK6812 GRBW LED strips to highlight storage bins.
- *
- * Features:
- * - WiFi connection with auto-reconnect
- * - MQTT client with TLS support (optional)
- * - JSON command parsing
- * - Multiple LEDs per bin support
- * - Patterns: solid, blink, breathe
- * - Heartbeat status reporting
- * - Watchdog timer for robustness
  */
 
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
+#include <vector>
 
-// Include secrets (copy secrets.h.template to secrets.h and fill in your credentials)
-#include "secrets.h"
+#include "secrets.h"     // WIFI_SSID, WIFI_PASS, MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASS, TOPIC_PREFIX, WAREHOUSE_ID, optional CONTROLLER_ID/TOPIC_SUFFIX
 
 #ifndef CONTROLLER_ID_PREFIX
 #define CONTROLLER_ID_PREFIX "esp"
@@ -86,15 +78,22 @@ void IRAM_ATTR resetModule() {
   esp_restart();
 }
 
-String makeShortMAC() {
-  String mac = WiFi.macAddress();
-  mac.replace(":", "");
-  mac.toLowerCase();
-  if (mac.length() > 6) {
-    mac = mac.substring(mac.length() - 6);
-  }
-  return mac;
+/* -------- MAC helpers (board- & core-unabhängig via Arduino-API) -------- */
+static String getMacFullHexLower() {
+  // Liefert 48-bit eFuse MAC (Basis-MAC); entspricht i.d.R. der STA-MAC
+  uint64_t mac64 = ESP.getEfuseMac();
+  char buf[13];
+  // zero-padded, lowercase, 12 hex chars
+  snprintf(buf, sizeof(buf), "%012llx", (unsigned long long)mac64);
+  return String(buf);
 }
+
+static String makeShortMAC() {
+  String hex = getMacFullHexLower(); // 12 hex-chars, lowercase
+  // Letzte 3 Bytes → 6 Zeichen
+  return hex.substring(6, 12);
+}
+/* ------------------------------------------------------------------------ */
 
 String determineControllerId() {
 #ifdef CONTROLLER_ID
@@ -112,7 +111,16 @@ String determineTopicSuffix(const String& id) {
 #endif
 }
 
-void sendHTTPHeartbeat(const String& payload);
+// Forward decls
+void sendHeartbeat();
+void mqttCallback(char* topic, byte* payload, unsigned int length);
+void handleHighlightCommand(JsonDocument& doc);
+void handleClearCommand();
+void handleIdentifyCommand();
+void updateLEDPatterns();
+uint32_t parseColor(const char* hexColor);
+void connectWiFi();
+void connectMQTT();
 
 void setup() {
   Serial.begin(115200);
@@ -123,6 +131,7 @@ void setup() {
   Serial.println("StorageCore Warehouse Highlighting");
   Serial.println("=================================\n");
 
+  // ID vor jeglicher WiFi-Initialisierung bestimmen
   controllerId = determineControllerId();
   controllerTopic = determineTopicSuffix(controllerId);
 
@@ -148,13 +157,22 @@ void setup() {
   // Setup MQTT
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
-  mqttClient.setBufferSize(4096); // Increased buffer for JSON commands
+  mqttClient.setBufferSize(4096); // Bigger JSON
 
-  // Setup watchdog (10 seconds)
-  // ESP32 Core 3.x API: timerBegin(frequency_in_hz)
-  watchdogTimer = timerBegin(1000000); // 1 MHz = 1 tick per microsecond
+  // Setup watchdog (10 Sekunden), API-abhängig
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+  // Arduino-ESP32 3.x (IDF5 API)
+  watchdogTimer = timerBegin(1000000); // 1 MHz → 1 tick/µs
   timerAttachInterrupt(watchdogTimer, &resetModule);
-  timerAlarm(watchdogTimer, 10000000, true, 0); // 10 seconds in microseconds, autoreload=true
+  timerAlarm(watchdogTimer, 10000000, true, 0); // 10s, autoreload
+  timerRestart(watchdogTimer);
+#else
+  // Arduino-ESP32 2.x (IDF4 API)
+  watchdogTimer = timerBegin(0, 80, true); // Timer 0, Prescaler 80 → 1 tick/µs
+  timerAttachInterrupt(watchdogTimer, &resetModule, true);
+  timerAlarmWrite(watchdogTimer, 10000000, true); // 10s, autoreload
+  timerAlarmEnable(watchdogTimer);
+#endif
   Serial.println("[WDT] Watchdog enabled (10s)");
 
   // Initial connection
@@ -164,8 +182,12 @@ void setup() {
 }
 
 void loop() {
-  // Reset watchdog (ESP32 Core 3.x API)
+  // Watchdog füttern
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
   timerRestart(watchdogTimer);
+#else
+  // Optional: timerWrite(watchdogTimer, 0);
+#endif
 
   // Maintain connections
   if (!mqttClient.connected()) {
@@ -207,6 +229,9 @@ void connectWiFi() {
     Serial.println("\n[WiFi] Connected!");
     Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("[WiFi] RSSI: %d dBm\n", WiFi.RSSI());
+    Serial.printf("[WiFi] MAC (WiFi API): %s | (eFuse): %s\n",
+                  WiFi.macAddress().c_str(),
+                  getMacFullHexLower().c_str());
   } else {
     Serial.println("\n[WiFi] Connection failed! Restarting...");
     delay(5000);
@@ -215,18 +240,16 @@ void connectWiFi() {
 }
 
 void connectMQTT() {
-  if (WiFi.status() != WL_CONNECTED) {
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) return;
 
   Serial.printf("[MQTT] Connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);
 
-  #ifdef USE_TLS
-  espClient.setInsecure(); // For testing; use proper certificates in production
+#ifdef USE_TLS
+  espClient.setInsecure(); // Nur für Tests – in Produktion Zertifikate nutzen
   Serial.println("[MQTT] TLS enabled");
-  #endif
+#endif
 
-  // Set Last Will
+  // Last Will
   String lwt = "{\"status\":\"offline\",\"controller_id\":\"" + controllerId + "\",\"warehouse_id\":\"" + String(WAREHOUSE_ID) + "\"}";
 
   String clientId = "ESP32-" + controllerId + "-" + String(random(0xffff), HEX);
@@ -235,14 +258,13 @@ void connectMQTT() {
                          statusTopic.c_str(), 1, true, lwt.c_str())) {
     Serial.println("[MQTT] Connected!");
 
-    // Subscribe to command topic
     if (mqttClient.subscribe(cmdTopic.c_str(), 1)) {
       Serial.printf("[MQTT] Subscribed to: %s\n", cmdTopic.c_str());
     } else {
       Serial.println("[MQTT] Subscription failed!");
     }
 
-    // Send online status
+    // Online-Status
     sendHeartbeat();
   } else {
     Serial.printf("[MQTT] Connection failed, rc=%d\n", mqttClient.state());
@@ -250,10 +272,8 @@ void connectMQTT() {
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  // Debounce repeated commands
-  if (millis() - lastCommandTime < COMMAND_DEBOUNCE) {
-    return;
-  }
+  // Debounce
+  if (millis() - lastCommandTime < COMMAND_DEBOUNCE) return;
   lastCommandTime = millis();
 
   Serial.printf("\n[MQTT] Message received on %s (%u bytes)\n", topic, length);
@@ -261,17 +281,16 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Parse JSON
   StaticJsonDocument<4096> doc;
   DeserializationError error = deserializeJson(doc, payload, length);
-
   if (error) {
     Serial.printf("[JSON] Parse error: %s\n", error.c_str());
     return;
   }
 
-  // Print command for debugging
+  // Debug
   serializeJsonPretty(doc, Serial);
   Serial.println();
 
-  // Process command
+  // Process
   const char* op = doc["op"];
   if (!op) {
     Serial.println("[CMD] Missing 'op' field");
@@ -296,10 +315,10 @@ void handleHighlightCommand(JsonDocument& doc) {
   activeLEDs.clear();
   strip.clear();
 
-  // Parse defaults
-  uint32_t defaultColor = parseColor(doc["shelves"][0]["bins"][0]["color"] | "#FF2A2A");
-  String defaultPattern = doc["shelves"][0]["bins"][0]["pattern"] | "breathe";
-  uint8_t defaultIntensity = doc["shelves"][0]["bins"][0]["intensity"] | 180;
+  // Parse defaults (fallbacks)
+  uint32_t defaultColor   = parseColor(doc["shelves"][0]["bins"][0]["color"] | "#FF2A2A");
+  String   defaultPattern = doc["shelves"][0]["bins"][0]["pattern"] | "breathe";
+  uint8_t  defaultIntensity = doc["shelves"][0]["bins"][0]["intensity"] | 180;
 
   int totalBins = 0;
   int totalPixels = 0;
@@ -329,7 +348,7 @@ void handleHighlightCommand(JsonDocument& doc) {
           led.pattern = pattern;
           led.intensity = intensity;
           led.lastUpdate = millis();
-          led.phaseOffset = 0; // Synchronous breathe for all LEDs in same bin
+          led.phaseOffset = 0; // Sync breathe innerhalb eines Bins
           activeLEDs.push_back(led);
           totalPixels++;
         }
@@ -380,14 +399,12 @@ void updateLEDPatterns() {
     uint8_t brightness = led.intensity;
 
     if (led.pattern == "solid") {
-      // Solid color
       r = (r * brightness) / 255;
       g = (g * brightness) / 255;
       b = (b * brightness) / 255;
       strip.setPixelColor(led.pixel, strip.Color(r, g, b, 0));
 
     } else if (led.pattern == "blink") {
-      // Blink: 500ms on, 500ms off
       if ((now / 500) % 2 == 0) {
         r = (r * brightness) / 255;
         g = (g * brightness) / 255;
@@ -398,9 +415,8 @@ void updateLEDPatterns() {
       }
 
     } else if (led.pattern == "breathe") {
-      // Breathe: sine wave
       float phase = (now / 2000.0) * 2.0 * PI + (led.phaseOffset / 255.0) * 2.0 * PI;
-      float intensity = (sin(phase) + 1.0) / 2.0; // 0.0 to 1.0
+      float intensity = (sin(phase) + 1.0) / 2.0; // 0.0 .. 1.0
       uint8_t breatheBrightness = (uint8_t)(intensity * brightness);
 
       r = (r * breatheBrightness) / 255;
@@ -415,9 +431,8 @@ void updateLEDPatterns() {
 
 uint32_t parseColor(const char* hexColor) {
   if (!hexColor || hexColor[0] != '#') {
-    return 0xFF2A2A; // Default red
+    return 0xFF2A2A; // Default rot
   }
-
   long color = strtol(hexColor + 1, NULL, 16);
   return color;
 }
@@ -439,7 +454,7 @@ void sendHeartbeat() {
   }
 
   doc["firmware_version"] = FIRMWARE_VERSION;
-  doc["mac_address"] = WiFi.macAddress();
+  doc["mac_address"] = getMacFullHexLower(); // identisch zur ID-Quelle
   doc["led_count"] = LED_LENGTH;
 
   String payload;
@@ -452,5 +467,4 @@ void sendHeartbeat() {
       Serial.println("[HEARTBEAT] MQTT publish failed");
     }
   }
-
 }

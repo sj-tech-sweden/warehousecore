@@ -153,7 +153,14 @@ func (l *ControllerListener) handleStatusMessage(_ mqtt.Client, msg mqtt.Message
 		return
 	}
 
+	topicSuffix := l.extractTopicSuffix(msg.Topic())
+
 	identifier := strings.TrimSpace(payload.ControllerID)
+	if derived := deriveControllerIdentifier(identifier, payload.TopicSuffix, topicSuffix, payload.MacAddress); derived != "" {
+		identifier = derived
+		payload.ControllerID = derived
+	}
+
 	if identifier == "" {
 		identifier = l.extractIdentifier(msg.Topic())
 	}
@@ -163,7 +170,7 @@ func (l *ControllerListener) handleStatusMessage(_ mqtt.Client, msg mqtt.Message
 	}
 
 	if payload.TopicSuffix == "" {
-		payload.TopicSuffix = l.extractTopicSuffix(msg.Topic())
+		payload.TopicSuffix = topicSuffix
 	}
 
 	if controllerHeartbeatHandler == nil {
@@ -201,4 +208,78 @@ func (l *ControllerListener) Close() {
 		l.client.Disconnect(250)
 		log.Println("[LED] Controller listener disconnected")
 	}
+}
+
+func deriveControllerIdentifier(currentID, payloadTopicSuffix, topicSuffix, mac string) string {
+	macSuffix := macSuffixFromAddress(mac)
+	if macSuffix == "" {
+		return ""
+	}
+
+	if !shouldAutogenerateControllerID(currentID) &&
+		!shouldAutogenerateControllerID(payloadTopicSuffix) &&
+		!shouldAutogenerateControllerID(topicSuffix) {
+		return ""
+	}
+
+	prefix := resolveControllerPrefix(currentID, payloadTopicSuffix, topicSuffix)
+	if prefix == "" {
+		prefix = "esp"
+	}
+
+	newID := fmt.Sprintf("%s-%s", prefix, macSuffix)
+	if strings.EqualFold(strings.TrimSpace(currentID), newID) {
+		return ""
+	}
+	return newID
+}
+
+func shouldAutogenerateControllerID(id string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(id))
+	if trimmed == "" {
+		return true
+	}
+	if strings.HasSuffix(trimmed, "-000000") {
+		return true
+	}
+	return false
+}
+
+func resolveControllerPrefix(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(strings.ToLower(value))
+		if trimmed == "" {
+			continue
+		}
+
+		if idx := strings.Index(trimmed, "-"); idx > 0 {
+			return strings.Trim(trimmed[:idx], "-")
+		}
+
+		if trimmed != "" && trimmed != "000000" {
+			return strings.Trim(trimmed, "-")
+		}
+	}
+	return ""
+}
+
+func macSuffixFromAddress(mac string) string {
+	clean := strings.TrimSpace(strings.ToLower(mac))
+	if clean == "" {
+		return ""
+	}
+
+	replacer := strings.NewReplacer(":", "", "-", "", ".", "", " ", "")
+	clean = replacer.Replace(clean)
+	if len(clean) < 6 {
+		return ""
+	}
+
+	for _, r := range clean {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return ""
+		}
+	}
+
+	return clean[len(clean)-6:]
 }
