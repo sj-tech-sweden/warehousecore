@@ -501,7 +501,11 @@ export function LEDControllersTab() {
           <div className="glass rounded-xl p-5 text-center text-gray-400">Noch keine Controller registriert.</div>
         ) : (
           controllers
-            .filter((c) => c.is_active && c.last_seen !== null)
+            .filter((c) => {
+              if (!c.is_active || !c.last_seen) return false;
+              const diff = Date.now() - new Date(c.last_seen).getTime();
+              return diff < ONLINE_THRESHOLD_MS;
+            })
             .map((controller) => {
             const status = controllerStatus(controller);
             const statusData = controller.status_data as Record<string, unknown> | undefined;
