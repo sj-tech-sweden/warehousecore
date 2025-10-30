@@ -52,5 +52,5 @@ type LEDControllerHeartbeat struct {
 	UptimeSeconds   *int64  `json:"uptime_seconds"`
 	LedCount        *int    `json:"led_count"`
 	ActiveLEDs      *int    `json:"active_leds"`
-	Status          JSONMap `json:"status,omitempty"`
+	Status          string  `json:"status,omitempty"` // "online" or "offline"
 }

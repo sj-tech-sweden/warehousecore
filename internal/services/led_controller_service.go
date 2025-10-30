@@ -201,10 +201,8 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string, payload *model
 		if payload.WarehouseID != "" {
 			status["warehouse_id"] = payload.WarehouseID
 		}
-		if payload.Status != nil {
-			for k, v := range payload.Status {
-				status[k] = v
-			}
+		if payload.Status != "" {
+			status["status"] = payload.Status
 		}
 		if len(status) > 0 {
 			status["heartbeat_received_at"] = now.UTC().Format(time.RFC3339)
