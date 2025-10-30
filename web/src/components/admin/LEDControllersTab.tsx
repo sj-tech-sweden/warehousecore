@@ -300,30 +300,41 @@ export function LEDControllersTab() {
       )}
 
       {editor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="glass rounded-2xl border border-accent-red shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-dark-900/95 backdrop-blur-sm border-b border-white/10 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <Settings className="w-5 h-5 text-accent-red" />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }}
+          onClick={resetEditor}
+        >
+          <div
+            className="relative bg-gradient-to-b from-gray-900 to-black rounded-2xl border border-accent-red/50 shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-accent-red/10 to-transparent border-b border-white/10 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-accent-red/20 flex items-center justify-center">
+                  <Settings className="w-5 h-5 text-accent-red" />
+                </div>
                 {editor === 'new' ? 'Neuer Controller' : 'Controller bearbeiten'}
               </h3>
               <button
                 onClick={resetEditor}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 hover:bg-white/10 rounded-lg transition-all hover:rotate-90 duration-300"
                 title="Schließen"
               >
-                <X className="w-5 h-5 text-gray-400" />
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {editor === 'new' && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-300 mb-2">Controller ID</label>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 rounded-lg glass text-white"
+                      className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:border-accent-red focus:ring-2 focus:ring-accent-red/20 transition-all placeholder-gray-500"
                       placeholder="z.B. esp-regal-1"
                       value={form.controller_id}
                       onChange={(e) => setForm((prev) => ({ ...prev, controller_id: e.target.value }))}
@@ -334,7 +345,7 @@ export function LEDControllersTab() {
                   <label className="block text-sm font-semibold text-gray-300 mb-2">Anzeigename</label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 rounded-lg glass text-white"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:border-accent-red focus:ring-2 focus:ring-accent-red/20 transition-all placeholder-gray-500"
                     placeholder="Anzeigename"
                     value={form.display_name}
                     onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
@@ -344,7 +355,7 @@ export function LEDControllersTab() {
                   <label className="block text-sm font-semibold text-gray-300 mb-2">Topic-Suffix (optional)</label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 rounded-lg glass text-white"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:border-accent-red focus:ring-2 focus:ring-accent-red/20 transition-all placeholder-gray-500"
                     placeholder="optional"
                     value={form.topic_suffix}
                     onChange={(e) => setForm((prev) => ({ ...prev, topic_suffix: e.target.value }))}
@@ -352,30 +363,30 @@ export function LEDControllersTab() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-2">Status</label>
-                  <label className="flex items-center gap-2 text-sm text-gray-300 px-3 py-2 glass rounded-lg cursor-pointer">
+                  <label className="flex items-center gap-3 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-all">
                     <input
                       type="checkbox"
-                      className="w-4 h-4"
+                      className="w-5 h-5 rounded border-gray-600 text-accent-red focus:ring-accent-red focus:ring-2"
                       checked={form.is_active}
                       onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))}
                     />
-                    Aktiv
+                    <span className="text-sm text-gray-300 font-medium">Aktiv</span>
                   </label>
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <label className="block text-sm font-semibold text-gray-300">Zuständige Lagerzonen</label>
                 {selectedZones.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="flex flex-wrap gap-2">
                     {selectedZones.map((zone) => (
-                      <span key={zone.id} className="bg-accent-red/20 text-accent-red px-3 py-1 rounded-full">
+                      <span key={zone.id} className="bg-gradient-to-r from-accent-red/20 to-accent-red/10 text-accent-red px-3 py-1.5 rounded-lg text-sm font-medium border border-accent-red/30">
                         {zone.label}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">Noch keine Zonen zugewiesen.</p>
+                  <p className="text-sm text-gray-500 italic">Noch keine Zonen zugewiesen.</p>
                 )}
                 <select
                   multiple
@@ -384,37 +395,42 @@ export function LEDControllersTab() {
                     const selected = Array.from(e.target.selectedOptions).map((opt) => Number(opt.value));
                     handleZoneSelectChange(selected);
                   }}
-                  className="w-full rounded-lg glass text-white px-3 py-2 bg-white/5 focus:outline-none focus:ring-2 focus:ring-accent-red"
+                  className="w-full rounded-lg bg-white/5 border border-white/10 text-white px-4 py-3 focus:border-accent-red focus:ring-2 focus:ring-accent-red/20 transition-all min-h-[120px]"
                 >
                   {sortedZoneTypes.map((zone) => (
-                    <option key={zone.id} value={zone.id}>
+                    <option key={zone.id} value={zone.id} className="py-1">
                       {zone.label}
                     </option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500">
-                  Tipp: Halte <span className="font-semibold">Strg / Cmd</span>, um mehrere Zonen auszuwählen.
+                  💡 Tipp: Halte <span className="font-semibold text-gray-400">Strg / Cmd</span>, um mehrere Zonen auszuwählen.
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">Metadata (JSON)</label>
                 <textarea
-                  className="w-full h-32 rounded-lg glass text-white font-mono text-sm px-3 py-2"
+                  className="w-full h-32 rounded-lg bg-white/5 border border-white/10 text-white font-mono text-sm px-4 py-3 focus:border-accent-red focus:ring-2 focus:ring-accent-red/20 transition-all"
                   value={form.metadata}
                   onChange={(e) => setForm((prev) => ({ ...prev, metadata: e.target.value }))}
+                  placeholder='{\n  "key": "value"\n}'
                 />
               </div>
 
               {editor !== 'new' && (
-                <div className="glass rounded-lg p-5 space-y-4 border border-blue-500/30 bg-blue-500/5">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="w-5 h-5 text-blue-400" />
-                    <h4 className="text-white font-semibold">Hardware-Konfiguration</h4>
+                <div className="bg-gradient-to-br from-blue-500/10 via-transparent to-purple-500/10 rounded-xl p-5 space-y-4 border border-blue-500/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                      <Cpu className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-white font-bold">Hardware-Konfiguration</h4>
+                      <p className="text-xs text-gray-400">
+                        ESP32 per MQTT konfigurieren und dauerhaft speichern
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-400">
-                    Diese Einstellungen werden per MQTT an den ESP32 gesendet und dauerhaft gespeichert.
-                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-gray-300 mb-2">LED-Anzahl</label>
@@ -422,7 +438,7 @@ export function LEDControllersTab() {
                         type="number"
                         min="1"
                         max="1200"
-                        className="w-full px-3 py-2 rounded-lg glass text-white"
+                        className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                         value={configureLedCount}
                         onChange={(e) => setConfigureLedCount(parseInt(e.target.value) || 0)}
                       />
@@ -434,7 +450,7 @@ export function LEDControllersTab() {
                         type="number"
                         min="0"
                         max="50"
-                        className="w-full px-3 py-2 rounded-lg glass text-white"
+                        className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                         value={configureDataPin}
                         onChange={(e) => setConfigureDataPin(parseInt(e.target.value) || 0)}
                       />
@@ -443,7 +459,7 @@ export function LEDControllersTab() {
                     <div>
                       <label className="block text-sm font-semibold text-gray-300 mb-2">LED-Chipset</label>
                       <select
-                        className="w-full px-3 py-2 rounded-lg glass text-white"
+                        className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                         value={configureChipset}
                         onChange={(e) => setConfigureChipset(e.target.value)}
                       >
@@ -456,16 +472,16 @@ export function LEDControllersTab() {
                       <p className="text-xs text-gray-500 mt-1">LED-Typ</p>
                     </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3 items-center">
                     <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 flex-1">
                       <p className="text-yellow-300 text-xs">
-                        <strong>Hinweis:</strong> Pin/Chipset-Änderungen erfordern ESP32-Neustart
+                        <strong>⚠️ Hinweis:</strong> Pin/Chipset-Änderungen erfordern ESP32-Neustart
                       </p>
                     </div>
                     <button
                       onClick={handleHardwareConfig}
                       disabled={configuring}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-blue-700 transition-colors whitespace-nowrap"
+                      className="px-5 py-2.5 rounded-lg text-sm font-bold bg-gradient-to-r from-blue-600 to-blue-500 text-white flex items-center justify-center gap-2 disabled:opacity-50 hover:from-blue-700 hover:to-blue-600 transition-all shadow-lg shadow-blue-500/20 whitespace-nowrap"
                       title="Hardware-Konfiguration senden"
                     >
                       <Save className="w-4 h-4" /> {configuring ? 'Sende...' : 'Hardware speichern'}
@@ -475,17 +491,18 @@ export function LEDControllersTab() {
               )}
             </div>
 
-            <div className="sticky bottom-0 bg-dark-900/95 backdrop-blur-sm border-t border-white/10 px-6 py-4 flex gap-3 justify-end rounded-b-2xl">
+            {/* Footer */}
+            <div className="border-t border-white/10 bg-gradient-to-r from-gray-900 to-black px-6 py-4 flex gap-3 justify-end">
               <button
                 onClick={resetEditor}
-                className="px-5 py-2 rounded-lg text-sm font-semibold bg-gray-600 text-white flex items-center gap-2 hover:bg-gray-700 transition-colors"
+                className="px-6 py-2.5 rounded-lg text-sm font-bold bg-white/5 border border-white/10 text-gray-300 flex items-center gap-2 hover:bg-white/10 transition-all"
               >
                 <X className="w-4 h-4" /> Abbrechen
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-5 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white flex items-center gap-2 disabled:opacity-50 hover:bg-green-700 transition-colors"
+                className="px-6 py-2.5 rounded-lg text-sm font-bold bg-gradient-to-r from-green-600 to-green-500 text-white flex items-center gap-2 disabled:opacity-50 hover:from-green-700 hover:to-green-600 transition-all shadow-lg shadow-green-500/20"
               >
                 <Save className="w-4 h-4" /> {saving ? 'Speichert...' : 'Speichern'}
               </button>
