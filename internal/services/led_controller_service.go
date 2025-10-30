@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -146,6 +147,7 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string, payload *model
 		return nil, errors.New("database not initialised")
 	}
 
+	identifier = strings.TrimSpace(identifier)
 	now := time.Now()
 	updates := map[string]interface{}{
 		"last_seen": now,
@@ -153,6 +155,8 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string, payload *model
 	}
 
 	var status models.JSONMap
+	var normalizedMac string
+	var macCandidates []string
 	if payload != nil {
 		if payload.TopicSuffix != "" {
 			updates["topic_suffix"] = payload.TopicSuffix
@@ -167,7 +171,18 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string, payload *model
 			updates["firmware_version"] = payload.FirmwareVersion
 		}
 		if payload.MacAddress != "" {
-			updates["mac_address"] = payload.MacAddress
+			originalMac := strings.TrimSpace(payload.MacAddress)
+			normalizedMac = normalizeMACAddress(payload.MacAddress)
+			if normalizedMac != "" {
+				updates["mac_address"] = normalizedMac
+				payload.MacAddress = normalizedMac
+				macCandidates = append(macCandidates, normalizedMac)
+			} else {
+				updates["mac_address"] = originalMac
+			}
+			if originalMac != "" && (normalizedMac == "" || !strings.EqualFold(normalizedMac, originalMac)) {
+				macCandidates = append(macCandidates, originalMac)
+			}
 		}
 
 		status = make(models.JSONMap)
@@ -199,12 +214,31 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string, payload *model
 		}
 	}
 
+	if identifier != "" {
+		updates["controller_id"] = identifier
+	}
+
 	result := s.db.Model(&models.LEDController{}).
 		Where("controller_id = ?", identifier).
 		Updates(updates)
 
 	if result.Error != nil {
 		return nil, result.Error
+	}
+
+	if result.RowsAffected == 0 && len(macCandidates) > 0 {
+		for _, candidate := range macCandidates {
+			result = s.db.Model(&models.LEDController{}).
+				Where("mac_address = ?", candidate).
+				Updates(updates)
+
+			if result.Error != nil {
+				return nil, result.Error
+			}
+			if result.RowsAffected > 0 {
+				break
+			}
+		}
 	}
 
 	if result.RowsAffected == 0 {
@@ -280,4 +314,35 @@ func (s *LEDControllerService) GetPrimaryControllerForZoneType(zoneTypeID int) (
 		return nil, err
 	}
 	return &controller, nil
+}
+
+func normalizeMACAddress(mac string) string {
+	clean := strings.TrimSpace(strings.ToLower(mac))
+	if clean == "" {
+		return ""
+	}
+
+	replacer := strings.NewReplacer(":", "", "-", "", ".", "", " ", "")
+	clean = replacer.Replace(clean)
+	if len(clean) < 12 {
+		return ""
+	}
+	if len(clean) > 12 {
+		clean = clean[len(clean)-12:]
+	}
+
+	for _, r := range clean {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return ""
+		}
+	}
+
+	var sb strings.Builder
+	for i := 0; i < 12; i += 2 {
+		if sb.Len() > 0 {
+			sb.WriteByte(':')
+		}
+		sb.WriteString(clean[i : i+2])
+	}
+	return sb.String()
 }
