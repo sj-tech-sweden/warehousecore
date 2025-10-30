@@ -347,7 +347,7 @@ func normalizeMACAddress(mac string) string {
 }
 
 // ConfigureController sends configuration to an LED controller via MQTT
-func (s *LEDControllerService) ConfigureController(id int, ledCount int) error {
+func (s *LEDControllerService) ConfigureController(id int, ledCount *int, dataPin *int, chipset *string) error {
 	if s.db == nil {
 		return errors.New("database not initialised")
 	}
@@ -368,7 +368,9 @@ func (s *LEDControllerService) ConfigureController(id int, ledCount int) error {
 	cmd := led.LEDCommand{
 		Op:          "config",
 		WarehouseID: controller.TopicSuffix,
-		LedCount:    &ledCount,
+		LedCount:    ledCount,
+		DataPin:     dataPin,
+		Chipset:     chipset,
 	}
 
 	// Publish to controller's topic

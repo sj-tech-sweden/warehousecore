@@ -133,7 +133,9 @@ func ConfigureLEDController(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var config struct {
-		LedCount *int `json:"led_count"`
+		LedCount *int    `json:"led_count"`
+		DataPin  *int    `json:"data_pin"`
+		Chipset  *string `json:"chipset"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
@@ -141,19 +143,40 @@ func ConfigureLEDController(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if config.LedCount == nil || *config.LedCount < 1 || *config.LedCount > 1200 {
+	// Validate led_count if provided
+	if config.LedCount != nil && (*config.LedCount < 1 || *config.LedCount > 1200) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "led_count must be between 1 and 1200"})
 		return
 	}
 
+	// Validate data_pin if provided
+	if config.DataPin != nil && (*config.DataPin < 0 || *config.DataPin > 50) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "data_pin must be between 0 and 50"})
+		return
+	}
+
+	// At least one parameter must be provided
+	if config.LedCount == nil && config.DataPin == nil && config.Chipset == nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "at least one configuration parameter required"})
+		return
+	}
+
 	service := services.NewLEDControllerService()
-	if err := service.ConfigureController(id, *config.LedCount); err != nil {
+	if err := service.ConfigureController(id, config.LedCount, config.DataPin, config.Chipset); err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":    "configuration sent",
-		"led_count": *config.LedCount,
-	})
+	response := map[string]interface{}{"status": "configuration sent"}
+	if config.LedCount != nil {
+		response["led_count"] = *config.LedCount
+	}
+	if config.DataPin != nil {
+		response["data_pin"] = *config.DataPin
+	}
+	if config.Chipset != nil {
+		response["chipset"] = *config.Chipset
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }

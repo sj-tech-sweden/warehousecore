@@ -6,6 +6,8 @@ type LEDCommand struct {
 	WarehouseID string   `json:"warehouse_id"` // e.g., "weidelbach"
 	Shelves     []Shelf  `json:"shelves,omitempty"`
 	LedCount    *int     `json:"led_count,omitempty"` // For "config" op - number of LEDs
+	DataPin     *int     `json:"data_pin,omitempty"`  // For "config" op - GPIO pin number
+	Chipset     *string  `json:"chipset,omitempty"`   // For "config" op - LED chipset type
 }
 
 // Shelf represents a shelf with bins to highlight

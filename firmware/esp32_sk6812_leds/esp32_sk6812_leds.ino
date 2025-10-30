@@ -14,6 +14,7 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
+#include <Preferences.h>
 #include <vector>
 
 #include "secrets.h"     // WIFI_SSID, WIFI_PASS, MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASS, TOPIC_PREFIX, WAREHOUSE_ID, optional CONTROLLER_ID/TOPIC_SUFFIX
@@ -23,7 +24,7 @@
 #endif
 
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "1.3.0"
+#define FIRMWARE_VERSION "1.4.0"
 #endif
 
 // Auto-detect XIAO ESP32-C6 and set appropriate default pins
@@ -56,6 +57,11 @@ Adafruit_NeoPixel strip(LED_LENGTH, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 // Runtime LED configuration (can be changed via MQTT)
 int currentLedCount = LED_LENGTH;
+int currentDataPin = LED_PIN;
+String currentChipset = "SK6812_GRBW";
+
+// Preferences storage
+Preferences preferences;
 
 // WiFi and MQTT clients
 #ifdef USE_TLS
@@ -182,6 +188,19 @@ void setup() {
   Serial.printf("[MQTT] Topic prefix: %s\n", TOPIC_PREFIX);
   Serial.printf("[MQTT] Command topic: %s\n", cmdTopic.c_str());
   Serial.printf("[MQTT] Status topic: %s\n", statusTopic.c_str());
+  Serial.println();
+
+  // Load configuration from preferences
+  preferences.begin("led-config", false);
+  currentDataPin = preferences.getInt("data_pin", LED_PIN);
+  currentChipset = preferences.getString("chipset", "SK6812_GRBW");
+  preferences.end();
+
+  Serial.printf("[CONFIG] Loaded data_pin: %d\n", currentDataPin);
+  Serial.printf("[CONFIG] Loaded chipset: %s\n", currentChipset.c_str());
+  if (currentDataPin != LED_PIN) {
+    Serial.printf("[CONFIG] WARNING: Configured pin (%d) differs from compiled pin (%d). Restart required to apply.\n", currentDataPin, LED_PIN);
+  }
   Serial.println();
 
   // Initialize LED strip
@@ -472,6 +491,7 @@ void handleConfigCommand(JsonDocument& doc) {
   Serial.println("[CMD] Processing CONFIG command");
 
   bool configChanged = false;
+  bool restartRequired = false;
 
   // Update LED count if provided
   if (doc.containsKey("led_count")) {
@@ -486,6 +506,34 @@ void handleConfigCommand(JsonDocument& doc) {
     }
   }
 
+  // Update data pin if provided (requires restart)
+  if (doc.containsKey("data_pin")) {
+    int newDataPin = doc["data_pin"];
+    if (newDataPin >= 0 && newDataPin <= 50) {  // Safety limit for GPIO pins
+      preferences.begin("led-config", false);
+      preferences.putInt("data_pin", newDataPin);
+      preferences.end();
+      currentDataPin = newDataPin;
+      Serial.printf("[CONFIG] Data pin saved to: %d (restart required)\n", newDataPin);
+      restartRequired = true;
+    } else {
+      Serial.printf("[CONFIG] Invalid data pin: %d (must be 0-50)\n", newDataPin);
+    }
+  }
+
+  // Update chipset if provided (requires restart)
+  if (doc.containsKey("chipset")) {
+    String newChipset = doc["chipset"].as<String>();
+    if (newChipset.length() > 0) {
+      preferences.begin("led-config", false);
+      preferences.putString("chipset", newChipset);
+      preferences.end();
+      currentChipset = newChipset;
+      Serial.printf("[CONFIG] Chipset saved to: %s (restart required)\n", newChipset.c_str());
+      restartRequired = true;
+    }
+  }
+
   // Clear LEDs when config changes
   if (configChanged) {
     activeLEDs.clear();
@@ -497,7 +545,17 @@ void handleConfigCommand(JsonDocument& doc) {
     sendHeartbeat();
 
     Serial.println("[CONFIG] Configuration applied successfully");
-  } else {
+  }
+
+  if (restartRequired) {
+    Serial.println("[CONFIG] Hardware configuration saved. Please restart the ESP32 to apply changes.");
+    Serial.println("[CONFIG] You can restart by:");
+    Serial.println("[CONFIG]   1. Power cycle the device");
+    Serial.println("[CONFIG]   2. Press the reset button");
+    Serial.println("[CONFIG]   3. Send an MQTT command to trigger restart (if implemented)");
+  }
+
+  if (!configChanged && !restartRequired) {
     Serial.println("[CONFIG] No valid configuration changes received");
   }
 }
@@ -575,6 +633,8 @@ void sendHeartbeat() {
   doc["firmware_version"] = FIRMWARE_VERSION;
   doc["mac_address"] = getMacFullHexLower();
   doc["led_count"] = currentLedCount;
+  doc["data_pin"] = currentDataPin;
+  doc["chipset"] = currentChipset;
 
   String payload;
   serializeJson(doc, payload);

@@ -262,13 +262,6 @@ export function LEDSettingsTab() {
     }
   };
 
-  const updateLedStrip = (patch: Partial<LEDMapping['led_strip']>) => {
-    setMapping((prev) => {
-      if (!prev) return prev;
-      return { ...prev, led_strip: { ...prev.led_strip, ...patch } };
-    });
-  };
-
   const updateMappingDefaults = (patch: Partial<LEDMapping['defaults']>) => {
     setMapping((prev) => {
       if (!prev) return prev;
@@ -491,16 +484,20 @@ export function LEDSettingsTab() {
   if (loading || zoneTypeLoading) return <div className="text-white">Lädt...</div>;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Lightbulb className="w-6 h-6 text-yellow-400" />
-        <div>
-          <h2 className="text-xl font-bold text-white">LED-Standardverhalten (Einzelfach-Highlight)</h2>
-          <p className="text-gray-400 text-sm">Diese Einstellungen gelten für die "Fach beleuchten" Funktion</p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-white mb-2">LED-Verhalten</h1>
+        <p className="text-gray-400">Konfiguriere das Aussehen und Verhalten der LED-Beleuchtung</p>
       </div>
 
-      <div className="glass rounded-xl p-6 space-y-6">
+      <div className="glass rounded-xl p-6 space-y-6 border border-accent-red/30">
+        <div className="flex items-center gap-3">
+          <Lightbulb className="w-6 h-6 text-yellow-400" />
+          <div>
+            <h2 className="text-xl font-bold text-white">Einzelfach-Highlight</h2>
+            <p className="text-gray-400 text-sm">Standard-Aussehen für die "Fach beleuchten" Funktion</p>
+          </div>
+        </div>
         {/* Pattern Selection */}
         <div>
           <label className="block text-sm font-semibold text-gray-400 mb-3">Muster</label>
@@ -687,17 +684,18 @@ export function LEDSettingsTab() {
       `}</style>
 
       {/* Job highlight behaviour */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal className="w-5 h-5 text-accent-red" />
-          <h3 className="text-lg font-semibold text-white">Job-Highlight Einstellungen</h3>
+      <div className="glass rounded-xl p-6 space-y-6 border border-blue-500/30">
+        <div className="flex items-center gap-3">
+          <SlidersHorizontal className="w-6 h-6 text-blue-400" />
+          <div>
+            <h2 className="text-xl font-bold text-white">Job-Highlight</h2>
+            <p className="text-gray-400 text-sm">
+              Konfiguriere das Aussehen der LEDs bei der Job-Visualisierung
+            </p>
+          </div>
         </div>
-        <p className="text-sm text-gray-400">
-          Steuere, wie Fächer oder Gitterboxen leuchten, wenn ein Job ausgewählt ist. Du kannst zwischen
-          einer kompletten Visualisierung aller Fächer und einem Fokus auf die zu packenden Fächer wählen.
-        </p>
 
-        <div className="glass rounded-xl p-5 space-y-5">
+        <div className="space-y-4">
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => setJobSettings((prev) => ({ ...prev, mode: 'all_bins' }))}
@@ -898,93 +896,88 @@ export function LEDSettingsTab() {
             Mapping konnte nicht geladen werden. Prüfe die Server-Logs.
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="glass rounded-xl p-5 space-y-3">
-                <h4 className="text-white font-semibold text-sm uppercase tracking-wide">LED Strip</h4>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-400 mb-1">Anzahl LEDs</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={mapping.led_strip.length}
-                    onChange={(e) => updateLedStrip({ length: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full px-3 py-2 rounded-lg glass text-white"
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-400 mb-1">Data Pin</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={mapping.led_strip.data_pin}
-                      onChange={(e) => updateLedStrip({ data_pin: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-3 py-2 rounded-lg glass text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-400 mb-1">Chipset</label>
-                    <select
-                      value={mapping.led_strip.chipset}
-                      onChange={(e) => updateLedStrip({ chipset: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg glass text-white"
-                    >
-                      {['SK6812_GRBW', 'SK6812_GRB', 'WS2812B', 'WS2811', 'APA102'].map((chip) => (
-                        <option key={chip} value={chip} className="bg-dark">
-                          {chip}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+          <div className="space-y-6">
+            <div className="glass rounded-xl p-6 space-y-4 border border-white/10">
+              <div className="flex items-center justify-between">
+                <h4 className="text-white font-semibold">Standard-Erscheinung</h4>
+                <button
+                  onClick={() =>
+                    triggerPreview(
+                      [
+                        toPreviewAppearance(
+                          mapping.defaults.color,
+                          mapping.defaults.pattern,
+                          mapping.defaults.intensity,
+                          mapping.defaults.speed
+                        ),
+                      ]
+                    )
+                  }
+                  disabled={previewLoading && previewTarget !== 'all'}
+                  className={`px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                    previewActive && previewTarget === 'all'
+                      ? 'bg-red-600 text-white'
+                      : previewLoading
+                      ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  <Lightbulb className="w-4 h-4 text-yellow-300" />
+                  <span>{previewActive && previewTarget === 'all' ? 'Vorschau stoppen' : previewLoading ? 'Vorschau läuft…' : 'Vorschau'}</span>
+                </button>
               </div>
-
-              <div className="glass rounded-xl p-5 space-y-3">
-                <h4 className="text-white font-semibold text-sm uppercase tracking-wide">Standard-Erscheinung</h4>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={mapping.defaults.color}
-                    onChange={(e) => updateMappingDefaults({ color: e.target.value })}
-                    className="w-14 h-14 rounded-lg cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={mapping.defaults.color}
-                    onChange={(e) => updateMappingDefaults({ color: e.target.value })}
-                    className="flex-1 px-3 py-2 rounded-lg glass text-white font-mono"
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-400 mb-1">Muster</label>
-                    <select
-                      value={mapping.defaults.pattern}
-                      onChange={(e) => updateMappingDefaults({ pattern: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg glass text-white"
-                    >
-                      <option value="solid">Durchgehend</option>
-                      <option value="breathe">Atmen</option>
-                      <option value="blink">Blinken</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-400 mb-1">
-                      Intensität: {mapping.defaults.intensity} / 255
-                    </label>
+              <p className="text-sm text-gray-400">
+                Definiere das Standard-Aussehen für LED-Highlights beim Mapping
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">Farbe</label>
+                  <div className="flex items-center gap-3">
                     <input
-                      type="range"
-                      min={0}
-                      max={255}
-                      value={mapping.defaults.intensity}
-                      onChange={(e) => updateMappingDefaults({ intensity: parseInt(e.target.value, 10) })}
-                      className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer"
+                      type="color"
+                      value={mapping.defaults.color}
+                      onChange={(e) => updateMappingDefaults({ color: e.target.value })}
+                      className="w-16 h-16 rounded-lg cursor-pointer border-2 border-white/10"
+                    />
+                    <input
+                      type="text"
+                      value={mapping.defaults.color}
+                      onChange={(e) => updateMappingDefaults({ color: e.target.value })}
+                      className="flex-1 px-3 py-2 rounded-lg glass text-white font-mono"
+                      placeholder="#FF7A00"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 mb-1">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">Muster</label>
+                  <select
+                    value={mapping.defaults.pattern}
+                    onChange={(e) => updateMappingDefaults({ pattern: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg glass text-white"
+                  >
+                    <option value="solid">Durchgehend</option>
+                    <option value="breathe">Atmen</option>
+                    <option value="blink">Blinken</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Intensität: {mapping.defaults.intensity} / 255
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={255}
+                    value={mapping.defaults.intensity}
+                    onChange={(e) => updateMappingDefaults({ intensity: parseInt(e.target.value, 10) })}
+                    className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, ${mapping.defaults.color} 0%, ${mapping.defaults.color} ${(mapping.defaults.intensity / 255) * 100}%, rgba(255,255,255,0.1) ${(mapping.defaults.intensity / 255) * 100}%, rgba(255,255,255,0.1) 100%)`
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
                     Geschwindigkeit{mapping.defaults.pattern === 'solid' ? '' : `: ${mapping.defaults.speed ?? 1200} ms`}
                   </label>
                   <input
@@ -997,32 +990,10 @@ export function LEDSettingsTab() {
                     onChange={(e) => updateMappingDefaults({ speed: parseInt(e.target.value, 10) })}
                     className="w-full h-3 rounded-lg bg-white/10 appearance-none cursor-pointer disabled:opacity-40"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {mapping.defaults.pattern === 'solid' ? 'Keine Animation' : 'Niedrigere Werte = schneller'}
+                  </p>
                 </div>
-                  <button
-                    onClick={() =>
-                      triggerPreview(
-                        [
-                          toPreviewAppearance(
-                            mapping.defaults.color,
-                            mapping.defaults.pattern,
-                            mapping.defaults.intensity,
-                            mapping.defaults.speed
-                          ),
-                        ]
-                      )
-                    }
-                    disabled={previewLoading && previewTarget !== 'all'}
-                    className={`w-full px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                      previewActive && previewTarget === 'all'
-                        ? 'bg-red-600 text-white'
-                        : previewLoading
-                        ? 'bg-gray-600 cursor-not-allowed text-gray-300'
-                        : 'bg-white/10 text-white hover:bg-white/20'
-                    }`}
-                  >
-                    <Lightbulb className="w-4 h-4 text-yellow-300" />
-                    <span>{previewActive && previewTarget === 'all' ? 'Vorschau stoppen' : previewLoading ? 'Vorschau läuft…' : 'Standard-Vorschau'}</span>
-                  </button>
               </div>
             </div>
 
@@ -1211,11 +1182,16 @@ export function LEDSettingsTab() {
       </div>
 
       {/* Zone type specific defaults */}
-      <div className="space-y-3">
-        <h3 className="text-lg font-semibold text-white">LED-Standardwerte pro Lagertyp</h3>
-        <p className="text-sm text-gray-400">
-          Passe hier das LED-Verhalten für einzelne Lagertypen an. Diese Einstellungen überschreiben den globalen Standard.
-        </p>
+      <div className="glass rounded-xl p-6 space-y-6 border border-purple-500/30">
+        <div className="flex items-center gap-3">
+          <SlidersHorizontal className="w-6 h-6 text-purple-400" />
+          <div>
+            <h2 className="text-xl font-bold text-white">Lagertyp-Spezifische Einstellungen</h2>
+            <p className="text-gray-400 text-sm">
+              Passe das LED-Verhalten für einzelne Lagertypen an
+            </p>
+          </div>
+        </div>
 
         <div className="space-y-4">
           {zoneTypes.map((zoneType) => (
