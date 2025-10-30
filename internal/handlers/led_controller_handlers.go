@@ -180,3 +180,23 @@ func ConfigureLEDController(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, response)
 }
+
+// RestartLEDController sends a restart command to an LED controller via MQTT
+func RestartLEDController(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid controller id"})
+		return
+	}
+
+	service := services.NewLEDControllerService()
+	if err := service.RestartController(id); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "restart command sent",
+		"message": "ESP32 will restart in 2 seconds",
+	})
+}

@@ -243,6 +243,7 @@ func main() {
 	admin.HandleFunc("/led/controllers", handlers.CreateLEDController).Methods("POST")
 	admin.HandleFunc("/led/controllers/{id}", handlers.UpdateLEDController).Methods("PUT")
 	admin.HandleFunc("/led/controllers/{id}/configure", handlers.ConfigureLEDController).Methods("POST")
+	admin.HandleFunc("/led/controllers/{id}/restart", handlers.RestartLEDController).Methods("POST")
 	admin.HandleFunc("/led/controllers/{id}", handlers.DeleteLEDController).Methods("DELETE")
 	admin.HandleFunc("/users/{id}/roles", handlers.UpdateUserRoles).Methods("PUT")
 	admin.HandleFunc("/categories", handlers.CreateCategory).Methods("POST")

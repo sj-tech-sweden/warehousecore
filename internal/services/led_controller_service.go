@@ -380,3 +380,35 @@ func (s *LEDControllerService) ConfigureController(id int, ledCount *int, dataPi
 
 	return nil
 }
+
+// RestartController sends a restart command to an LED controller via MQTT
+func (s *LEDControllerService) RestartController(id int) error {
+	if s.db == nil {
+		return errors.New("database not initialised")
+	}
+
+	// Get controller details
+	var controller models.LEDController
+	if err := s.db.First(&controller, id).Error; err != nil {
+		return err
+	}
+
+	// Import LED package for MQTT publishing
+	publisher := led.GetPublisher()
+	if publisher == nil {
+		return errors.New("MQTT publisher not available")
+	}
+
+	// Create restart command
+	cmd := led.LEDCommand{
+		Op:          "restart",
+		WarehouseID: controller.TopicSuffix,
+	}
+
+	// Publish to controller's topic
+	if err := publisher.PublishCommandToController(&controller, cmd); err != nil {
+		return err
+	}
+
+	return nil
+}

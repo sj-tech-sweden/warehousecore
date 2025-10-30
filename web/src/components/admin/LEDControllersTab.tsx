@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ledApi, api, type LEDController, type LEDControllerPayload, type ZoneTypeDefinition } from '../../lib/api';
-import { Plus, Save, X, RefreshCcw, Trash2, Cpu, Settings } from 'lucide-react';
+import { Plus, Save, X, RefreshCcw, Trash2, Cpu, Settings, RotateCw } from 'lucide-react';
 
 type EditorTarget = number | 'new' | null;
 type ConfigureTarget = number | null;
@@ -55,6 +55,7 @@ export function LEDControllersTab() {
   const [configureDataPin, setConfigureDataPin] = useState<number>(0);
   const [configureChipset, setConfigureChipset] = useState<string>('SK6812_GRBW');
   const [configuring, setConfiguring] = useState(false);
+  const [restarting, setRestarting] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -213,6 +214,25 @@ export function LEDControllersTab() {
     }
   };
 
+  const handleRestart = async (controllerId: number) => {
+    if (!confirm('ESP32 wirklich neu starten? Der Controller wird für ca. 5-10 Sekunden offline sein.')) return;
+
+    try {
+      setRestarting(controllerId);
+      await ledApi.restartController(controllerId);
+      setMessage('✓ Neustart-Befehl gesendet. ESP32 startet in 2 Sekunden neu.');
+      // Reload after 10 seconds to show controller coming back online
+      setTimeout(() => {
+        loadData();
+        setRestarting(null);
+      }, 10000);
+    } catch (error: any) {
+      const msg = error.response?.data?.error || error.message || 'Unbekannter Fehler';
+      alert('Fehler: ' + msg);
+      setRestarting(null);
+    }
+  };
+
   const handleDeleteOffline = async () => {
     const offlineControllers = controllers.filter(c => {
       if (!c.last_seen) return true;
@@ -339,23 +359,33 @@ export function LEDControllersTab() {
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
             <p className="text-yellow-300 text-xs">
               <strong>Hinweis:</strong> Änderungen an Data Pin und Chipset werden gespeichert,
-              erfordern aber einen Neustart des ESP32 (Power-Cycle oder Reset-Button).
+              erfordern aber einen Neustart des ESP32. Nach dem Speichern kannst du den ESP direkt über den Button neu starten.
             </p>
           </div>
-          <div className="flex gap-2 justify-end">
+          <div className="flex gap-2 justify-between">
             <button
-              onClick={() => setConfigureTarget(null)}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-600 text-white flex items-center gap-2"
+              onClick={() => configureTarget && handleRestart(configureTarget)}
+              disabled={restarting !== null || configuring}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white flex items-center gap-2 disabled:opacity-50"
+              title="ESP32 neu starten (für Pin/Chipset-Änderungen)"
             >
-              <X className="w-4 h-4" /> Abbrechen
+              <RotateCw className="w-4 h-4" /> {restarting === configureTarget ? 'Startet neu...' : 'ESP neu starten'}
             </button>
-            <button
-              onClick={handleConfigure}
-              disabled={configuring}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white flex items-center gap-2 disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" /> {configuring ? 'Wird gesendet...' : 'Konfiguration senden'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfigureTarget(null)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-600 text-white flex items-center gap-2"
+              >
+                <X className="w-4 h-4" /> Abbrechen
+              </button>
+              <button
+                onClick={handleConfigure}
+                disabled={configuring}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white flex items-center gap-2 disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" /> {configuring ? 'Wird gesendet...' : 'Konfiguration senden'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -515,13 +545,23 @@ export function LEDControllersTab() {
                 </div>
                 <div className="flex gap-2">
                   {status.label === 'Online' && (
-                    <button
-                      onClick={() => startConfigure(controller)}
-                      className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 flex items-center gap-2"
-                      title="LED-Anzahl konfigurieren"
-                    >
-                      <Settings className="w-4 h-4" /> Konfigurieren
-                    </button>
+                    <>
+                      <button
+                        onClick={() => startConfigure(controller)}
+                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 flex items-center gap-2"
+                        title="Hardware konfigurieren"
+                      >
+                        <Settings className="w-4 h-4" /> Konfigurieren
+                      </button>
+                      <button
+                        onClick={() => handleRestart(controller.id)}
+                        disabled={restarting === controller.id}
+                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-orange-600/20 text-orange-400 hover:bg-orange-600/30 flex items-center gap-2 disabled:opacity-50"
+                        title="ESP32 neu starten"
+                      >
+                        <RotateCw className="w-4 h-4" /> {restarting === controller.id ? 'Startet...' : 'Neustart'}
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => startEdit(controller)}

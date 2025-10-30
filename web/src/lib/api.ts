@@ -411,6 +411,7 @@ export const ledApi = {
   deleteController: (id: number) => api.delete(`/admin/led/controllers/${id}`),
   configureController: (id: number, config: { led_count?: number; data_pin?: number; chipset?: string }) =>
     api.post(`/admin/led/controllers/${id}/configure`, config),
+  restartController: (id: number) => api.post(`/admin/led/controllers/${id}/restart`),
 };
 
 // Label API

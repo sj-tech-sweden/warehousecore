@@ -24,7 +24,7 @@
 #endif
 
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "1.4.0"
+#define FIRMWARE_VERSION "1.5.0"
 #endif
 
 // Auto-detect XIAO ESP32-C6 and set appropriate default pins
@@ -146,6 +146,7 @@ void handleHighlightCommand(JsonDocument& doc);
 void handleClearCommand();
 void handleIdentifyCommand();
 void handleConfigCommand(JsonDocument& doc);
+void handleRestartCommand();
 void updateLEDPatterns();
 uint32_t parseColor(const char* hexColor);
 void connectWiFi();
@@ -402,6 +403,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     handleIdentifyCommand();
   } else if (strcmp(op, "config") == 0) {
     handleConfigCommand(doc);
+  } else if (strcmp(op, "restart") == 0) {
+    handleRestartCommand();
   } else {
     Serial.printf("[CMD] Unknown operation: %s\n", op);
   }
@@ -558,6 +561,21 @@ void handleConfigCommand(JsonDocument& doc) {
   if (!configChanged && !restartRequired) {
     Serial.println("[CONFIG] No valid configuration changes received");
   }
+}
+
+void handleRestartCommand() {
+  Serial.println("[CMD] Processing RESTART command");
+  Serial.println("[RESTART] Restarting ESP32 in 2 seconds...");
+  Serial.println("[RESTART] This allows hardware changes (pin/chipset) to take effect.");
+
+  // Give time to send response and flush serial
+  delay(2000);
+
+  Serial.println("[RESTART] Rebooting now!");
+  Serial.flush();
+
+  // Restart the ESP32
+  esp_restart();
 }
 
 void updateLEDPatterns() {
