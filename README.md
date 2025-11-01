@@ -1238,6 +1238,27 @@ For issues or questions:
 
   **Impact:** Device creation now works correctly for both legacy and new products. Users are no longer blocked from creating devices for valid products that have been in the system before the trigger was added.
 
+### Version 2.45 (2025-11-01)
+- **Feature: Auto-Label Creation on Device Creation** 🏷️✨
+  - When devices are created, labels are now automatically generated in the background
+  - Uses the saved default label template from the Label Designer
+  - Labels are pre-rendered and saved to `/labels/{device_id}_label.png`
+  - No manual action required - labels ready immediately after device creation
+  - Added logging: `[LABEL CREATE] Generating label for device X using default template`
+  - Works seamlessly with batch device creation (up to 100 devices)
+  - Silently skips label generation if no default template is configured
+
+- **Feature: Cascade Delete for Products** 🗑️
+  - Products can now be deleted even if they have associated devices
+  - Automatically deletes all devices when a product is deleted
+  - Added comprehensive logging: `[PRODUCT DELETE] Deleting N devices for product X before deletion`
+  - API response includes count of deleted devices
+  - Detailed device ID logging for audit trail
+  - Example response: `"Product deleted successfully along with 15 device(s)"`
+  - Prevents orphaned devices in the database
+
+  **Impact:** Streamlined workflows - devices get labels automatically, and product cleanup is effortless.
+
 ### Version 2.43 (2025-11-01)
 - **Critical Fix: Device Creation Silent Failures** 🔧
   - Fixed devices not being created when creating products with quantity specified
