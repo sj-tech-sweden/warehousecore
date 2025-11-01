@@ -373,7 +373,7 @@ func CreateDevicesForProduct(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 
-	// Validate product exists and has required fields for trigger
+	// Validate product exists and has required fields for device ID generation trigger
 	var productName string
 	var abbreviation sql.NullString
 	var posInCategory sql.NullInt64
@@ -402,16 +402,18 @@ func CreateDevicesForProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Log warning if pos_in_category is NULL but allow device creation
+	// The database trigger will set pos_in_category for new products automatically
+	// Legacy products may have NULL values but device creation should still work
 	if !posInCategory.Valid {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":   "Product missing required pos_in_category",
-			"message": "Product must have pos_in_category set to create devices",
-		})
-		return
+		log.Printf("[DEVICE CREATE WARNING] Product %d (%s) has NULL pos_in_category - this may indicate legacy data",
+			req.ProductID, productName)
+		log.Printf("[DEVICE CREATE] Creating %d devices for product %d (%s) - Subcategory: %s, Position: NULL (legacy)",
+			req.Quantity, req.ProductID, productName, abbreviation.String)
+	} else {
+		log.Printf("[DEVICE CREATE] Creating %d devices for product %d (%s) - Subcategory: %s, Position: %d",
+			req.Quantity, req.ProductID, productName, abbreviation.String, posInCategory.Int64)
 	}
-
-	log.Printf("[DEVICE CREATE] Creating %d devices for product %d (%s) - Subcategory: %s, Position: %d",
-		req.Quantity, req.ProductID, productName, abbreviation.String, posInCategory.Int64)
 
 	// Optional prefix: if triggers respect a session variable we pass it through
 	if req.Prefix != nil && *req.Prefix != "" {
@@ -481,9 +483,15 @@ func CreateDevicesForProduct(w http.ResponseWriter, r *http.Request) {
 
 	// Return error if no devices were created despite requesting them
 	if len(createdDeviceIDs) == 0 {
+		var posMsg string
+		if posInCategory.Valid {
+			posMsg = fmt.Sprintf("pos_in_category: %d", posInCategory.Int64)
+		} else {
+			posMsg = "pos_in_category: NULL (legacy product)"
+		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{
 			"error":   "Failed to create devices",
-			"message": fmt.Sprintf("Device creation failed. Check that product has subcategory (%s) and pos_in_category (%d).", abbreviation.String, posInCategory.Int64),
+			"message": fmt.Sprintf("Device creation failed. Check that product has subcategory (%s) and %s.", abbreviation.String, posMsg),
 		})
 		return
 	}
