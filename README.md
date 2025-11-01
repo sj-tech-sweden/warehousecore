@@ -1200,6 +1200,36 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.55 (2025-11-01)
+- **Critical Bug Fix: Automatic Label Generation SQL Error** 🔧
+  - Fixed automatic label generation that was completely broken since implementation
+  - **Root Cause:** SQL query used snake_case column names (device_id) but database uses camelCase (deviceID)
+  - **The Problem:**
+    - Every device creation attempted to generate a label automatically
+    - ALL label generation attempts failed with: `Unknown column 'd.device_id' in 'field list'`
+    - Error was logged but silently skipped, so users didn't know labels weren't being created
+    - Logs showed: `[LABEL CREATE ERROR] Failed to generate label for device X`
+  - **Additional Issues Found:**
+    - Query tried to join devices directly to categories/subbiercategories
+    - Database structure: devices → products → categories/subbiercategories
+    - Missing JOIN through products table caused query to fail
+    - Used non-existent d.name column (should be p.name for product name)
+  - **The Fix:**
+    - Updated GenerateLabelForDevice query to use correct camelCase column names:
+      * `d.deviceID` instead of `d.device_id`
+      * `p.productID` instead of `p.product_id`
+    - Fixed table relationships with proper JOINs:
+      * `devices d` → `products p` (via d.productID = p.productID)
+      * `products p` → `subbiercategories sb` (via p.subbiercategoryID = sb.subbiercategoryID)
+      * `products p` → `categories c` (via p.categoryID = c.categoryID)
+    - Changed device name field from d.name to p.name (product name)
+  - **Impact:**
+    - Automatic label generation NOW WORKS when creating devices
+    - Labels are properly generated in background using default template
+    - No more SQL errors in logs
+    - Users no longer need to manually generate labels for new devices
+  - **Verified:** Docker logs show successful label generation after deploying version 1.55
+
 ### Version 2.45 (2025-11-01)
 - **Critical Bug Fix: Device Creation Route Handler** 🔧
   - Fixed device creation failing when creating products with quantity specified in ProductsTab
