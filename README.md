@@ -1163,6 +1163,25 @@ For issues or questions:
 
 ## Changelog
 
+### Version 2.44 (2025-11-01)
+- **Bug Fix: pos_in_category Validation Blocking Device Creation** 🔧
+  - Removed overly strict validation that incorrectly blocked device creation for legacy products
+  - **Root Cause Analysis:**
+    - Database trigger `pos_in_subcategory` automatically sets `pos_in_category` for NEW products on INSERT
+    - Legacy products created before trigger existed have NULL `pos_in_category` values
+    - Validation was checking for NULL and blocking device creation even though devices could be created
+  - **Database Fix:** Updated all existing products with NULL `pos_in_category` to proper sequential values
+  - **Code Fix:** Changed validation from blocking error to warning log for NULL values
+  - **Improved Error Messages:** Error messages now distinguish between NULL (legacy) and valid pos_in_category values
+  - **Enhanced Logging:** Added detailed logging to track legacy vs new product handling
+
+  **Technical Details:**
+  - Products with NULL `pos_in_category`: 23, 24, 25, 26, 30, 48 (now fixed)
+  - Trigger location: RentalCore.sql lines 1305-1318
+  - Device creation now works for ALL products with valid subcategory abbreviation
+
+  **Impact:** Device creation now works correctly for both legacy and new products. Users are no longer blocked from creating devices for valid products that have been in the system before the trigger was added.
+
 ### Version 2.43 (2025-11-01)
 - **Critical Fix: Device Creation Silent Failures** 🔧
   - Fixed devices not being created when creating products with quantity specified
