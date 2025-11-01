@@ -1200,6 +1200,44 @@ For issues or questions:
 
 ## Changelog
 
+### Version 2.47 (2025-11-01)
+- **Label Rendering Fix: Properly Scaled Elements** 🏷️
+  - Fixed critical label rendering issues where elements were incorrectly sized and positioned
+  - **The Problems:**
+    - Label canvas size was correct (590x295px for 50x25mm at 300 DPI)
+    - Images/barcodes/QR codes were drawn at NATIVE resolution, ignoring template dimensions
+    - Logo image (512x512px) was drawn at full size, causing massive overflow (only half visible)
+    - Text used fixed-size font (7x13px) regardless of template font_size property
+    - Barcode and text appeared tiny because they weren't scaled properly
+  - **Root Cause:**
+    - Image drawing code (line 629-631) used `elemImg.Bounds()` directly without scaling
+    - A 512px logo placed at x=377px (32mm) extended to 889px - way beyond label width!
+    - Text rendering ignored font_size style property and used basicfont.Face7x13 at fixed size
+  - **The Fix:**
+    - **Image Scaling:** Implemented proper image scaling to template dimensions
+      * Extract target width/height from template (in mm, converted to pixels)
+      * Create scaled image using pixel-by-pixel resampling
+      * Scale both dimensions: `scaleX` and `scaleY` calculated from source to target
+      * Now 512x512px logo scales to 189x189px (16x16mm) and fits perfectly
+    - **Text Rendering:** Improved font size handling
+      * Changed style key from `fontSize` to `font_size` (matching template JSON)
+      * Calculate scale factor based on desired point size at 300 DPI
+      * For larger text (scale > 1.5x), draw characters individually with proper spacing
+      * Text baseline positioning adjusted for proper alignment
+  - **Technical Details:**
+    - MM to Pixel conversion: `pixels = mm * 300 DPI / 25.4 mm/inch ≈ mm * 11.8`
+    - Template: 50x25mm → 590x295px canvas
+    - Logo: 16x16mm → 189x189px (was 512x512px unscaled)
+    - Barcode: 33x8mm → 389x94px (now properly sized)
+    - Text: 11pt → ~46px height at 300 DPI (was 13px fixed)
+  - **Impact:**
+    - All label elements now properly sized and positioned within boundaries
+    - Logo no longer cut off - scales to fit template dimensions
+    - Barcode and text are now appropriately sized for professional labels
+    - Labels ready for printing at correct 300 DPI resolution
+  - **Files Changed:**
+    - `/internal/services/label_service.go`: Image scaling and text rendering improvements
+
 ### Version 1.55 (2025-11-01)
 - **Critical Bug Fix: Automatic Label Generation SQL Error** 🔧
   - Fixed automatic label generation that was completely broken since implementation
