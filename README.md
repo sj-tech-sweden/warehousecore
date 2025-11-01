@@ -1200,6 +1200,59 @@ For issues or questions:
 
 ## Changelog
 
+### Version 2.51 (2025-11-01)
+- **CRITICAL FIX: Async Label Generation - Device Creation No Longer Hangs** 🚀
+  - **Fixed UI hanging issue where device creation popup would freeze with "Speichern..." indefinitely**
+  - **Root Cause:** Label generation was blocking the API response, causing 30-60 second delays per device
+
+  **The Problem:**
+  - Creating devices with auto-label generation would hang the UI
+  - API endpoint blocked waiting for headless Chrome to render each label
+  - Chrome timeouts (30s per device) meant 8 devices = 4+ minutes of waiting
+  - Popup never closed, user experience was terrible
+  - Chrome in Docker was timing out: "context deadline exceeded"
+
+  **Root Cause Analysis:**
+  - Headless Chrome was missing critical Docker flags (--disable-dev-shm-usage)
+  - Label generation was synchronous in the HTTP handler (blocking)
+  - Each device waited for label completion before responding
+  - Chrome was failing to start properly in constrained Docker environment
+
+  **The Solution:**
+  - ✅ **Moved label generation to background goroutine** - API returns immediately
+  - ✅ **Added Docker-optimized Chrome flags** - prevents shared memory issues
+  - ✅ **Increased timeout 30s → 60s** - gives Chrome more time in slow environments
+  - ✅ **Async processing** - devices created instantly, labels generate in background
+
+  **Technical Implementation:**
+  - **Modified `/internal/handlers/product_handlers.go`:**
+    - Wrapped label generation loop in `go func()` goroutine
+    - API now responds immediately after device creation
+    - Labels generate asynchronously without blocking user
+
+  - **Modified `/internal/services/label_service.go`:**
+    - Added `chromedp.Flag("disable-dev-shm-usage", true)` - CRITICAL for Docker
+    - Added `chromedp.Flag("disable-setuid-sandbox", true)`
+    - Added `chromedp.Flag("disable-web-security", true)`
+    - Added `chromedp.Flag("disable-features", "VizDisplayCompositor")`
+    - Increased context timeout from 30s to 60s
+    - Removed verbose Chrome logging (reduces noise)
+
+  **Benefits:**
+  - ✅ Device creation completes instantly (< 1 second)
+  - ✅ Popup closes immediately, no more hanging
+  - ✅ Labels generate quietly in background
+  - ✅ Chrome runs reliably in Docker with proper flags
+  - ✅ Much better user experience
+
+  **Before vs After:**
+  - **Before:** Create 8 devices → 4+ minutes of hanging → popup frozen
+  - **After:** Create 8 devices → instant response → labels generate in background
+
+  **Files Changed:**
+  - `/internal/handlers/product_handlers.go`: Lines 541-552 (async goroutine)
+  - `/internal/services/label_service.go`: Lines 575-595 (Chrome flags + timeout)
+
 ### Version 2.50 (2025-11-01)
 - **MAJOR REFACTOR: Headless Browser Label Rendering** 🔧✨
   - **Replaced complex freetype text rendering with headless Chromium browser**
