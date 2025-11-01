@@ -1238,7 +1238,7 @@ For issues or questions:
 
   **Impact:** Device creation now works correctly for both legacy and new products. Users are no longer blocked from creating devices for valid products that have been in the system before the trigger was added.
 
-### Version 2.45 (2025-11-01)
+### Version 2.46 (2025-11-01)
 - **Feature: Auto-Label Creation on Device Creation** 🏷️✨
   - When devices are created, labels are now automatically generated in the background
   - Uses the saved default label template from the Label Designer
