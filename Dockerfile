@@ -36,7 +36,21 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o warehousecore ./c
 # Stage 3: Final Image
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates tzdata
+# Install Chromium for headless label rendering and other runtime dependencies
+RUN apk --no-cache add \
+    ca-certificates \
+    tzdata \
+    chromium \
+    chromium-chromedriver \
+    nss \
+    freetype \
+    harfbuzz \
+    ttf-freefont
+
+# Set Chromium environment variables for headless operation
+ENV CHROME_BIN=/usr/bin/chromium-browser \
+    CHROME_PATH=/usr/lib/chromium/ \
+    CHROMIUM_FLAGS="--disable-software-rasterizer --disable-dev-shm-usage"
 
 WORKDIR /root/
 
@@ -49,6 +63,9 @@ COPY --from=backend-builder /app/migrations ./migrations
 # Copy LED configuration files
 COPY --from=backend-builder /app/internal/led/config ./internal/led/config
 COPY --from=backend-builder /app/internal/led/schema ./internal/led/schema
+
+# Copy HTML template for label rendering
+COPY --from=backend-builder /app/internal/services/label_template.html ./internal/services/
 
 # Copy frontend build from frontend builder
 COPY --from=frontend-builder /app/web/dist ./web/dist

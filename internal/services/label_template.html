@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Label Generator</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: white;
+        }
+        #canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // This will be populated by Go with actual template data
+        const LABEL_DATA = {{LABEL_DATA_JSON}};
+
+        async function generateLabel() {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const dpi = 300;
+            const mmToPx = dpi / 25.4;
+            const width = LABEL_DATA.template.width * mmToPx;
+            const height = LABEL_DATA.template.height * mmToPx;
+
+            canvas.width = width;
+            canvas.height = height;
+
+            // White background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+
+            // Border (optional)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(0, 0, width, height);
+
+            // Render elements
+            for (const elem of LABEL_DATA.elements) {
+                const x = elem.x * mmToPx;
+                const y = elem.y * mmToPx;
+                const w = elem.width * mmToPx;
+                const h = elem.height * mmToPx;
+
+                const content = elem.content || '';
+
+                if (elem.type === 'qrcode' || elem.type === 'barcode' || elem.type === 'image') {
+                    // Draw image data (barcode/QR code/logo)
+                    if (elem.image_data) {
+                        const img = new Image();
+                        await new Promise((resolve, reject) => {
+                            img.onload = () => {
+                                ctx.drawImage(img, x, y, w, h);
+                                resolve();
+                            };
+                            img.onerror = reject;
+                            img.src = elem.image_data;
+                        });
+                    }
+                } else if (elem.type === 'text') {
+                    // Draw text
+                    const style = elem.style || {};
+                    ctx.fillStyle = style.color || '#000000';
+                    const fontSize = (style.font_size || 10) * (dpi / 96);
+                    ctx.font = `${style.font_weight || 'normal'} ${fontSize}px ${style.font_family || 'Arial'}`;
+                    ctx.textAlign = style.alignment || 'left';
+                    ctx.fillText(content, x, y + fontSize);
+                }
+            }
+
+            // Signal that rendering is complete
+            window.labelRendered = true;
+        }
+
+        // Start generation when page loads
+        window.addEventListener('load', () => {
+            generateLabel().catch(err => {
+                console.error('Label generation failed:', err);
+                window.labelRendered = false;
+            });
+        });
+    </script>
+</body>
+</html>
