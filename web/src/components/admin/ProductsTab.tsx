@@ -114,7 +114,7 @@ export function ProductsTab() {
       // Create devices if quantity is specified
       if (formData.device_quantity && formData.device_quantity > 0 && !editingProduct) {
         try {
-          await api.post('/products/create-devices', {
+          await api.post(`/admin/products/${productId}/devices`, {
             product_id: productId,
             quantity: formData.device_quantity,
             prefix: formData.device_prefix || '',

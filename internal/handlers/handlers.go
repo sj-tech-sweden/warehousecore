@@ -2381,7 +2381,8 @@ func GetMovements(w http.ResponseWriter, r *http.Request) {
 func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 
-	// Query for device tree with categories
+	// Query for device tree with categories - Modified to include products without devices
+	// We need to ensure products appear even when they have no devices
 	query := `
 		SELECT
 			c.categoryID,
@@ -2390,11 +2391,12 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 			sc.name as subcategory_name,
 			sbc.subbiercategoryID,
 			sbc.name as subbiercategory_name,
+			p.productID,
+			COALESCE(p.name, '') as product_name,
 			d.deviceID,
 			d.status,
 			d.barcode,
 			d.serialnumber,
-			COALESCE(p.name, '') as product_name,
 			d.zone_id,
 			COALESCE(z.code, '') as zone_code
 		FROM categories c
@@ -2403,6 +2405,7 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN products p ON sbc.subbiercategoryID = p.subbiercategoryID
 		LEFT JOIN devices d ON p.productID = d.productID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		WHERE p.productID IS NOT NULL
 		ORDER BY c.name, sc.name, sbc.name, p.name, d.deviceID
 	`
 
@@ -2423,13 +2426,15 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 		var categoryID sql.NullInt64
 		var subcategoryID, subbiercategoryID sql.NullString
 		var categoryName, subcategoryName, subbiercategoryName sql.NullString
-		var deviceID, status, barcode, serialNumber, productName sql.NullString
+		var productID sql.NullInt64
+		var productName sql.NullString
+		var deviceID, status, barcode, serialNumber sql.NullString
 		var zoneID sql.NullInt64
 		var zoneCode sql.NullString
 
 		err := rows.Scan(&categoryID, &categoryName, &subcategoryID, &subcategoryName,
-			&subbiercategoryID, &subbiercategoryName, &deviceID, &status, &barcode,
-			&serialNumber, &productName, &zoneID, &zoneCode)
+			&subbiercategoryID, &subbiercategoryName, &productID, &productName,
+			&deviceID, &status, &barcode, &serialNumber, &zoneID, &zoneCode)
 		if err != nil {
 			log.Printf("Error scanning row: %v", err)
 			continue
