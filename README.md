@@ -1200,6 +1200,48 @@ For issues or questions:
 
 ## Changelog
 
+### Version 2.48 (2025-11-01)
+- **Label Text Rendering Fix: Proper Font Sizing and Letter Spacing** 📝
+  - Fixed critical text rendering issues where labels had text that was too small and letters spaced too far apart
+  - **The Problems:**
+    - Default font size was only 11pt, resulting in very small text on labels
+    - Letter spacing calculation was completely wrong
+    - Characters were spaced at `7 * scaleFactor` pixels (for 11pt = 7 * 3.5 = 24.5px), far too wide
+    - Text baseline calculation was overly complex and incorrect
+    - Letters appeared like "T   S   U   N   A   M   I" instead of "TSUNAMI"
+  - **Root Cause:**
+    - Lines 614-621: Individual character drawing used excessive spacing
+    - Line 595: Scale factor calculation `(fontSize / 72.0 * 300.0) / 13.0` was applied incorrectly
+    - Line 598: Y position calculation duplicated scale factor math unnecessarily
+    - Default font size (11pt) was too small for practical label reading
+  - **The Fix:**
+    - **Font Size:** Increased default from 11pt to 16pt for better readability
+    - **Scale Factor:** Simplified calculation to `(fontSize * 300.0 / 72.0) / 13.0`
+      * For 16pt: scale = (16 * 4.167) / 13 = 5.13x
+      * For 11pt (template override): scale = (11 * 4.167) / 13 = 3.53x
+    - **Letter Spacing:** Fixed to use proper character spacing
+      * Changed from `int(7 * scaleFactor)` to `charWidth * scaleFactor * 1.15`
+      * 1.15x multiplier provides natural letter spacing (15% gap)
+      * For 16pt: 7px * 5.13 * 1.15 = 41.3px per character (vs 35.9px broken)
+      * For 11pt: 7px * 3.53 * 1.15 = 28.4px per character (vs 24.5px broken)
+    - **Baseline Position:** Simplified to `y + int(fontSize * 300 / 72)`
+      * Cleaner calculation, proper vertical alignment
+  - **Technical Details:**
+    - Font scaling at 300 DPI: 1pt = 300/72 = 4.167 pixels
+    - basicfont.Face7x13: 7px character width, 13px height
+    - Character spacing now: base width × scale × 1.15 for natural appearance
+    - Text is now readable and properly spaced for professional labels
+  - **Before vs After:**
+    - Before: "D  E  V  I  C  E    1  2  3" (huge gaps, tiny text)
+    - After: "DEVICE 123" (natural spacing, readable size)
+  - **Impact:**
+    - All labels now have properly sized, readable text
+    - Letter spacing appears natural and professional
+    - Template font_size property is properly respected
+    - Default labels use larger 16pt font unless template specifies otherwise
+  - **Files Changed:**
+    - `/internal/services/label_service.go`: Text rendering improvements (lines 553-631)
+
 ### Version 2.47 (2025-11-01)
 - **Label Rendering Fix: Properly Scaled Elements** 🏷️
   - Fixed critical label rendering issues where elements were incorrectly sized and positioned
