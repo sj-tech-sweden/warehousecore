@@ -99,6 +99,11 @@ export function ProductsTab() {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
+    console.log('[PRODUCT CREATE] Starting product creation with formData:', formData);
+    console.log('[PRODUCT CREATE] Device quantity:', formData.device_quantity);
+    console.log('[PRODUCT CREATE] Device prefix:', formData.device_prefix);
+    console.log('[PRODUCT CREATE] Is editing?', editingProduct);
+
     setSubmitting(true);
     try {
       let productId: number;
@@ -106,29 +111,48 @@ export function ProductsTab() {
       if (editingProduct) {
         await api.put(`/admin/products/${editingProduct}`, formData);
         productId = editingProduct;
+        console.log('[PRODUCT CREATE] Updated existing product:', productId);
       } else {
+        console.log('[PRODUCT CREATE] Calling POST /admin/products...');
         const { data } = await api.post('/admin/products', formData);
+        console.log('[PRODUCT CREATE] Product created, response:', data);
         productId = data.product_id;
+        console.log('[PRODUCT CREATE] Extracted product ID:', productId);
       }
 
       // Create devices if quantity is specified
-      if (formData.device_quantity && formData.device_quantity > 0 && !editingProduct) {
+      const shouldCreateDevices = formData.device_quantity && formData.device_quantity > 0 && !editingProduct;
+      console.log('[PRODUCT CREATE] Should create devices?', shouldCreateDevices);
+      console.log('[PRODUCT CREATE] Condition breakdown:', {
+        hasQuantity: !!formData.device_quantity,
+        quantityValue: formData.device_quantity,
+        quantityGreaterThanZero: formData.device_quantity ? formData.device_quantity > 0 : false,
+        notEditing: !editingProduct
+      });
+
+      if (shouldCreateDevices) {
         try {
-          await api.post(`/admin/products/${productId}/devices`, {
+          const devicePayload = {
             product_id: productId,
             quantity: formData.device_quantity,
             prefix: formData.device_prefix || '',
-          });
+          };
+          console.log('[PRODUCT CREATE] Calling POST /admin/products/' + productId + '/devices with payload:', devicePayload);
+          const deviceResponse = await api.post(`/admin/products/${productId}/devices`, devicePayload);
+          console.log('[PRODUCT CREATE] Device creation successful:', deviceResponse.data);
         } catch (deviceError) {
-          console.error('Failed to create devices:', deviceError);
-          alert('Produkt erstellt, aber Fehler beim Erstellen der Geräte');
+          console.error('[PRODUCT CREATE ERROR] Failed to create devices:', deviceError);
+          alert('Produkt erstellt, aber Fehler beim Erstellen der Geräte: ' + (deviceError as any)?.message);
         }
+      } else {
+        console.log('[PRODUCT CREATE] Skipping device creation');
       }
 
       setModalOpen(false);
       await loadProducts();
+      console.log('[PRODUCT CREATE] Process complete');
     } catch (error) {
-      console.error('Failed to save product:', error);
+      console.error('[PRODUCT CREATE ERROR] Failed to save product:', error);
       alert('Fehler beim Speichern des Produkts');
     } finally {
       setSubmitting(false);
