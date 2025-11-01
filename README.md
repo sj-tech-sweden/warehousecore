@@ -1155,13 +1155,26 @@ For issues or questions:
 
 ---
 
-**Version:** 2.42
+**Version:** 2.43
 **Last Updated:** 2025-11-01
 **Maintainer:** Tsunami Events UG Development Team
 
 ---
 
 ## Changelog
+
+### Version 2.43 (2025-11-01)
+- **Critical Fix: Device Creation Silent Failures** 🔧
+  - Fixed devices not being created when creating products with quantity specified
+  - Root cause: Database trigger requires `subcategoryID` with abbreviation and `pos_in_category`
+  - Added pre-flight validation to verify product has required fields before device creation
+  - Returns clear error messages when required fields are missing instead of silent failure
+  - Added comprehensive debug logging throughout device creation workflow
+  - Tracks and logs failed device insertions for better troubleshooting
+  - Returns HTTP 500 error if no devices were created despite quantity being requested
+
+  **Impact:** Users now receive immediate feedback if their product configuration is incomplete
+  for device creation, preventing confusion when devices aren't generated.
 
 ### Version 2.42 (2025-11-01)
 - **Bug Fix: Product Creation Device Generation** 🔧
