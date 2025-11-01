@@ -938,23 +938,60 @@ curl http://localhost:8081/api/v1/health
 
 ### Docker (Recommended)
 
+**Important: Multi-Stage Build Process**
+
+The Dockerfile uses a multi-stage build that:
+1. **Stage 1**: Builds the frontend React app using Node.js 20
+2. **Stage 2**: Builds the Go backend
+3. **Stage 3**: Combines both into a minimal Alpine image
+
+This ensures that every Docker build includes the latest frontend changes.
+
 **Build Docker image:**
 ```bash
-make docker-build
-# Or manually:
-docker build -t nobentie/warehousecore:1.0 .
-docker tag nobentie/warehousecore:1.0 nobentie/warehousecore:latest
+# Check latest version on Docker Hub first
+docker images nobentie/warehousecore
+
+# Build with incremented version (example: 1.56)
+docker build -t nobentie/warehousecore:1.56 .
+
+# Tag as latest
+docker tag nobentie/warehousecore:1.56 nobentie/warehousecore:latest
 ```
 
 **Push to Docker Hub:**
 ```bash
-make docker-push
-# Or manually:
-docker push nobentie/warehousecore:1.0
+# Push version tag
+docker push nobentie/warehousecore:1.56
+
+# Push latest tag
 docker push nobentie/warehousecore:latest
 ```
 
-**Run with docker-compose:**
+**Deploy on Komodo (docker03 server):**
+```bash
+# The Docker stack runs on docker03 server via Komodo
+# User: noah | Host: docker03
+# DO NOT manually restart the stack - only authorized via Komodo
+
+# To deploy new version:
+# 1. Build and push to Docker Hub (see above)
+# 2. Pull latest image on docker03:
+ssh noah@docker03
+docker pull nobentie/warehousecore:latest
+
+# 3. Restart stack via Komodo web interface
+# (DO NOT use docker-compose restart manually)
+```
+
+**Current Version:** 1.56
+
+**Recent Changes:**
+- 1.56: Fixed frontend build process with multi-stage Docker build, added comprehensive debug logging
+- 1.55: Added debug logging to ProductsTab (not working - frontend not rebuilt)
+- 1.54: Previous stable version
+
+**Run with docker-compose (local development):**
 ```bash
 # Pull latest image from Docker Hub
 docker-compose pull
