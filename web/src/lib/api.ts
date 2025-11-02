@@ -218,6 +218,58 @@ export const devicesApi = {
   getTree: () => api.get<DeviceTreeResponse>('/devices/tree'),
 };
 
+// Device Admin API (for device CRUD operations)
+export interface DeviceCreateInput {
+  product_id: number;
+  status?: string;
+  serial_number?: string;
+  barcode?: string;
+  qr_code?: string;
+  current_location?: string;
+  zone_id?: number;
+  condition_rating?: number;
+  usage_hours?: number;
+  purchase_date?: string;
+  last_maintenance?: string;
+  next_maintenance?: string;
+  notes?: string;
+  quantity?: number;
+  auto_generate_label?: boolean;
+  label_template_id?: number;
+  regenerate_codes?: boolean;
+  device_prefix?: string;
+  starting_serial?: number;
+  increment_serial?: boolean;
+}
+
+export interface DeviceUpdateInput {
+  product_id?: number;
+  status?: string;
+  serial_number?: string;
+  barcode?: string;
+  qr_code?: string;
+  current_location?: string;
+  zone_id?: number;
+  condition_rating?: number;
+  usage_hours?: number;
+  purchase_date?: string;
+  last_maintenance?: string;
+  next_maintenance?: string;
+  notes?: string;
+  regenerate_label?: boolean;
+  label_template_id?: number;
+  regenerate_codes?: boolean;
+}
+
+export const devicesAdminApi = {
+  create: (data: DeviceCreateInput) => api.post<Device | Device[]>('/admin/devices', data),
+  update: (id: string, data: DeviceUpdateInput) => api.put<Device>(`/admin/devices/${id}`, data),
+  delete: (id: string) => api.delete<{ message: string }>(`/admin/devices/${id}`),
+  getById: (id: string) => api.get<Device>(`/admin/devices/${id}`),
+  downloadQR: (id: string) => `/api/v1/admin/devices/${id}/qr`,
+  downloadBarcode: (id: string) => `/api/v1/admin/devices/${id}/barcode`,
+};
+
 export const casesApi = {
   list: (params?: { search?: string; status?: string }) =>
     api.get<CasesResponse>('/cases', { params }),

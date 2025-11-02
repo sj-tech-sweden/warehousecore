@@ -45,6 +45,7 @@ WarehouseCore manages the physical warehouse operations alongside RentalCore (th
    - Status management with history
    - Movement audit trail
    - Produktzentrierte Geräteübersicht mit Schnellaktionen (Fach aufleuchten, Zone öffnen)
+   - **Admin CRUD UI** - Full device management with create, edit, delete, QR/barcode generation
 
 2. **Storage Zones**
    - Hierarchical zone structure

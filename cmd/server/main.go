@@ -283,6 +283,13 @@ func main() {
 	admin.HandleFunc("/products/{id}", handlers.UpdateProduct).Methods("PUT")
 	admin.HandleFunc("/products/{id}", handlers.DeleteProduct).Methods("DELETE")
 	admin.HandleFunc("/products/{id}/devices", handlers.CreateDevicesForProduct).Methods("POST")
+	admin.HandleFunc("/devices-list", handlers.GetAllDevicesAdmin).Methods("GET")
+	admin.HandleFunc("/devices", handlers.CreateDevice).Methods("POST")
+	admin.HandleFunc("/devices/{id}", handlers.GetDeviceAdmin).Methods("GET")
+	admin.HandleFunc("/devices/{id}", handlers.UpdateDevice).Methods("PUT")
+	admin.HandleFunc("/devices/{id}", handlers.DeleteDevice).Methods("DELETE")
+	admin.HandleFunc("/devices/{id}/qr", handlers.GenerateDeviceQR).Methods("GET")
+	admin.HandleFunc("/devices/{id}/barcode", handlers.GenerateDeviceBarcode).Methods("GET")
 	admin.HandleFunc("/api-limits", handlers.GetAPILimits).Methods("GET")
 	admin.HandleFunc("/api-limits", handlers.UpdateAPILimits).Methods("PUT")
 
