@@ -464,3 +464,18 @@ export const labelsApi = {
   saveCaseLabel: (caseId: number, imageData: string) =>
     api.post<{ label_path: string; message: string }>('/labels/save-case', { case_id: caseId, image_data: imageData }),
 };
+
+// Admin Settings API
+export interface APILimits {
+  device_limit: number;
+  case_limit: number;
+}
+
+export const adminSettingsApi = {
+  getAPILimits: () => api.get<APILimits>('/admin/api-limits'),
+  updateAPILimits: (limits: Partial<APILimits>) =>
+    api.put<APILimits & { message: string }>('/admin/api-limits', {
+      device_limit: limits.device_limit,
+      case_limit: limits.case_limit,
+    }),
+};

@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Package } from 'lucide-react';
+import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Package, Database } from 'lucide-react';
 import { ZoneTypesTab } from '../components/admin/ZoneTypesTab';
 import { LEDSettingsTab } from '../components/admin/LEDSettingsTab';
 import { RolesTab } from '../components/admin/RolesTab';
 import { LEDControllersTab } from '../components/admin/LEDControllersTab';
 import { CategoriesTab } from '../components/admin/CategoriesTab';
 import { ProductsTab } from '../components/admin/ProductsTab';
+import { APISettingsTab } from '../components/admin/APISettingsTab';
 
-type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'products' | 'roles';
+type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'products' | 'roles' | 'apisettings';
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('zonetypes');
@@ -19,6 +20,7 @@ export function AdminPage() {
     { id: 'categories' as TabType, label: 'Kategorien', icon: FolderTree },
     { id: 'products' as TabType, label: 'Produkte', icon: Package },
     { id: 'roles' as TabType, label: 'Rollen & Benutzer', icon: Users },
+    { id: 'apisettings' as TabType, label: 'API-Einstellungen', icon: Database },
   ];
 
   return (
@@ -64,6 +66,7 @@ export function AdminPage() {
         {activeTab === 'categories' && <CategoriesTab />}
         {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'roles' && <RolesTab />}
+        {activeTab === 'apisettings' && <APISettingsTab />}
       </div>
     </div>
   );

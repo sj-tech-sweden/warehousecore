@@ -589,3 +589,67 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 	profile, _ := adminService.GetProfileWithUser(user.UserID)
 	respondJSON(w, http.StatusOK, profile)
 }
+
+// ===========================
+// API LIMITS HANDLERS
+// ===========================
+
+// GetAPILimits returns the configured API limits for devices and cases
+func GetAPILimits(w http.ResponseWriter, r *http.Request) {
+	deviceLimit := services.GetDeviceLimit()
+	caseLimit := services.GetCaseLimit()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"device_limit": deviceLimit,
+		"case_limit":   caseLimit,
+	})
+}
+
+// UpdateAPILimits updates the API limits for devices and cases
+func UpdateAPILimits(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		DeviceLimit *int `json:"device_limit"`
+		CaseLimit   *int `json:"case_limit"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	// Validate limits
+	if payload.DeviceLimit != nil && *payload.DeviceLimit < 1 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Device limit must be at least 1"})
+		return
+	}
+	if payload.CaseLimit != nil && *payload.CaseLimit < 1 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Case limit must be at least 1"})
+		return
+	}
+
+	// Update device limit if provided
+	if payload.DeviceLimit != nil {
+		if err := services.UpdateAPILimit("api.device_limit", *payload.DeviceLimit); err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update device limit"})
+			return
+		}
+	}
+
+	// Update case limit if provided
+	if payload.CaseLimit != nil {
+		if err := services.UpdateAPILimit("api.case_limit", *payload.CaseLimit); err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update case limit"})
+			return
+		}
+	}
+
+	// Return updated limits
+	deviceLimit := services.GetDeviceLimit()
+	caseLimit := services.GetCaseLimit()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"device_limit": deviceLimit,
+		"case_limit":   caseLimit,
+		"message":      "API limits updated successfully",
+	})
+}

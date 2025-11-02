@@ -259,6 +259,8 @@ func main() {
 	admin.HandleFunc("/products/{id}", handlers.UpdateProduct).Methods("PUT")
 	admin.HandleFunc("/products/{id}", handlers.DeleteProduct).Methods("DELETE")
 	admin.HandleFunc("/products/{id}/devices", handlers.CreateDevicesForProduct).Methods("POST")
+	admin.HandleFunc("/api-limits", handlers.GetAPILimits).Methods("GET")
+	admin.HandleFunc("/api-limits", handlers.UpdateAPILimits).Methods("PUT")
 
 	// Profile endpoints (authenticated users)
 	protected.HandleFunc("/profile/me", handlers.GetMyProfile).Methods("GET")
