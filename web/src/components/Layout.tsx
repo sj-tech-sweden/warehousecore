@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings, Boxes, Tag } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +16,7 @@ export function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const checkMobile = () => {
@@ -95,23 +98,23 @@ export function Layout({ children }: LayoutProps) {
   }, [userRoles]);
 
   const baseNavItems = useMemo(() => ([
-    { path: '/', icon: Home, label: 'Dashboard' },
-    { path: '/scan', icon: ScanLine, label: 'Scan' },
-    { path: '/devices', icon: Package, label: 'Geräte' },
-    { path: '/labels', icon: Tag, label: 'Labels' },
-    { path: '/cases', icon: Boxes, label: 'Cases' },
-    { path: '/zones', icon: MapPin, label: 'Lager' },
-    { path: '/jobs', icon: Briefcase, label: 'Jobs' },
-    { path: '/maintenance', icon: Wrench, label: 'Wartung' },
-  ]), []);
+    { path: '/', icon: Home, label: t('nav.dashboard') },
+    { path: '/scan', icon: ScanLine, label: t('nav.scan') },
+    { path: '/devices', icon: Package, label: t('nav.devices') },
+    { path: '/labels', icon: Tag, label: t('nav.labels') },
+    { path: '/cases', icon: Boxes, label: t('nav.cases') },
+    { path: '/zones', icon: MapPin, label: t('nav.zones') },
+    { path: '/jobs', icon: Briefcase, label: t('nav.jobs') },
+    { path: '/maintenance', icon: Wrench, label: t('nav.maintenance') },
+  ]), [t]);
 
   const navItems = useMemo(() => {
     const items = [...baseNavItems];
     if (hasAdminAccess) {
-      items.push({ path: '/admin', icon: Settings, label: 'Admin' });
+      items.push({ path: '/admin', icon: Settings, label: t('nav.admin') });
     }
     return items;
-  }, [baseNavItems, hasAdminAccess]);
+  }, [baseNavItems, hasAdminAccess, t]);
 
   return (
     <div className="min-h-screen bg-dark">
@@ -148,8 +151,11 @@ export function Layout({ children }: LayoutProps) {
               <span className="text-white">Core</span>
             </h1>
           </div>
-          <div className="text-xs sm:text-sm text-gray-400 hidden sm:block">
-            Tsunami Events UG
+          <div className="flex items-center gap-3">
+            <LanguageSwitcher />
+            <div className="text-xs sm:text-sm text-gray-400 hidden sm:block">
+              Tsunami Events UG
+            </div>
           </div>
         </div>
       </header>
