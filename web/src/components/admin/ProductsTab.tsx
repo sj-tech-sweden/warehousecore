@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Package, X, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 
@@ -56,12 +56,43 @@ export function ProductsTab() {
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [subbiercategories, setSubbiercategories] = useState<Subbiercategory[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const scrollPosition = useRef(0);
 
   useEffect(() => {
     console.log('===== ProductsTab useEffect RUNNING =====');
     loadProducts();
     loadCategories();
   }, []);
+
+  useEffect(() => {
+    if (!modalOpen) {
+      return;
+    }
+
+    const html = document.documentElement;
+    const body = document.body;
+
+    scrollPosition.current = window.scrollY || window.pageYOffset;
+
+    html.classList.add('modal-open');
+    body.classList.add('modal-open');
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollPosition.current}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+
+    return () => {
+      html.classList.remove('modal-open');
+      body.classList.remove('modal-open');
+      body.style.position = '';
+      body.style.top = '';
+      body.style.left = '';
+      body.style.right = '';
+      body.style.width = '';
+      window.scrollTo(0, scrollPosition.current);
+    };
+  }, [modalOpen]);
 
   const loadProducts = async () => {
     try {
@@ -252,13 +283,16 @@ export function ProductsTab() {
 
       {/* Product Form Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="flex justify-center pt-8 pb-8 px-4">
-            <div className="glass-dark rounded-2xl w-full max-w-2xl shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-white/10">
-              <h2 className="text-2xl font-bold text-white">
-                {editingProduct ? 'Produkt bearbeiten' : 'Neues Produkt'}
-              </h2>
+        <div
+          className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-10"
+          onClick={() => setModalOpen(false)}
+        >
+          <div
+            className="glass-dark relative w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
+              <h2 className="text-2xl font-bold text-white">{editingProduct ? 'Produkt bearbeiten' : 'Neues Produkt'}</h2>
               <button
                 onClick={() => setModalOpen(false)}
                 className="p-2 rounded-lg hover:bg-white/10 transition-colors text-gray-400 hover:text-white"
@@ -267,7 +301,7 @@ export function ProductsTab() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-white mb-2">
                   Name <span className="text-accent-red">*</span>
@@ -459,7 +493,6 @@ export function ProductsTab() {
                 </button>
               </div>
             </form>
-            </div>
           </div>
         </div>
       )}

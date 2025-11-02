@@ -20,6 +20,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.modal-open,
+body.modal-open {
+  overflow: hidden;
+}
+
+body.modal-open {
+  width: 100vw;
+}
+
 /* Glass Effects */
 .glass {
   background-color: rgba(255, 255, 255, 0.1);
