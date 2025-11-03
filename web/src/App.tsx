@@ -12,6 +12,8 @@ import { ZoneDetailPage } from './pages/ZoneDetailPage';
 import { JobsPage } from './pages/JobsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { CasesPage } from './pages/CasesPage';
+import { ProductsPage } from './pages/ProductsPage';
+import { CablesPage } from './pages/CablesPage';
 import { AdminPage } from './pages/AdminPage';
 import { ProfilePage } from './pages/ProfilePage';
 import LabelDesignerPage from './pages/LabelDesignerPage';
@@ -32,6 +34,30 @@ function App() {
           <Route path="/zones" element={<ProtectedRoute><Layout><ZonesPage /></Layout></ProtectedRoute>} />
           <Route path="/zones/:id" element={<ProtectedRoute><Layout><ZoneDetailPage /></Layout></ProtectedRoute>} />
           <Route path="/cases" element={<ProtectedRoute><Layout><CasesPage /></Layout></ProtectedRoute>} />
+          <Route
+            path="/products"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin']}>
+                    <ProductsPage />
+                  </RoleGuard>
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cables"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin']}>
+                    <CablesPage />
+                  </RoleGuard>
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
           <Route path="/jobs" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />
           <Route path="/jobs/:id" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />
           <Route path="/maintenance" element={<ProtectedRoute><Layout><MaintenancePage /></Layout></ProtectedRoute>} />

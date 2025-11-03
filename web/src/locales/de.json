@@ -37,7 +37,10 @@
     "labels": "Labels",
     "maintenance": "Wartung",
     "admin": "Admin",
-    "logout": "Abmelden"
+    "logout": "Abmelden",
+    "productManagement": "Produktmanagement",
+    "products": "Produkte",
+    "cables": "Kabel"
   },
   "dashboard": {
     "title": "Lager-Dashboard",
@@ -215,5 +218,11 @@
     "forgotPassword": "Passwort vergessen?",
     "loginError": "Anmeldung fehlgeschlagen",
     "loginSuccess": "Erfolgreich angemeldet"
+  },
+  "productManagement": {
+    "productsTitle": "Produktkatalog",
+    "productsSubtitle": "Produktstammdaten verwalten.",
+    "cablesTitle": "Kabelverwaltung",
+    "cablesSubtitle": "Kabeltypen und Zuordnungen pflegen."
   }
 }

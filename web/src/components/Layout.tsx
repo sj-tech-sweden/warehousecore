@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings, Boxes, Tag } from 'lucide-react';
+import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings, Boxes, Tag, Cable, Cpu, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -101,12 +101,17 @@ export function Layout({ children }: LayoutProps) {
   const baseNavItems = useMemo(() => ([
     { path: '/', icon: Home, label: t('nav.dashboard') },
     { path: '/scan', icon: ScanLine, label: t('nav.scan') },
-    { path: '/devices', icon: Package, label: t('nav.devices') },
     { path: '/labels', icon: Tag, label: t('nav.labels') },
     { path: '/cases', icon: Boxes, label: t('nav.cases') },
     { path: '/zones', icon: MapPin, label: t('nav.zones') },
     { path: '/jobs', icon: Briefcase, label: t('nav.jobs') },
     { path: '/maintenance', icon: Wrench, label: t('nav.maintenance') },
+  ]), [t]);
+
+  const productNavItems = useMemo(() => ([
+    { path: '/products', icon: Package, label: t('nav.products') },
+    { path: '/devices', icon: Cpu, label: t('nav.devices') },
+    { path: '/cables', icon: Cable, label: t('nav.cables') },
   ]), [t]);
 
   const navItems = useMemo(() => {
@@ -116,6 +121,18 @@ export function Layout({ children }: LayoutProps) {
     }
     return items;
   }, [baseNavItems, hasAdminAccess, t]);
+
+  const productNavActive = useMemo(
+    () => productNavItems.some(item => location.pathname.startsWith(item.path)),
+    [productNavItems, location.pathname]
+  );
+  const [productMenuOpen, setProductMenuOpen] = useState(productNavActive);
+
+  useEffect(() => {
+    if (productNavActive) {
+      setProductMenuOpen(true);
+    }
+  }, [productNavActive]);
 
   return (
     <div className="min-h-screen bg-dark">
@@ -204,6 +221,60 @@ export function Layout({ children }: LayoutProps) {
             <Briefcase className="w-5 h-5 flex-shrink-0" />
             {(sidebarOpen || isMobile) && <span className="font-semibold">RentalCore</span>}
           </a>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setProductMenuOpen(prev => !prev)}
+              className={`flex items-center w-full rounded-lg transition-all ${
+                productNavActive
+                  ? 'bg-accent-red text-white shadow-lg shadow-accent-red/20'
+                  : 'text-gray-400 hover:bg-white/10 hover:text-white'
+              } ${sidebarOpen || isMobile ? 'justify-between gap-3 px-4 py-3' : 'justify-center p-3'}`}
+              aria-expanded={productMenuOpen}
+              title={!sidebarOpen && !isMobile ? t('nav.productManagement') : ''}
+            >
+              <div className="flex items-center gap-3">
+                <Package className="w-5 h-5 flex-shrink-0" />
+                {(sidebarOpen || isMobile) && (
+                  <span className="font-medium">{t('nav.productManagement')}</span>
+                )}
+              </div>
+              {(sidebarOpen || isMobile) && (
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform ${productMenuOpen ? 'rotate-180' : ''}`}
+                />
+              )}
+            </button>
+
+            {(sidebarOpen || isMobile) && (
+              <div
+                className={`flex flex-col space-y-1 overflow-hidden transition-all duration-200 ${
+                  productMenuOpen ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0'
+                }`}
+              >
+                {productNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname.startsWith(item.path);
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={closeSidebar}
+                      className={`flex items-center rounded-lg transition-all ${
+                        isActive
+                          ? 'bg-accent-red text-white shadow-lg shadow-accent-red/20'
+                          : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                      } gap-3 px-4 py-2 ml-6`}
+                    >
+                      <Icon className="w-5 h-5 flex-shrink-0" />
+                      <span className="font-medium">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {navItems.map((item) => {
             const Icon = item.icon;

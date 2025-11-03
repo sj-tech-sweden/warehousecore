@@ -37,7 +37,10 @@
     "labels": "Labels",
     "maintenance": "Maintenance",
     "admin": "Admin",
-    "logout": "Sign Out"
+    "logout": "Sign Out",
+    "productManagement": "Product Management",
+    "products": "Products",
+    "cables": "Cables"
   },
   "dashboard": {
     "title": "Warehouse Dashboard",
@@ -215,5 +218,11 @@
     "forgotPassword": "Forgot Password?",
     "loginError": "Login failed",
     "loginSuccess": "Successfully signed in"
+  },
+  "productManagement": {
+    "productsTitle": "Product Catalog",
+    "productsSubtitle": "Manage product definitions and rental metadata.",
+    "cablesTitle": "Cable Catalog",
+    "cablesSubtitle": "Maintain cable types and assignments."
   }
 }
