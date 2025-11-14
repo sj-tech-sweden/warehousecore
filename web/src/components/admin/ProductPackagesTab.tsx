@@ -303,7 +303,7 @@ export function ProductPackagesTab() {
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="btn-primary flex items-center gap-2"
+          className="flex items-center gap-2 rounded-xl bg-accent-red/90 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-900/40 transition-all hover:bg-accent-red focus:outline-none focus:ring-2 focus:ring-red-400"
         >
           <Plus className="w-5 h-5" />
           Neues Paket
