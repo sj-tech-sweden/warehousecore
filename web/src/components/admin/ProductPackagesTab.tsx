@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   Plus,
   Pencil,
@@ -9,6 +10,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { createPortal } from 'react-dom';
 
 interface ProductPackage {
   package_id: number;
@@ -59,6 +61,20 @@ const initialFormData: PackageFormData = {
   price: '',
   items: [],
   aliases: [],
+};
+
+const ModalPortal = ({ children }: { children: ReactNode }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(children, document.body);
 };
 
 export function ProductPackagesTab() {
@@ -393,16 +409,20 @@ export function ProductPackagesTab() {
 
       {/* Create/Edit Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
-          <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-white">
-                {editingPackage ? 'Paket bearbeiten' : 'Neues Paket'}
-              </h3>
-              <button onClick={handleCloseModal} className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+        <ModalPortal>
+          <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
+            <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-bold text-white">
+                  {editingPackage ? 'Paket bearbeiten' : 'Neues Paket'}
+                </h3>
+                <button
+                  onClick={handleCloseModal}
+                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
             {formError && (
               <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
@@ -574,22 +594,24 @@ export function ProductPackagesTab() {
               </div>
             </form>
           </div>
-        </div>
+          </div>
+        </ModalPortal>
       )}
 
       {/* View Modal */}
       {viewPackage && (
-        <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
-          <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-white">{viewPackage.name}</h3>
-              <button
-                onClick={() => setViewPackage(null)}
-                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+        <ModalPortal>
+          <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
+            <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-bold text-white">{viewPackage.name}</h3>
+                <button
+                  onClick={() => setViewPackage(null)}
+                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
             <div className="space-y-4">
               {viewPackage.description && (
@@ -652,7 +674,8 @@ export function ProductPackagesTab() {
               Schließen
             </button>
           </div>
-        </div>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );
