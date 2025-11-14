@@ -7,13 +7,13 @@ import (
 
 // ProductPackage represents a package of products with a fixed price
 type ProductPackage struct {
-	PackageID   int             `json:"package_id" db:"package_id"`
-	PackageCode string          `json:"package_code" db:"package_code"`
-	Name        string          `json:"name" db:"name"`
-	Description sql.NullString  `json:"description" db:"description"`
-	Price       sql.NullFloat64 `json:"price" db:"price"`
-	CreatedAt   time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at" db:"updated_at"`
+	PackageID   int            `json:"package_id" db:"package_id"`
+	PackageCode string         `json:"package_code" db:"package_code"`
+	Name        string         `json:"name" db:"name"`
+	Description sql.NullString `json:"description" db:"description"`
+	Price       JSONFloat64    `json:"price" db:"price"`
+	CreatedAt   time.Time      `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at" db:"updated_at"`
 }
 
 // ProductPackageItem represents the relationship between a package and a product
