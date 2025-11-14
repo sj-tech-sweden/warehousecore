@@ -200,6 +200,12 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 
+	if err := ensurePackageCodeSupport(db); err != nil {
+		log.Printf("Failed to ensure package code support: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to prepare package storage"})
+		return
+	}
+
 	packageCode, err := generatePackageCode(db)
 	if err != nil {
 		log.Printf("Failed to generate package code: %v", err)
@@ -300,6 +306,12 @@ func UpdateProductPackage(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 	normalizedAliases := normalizeAliases(req.Aliases)
+
+	if err := ensurePackageCodeSupport(db); err != nil {
+		log.Printf("Failed to ensure package code support: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to prepare package storage"})
+		return
+	}
 
 	// Start transaction
 	tx, err := db.Begin()
@@ -449,6 +461,92 @@ func GetProductPackageAliasMap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, entries)
+}
+
+func ensurePackageCodeSupport(db *sql.DB) error {
+	if err := ensurePackageCodeColumn(db); err != nil {
+		return err
+	}
+	return ensureAliasTable(db)
+}
+
+func ensurePackageCodeColumn(db *sql.DB) error {
+	if db == nil {
+		return errors.New("database connection is nil")
+	}
+
+	const columnCheck = `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'product_packages'
+		  AND column_name = 'package_code'
+	`
+	var count int
+	if err := db.QueryRow(columnCheck).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	if _, err := db.Exec(`ALTER TABLE product_packages ADD COLUMN package_code VARCHAR(32) NULL AFTER package_id`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE product_packages SET package_code = CONCAT('PKG-', LPAD(package_id, 6, '0')) WHERE package_code IS NULL OR package_code = ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE product_packages MODIFY COLUMN package_code VARCHAR(32) NOT NULL`); err != nil {
+		return err
+	}
+	const indexCheck = `
+		SELECT COUNT(*)
+		FROM information_schema.statistics
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'product_packages'
+		  AND index_name = 'uq_product_package_code'
+	`
+	var idxCount int
+	if err := db.QueryRow(indexCheck).Scan(&idxCount); err != nil {
+		return err
+	}
+	if idxCount == 0 {
+		if _, err := db.Exec(`ALTER TABLE product_packages ADD UNIQUE KEY uq_product_package_code (package_code)`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureAliasTable(db *sql.DB) error {
+	const tableCheck = `
+		SELECT COUNT(*)
+		FROM information_schema.tables
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'product_package_aliases'
+	`
+	var count int
+	if err := db.QueryRow(tableCheck).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS product_package_aliases (
+			alias_id INT AUTO_INCREMENT PRIMARY KEY,
+			package_id INT NOT NULL,
+			alias VARCHAR(191) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE KEY uq_package_alias (package_id, alias),
+			INDEX idx_alias (alias),
+			CONSTRAINT fk_package_alias_package
+				FOREIGN KEY (package_id) REFERENCES product_packages(package_id)
+				ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+	`)
+	return err
 }
 
 func normalizeAliases(values []string) []string {
