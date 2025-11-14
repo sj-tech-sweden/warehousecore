@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Plus,
   Pencil,
@@ -74,6 +74,8 @@ export function ProductPackagesTab() {
   const [selectedProduct, setSelectedProduct] = useState<number | ''>('');
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [aliasInput, setAliasInput] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const scrollPosition = useRef(0);
 
   const fetchPackages = async () => {
     try {
@@ -102,10 +104,36 @@ export function ProductPackagesTab() {
   }, [searchTerm]);
 
   useEffect(() => {
-    if (modalOpen && products.length === 0) {
+    if ((modalOpen || viewPackage) && products.length === 0) {
       fetchProducts();
     }
-  }, [modalOpen]);
+  }, [modalOpen, viewPackage, products.length]);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    if (modalOpen || viewPackage) {
+      scrollPosition.current = window.scrollY || window.pageYOffset || 0;
+      html.classList.add('modal-open');
+      body.classList.add('modal-open');
+      body.style.position = 'fixed';
+      body.style.top = `-${scrollPosition.current}px`;
+      body.style.left = '0';
+      body.style.right = '0';
+      body.style.width = '100%';
+      return () => {
+        html.classList.remove('modal-open');
+        body.classList.remove('modal-open');
+        body.style.position = '';
+        body.style.top = '';
+        body.style.left = '';
+        body.style.right = '';
+        body.style.width = '';
+        window.scrollTo(0, scrollPosition.current);
+      };
+    }
+    return undefined;
+  }, [modalOpen, viewPackage]);
 
   const handleOpenModal = (pkg?: ProductPackage) => {
     if (pkg) {
@@ -131,6 +159,7 @@ export function ProductPackagesTab() {
       setFormData(initialFormData);
     }
     setAliasInput('');
+    setFormError(null);
     setModalOpen(true);
   };
 
@@ -141,11 +170,25 @@ export function ProductPackagesTab() {
     setSelectedProduct('');
     setSelectedQuantity(1);
     setAliasInput('');
+    setFormError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setFormError(null);
+
+    if (!formData.name.trim()) {
+      setFormError('Bitte gib einen Namen für das Paket an.');
+      setSubmitting(false);
+      return;
+    }
+
+    if (formData.items.length === 0) {
+      setFormError('Ein Paket muss mindestens ein Produkt enthalten.');
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const payload = {
@@ -166,7 +209,9 @@ export function ProductPackagesTab() {
       fetchPackages();
     } catch (error) {
       console.error('Failed to save product package:', error);
-      alert('Fehler beim Speichern des Produktpakets');
+      const message =
+        (error as any)?.response?.data?.error || 'Fehler beim Speichern des Produktpakets';
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
@@ -348,16 +393,22 @@ export function ProductPackagesTab() {
 
       {/* Create/Edit Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[120] p-4">
+          <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-bold text-white">
                 {editingPackage ? 'Paket bearbeiten' : 'Neues Paket'}
               </h3>
-              <button onClick={handleCloseModal} className="text-gray-400 hover:text-white">
+              <button onClick={handleCloseModal} className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
+
+            {formError && (
+              <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+                {formError}
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -426,7 +477,7 @@ export function ProductPackagesTab() {
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="btn-primary flex items-center gap-2"
+                    className="btn-primary flex items-center gap-2 min-w-[120px]"
                   >
                     <Plus className="w-4 h-4" />
                     Hinzufügen
@@ -517,11 +568,7 @@ export function ProductPackagesTab() {
                 >
                   Abbrechen
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 btn-primary"
-                  disabled={submitting}
-                >
+                <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
                   {submitting ? 'Speichert...' : editingPackage ? 'Speichern' : 'Erstellen'}
                 </button>
               </div>
@@ -532,11 +579,14 @@ export function ProductPackagesTab() {
 
       {/* View Modal */}
       {viewPackage && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[120] p-4">
+          <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-bold text-white">{viewPackage.name}</h3>
-              <button onClick={() => setViewPackage(null)} className="text-gray-400 hover:text-white">
+              <button
+                onClick={() => setViewPackage(null)}
+                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
                 <X className="w-6 h-6" />
               </button>
             </div>
