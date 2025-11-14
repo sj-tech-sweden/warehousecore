@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Cable,
   Eye,
@@ -58,6 +58,55 @@ export function CablesTab() {
   const [lengthMinFilter, setLengthMinFilter] = useState<number | ''>('');
   const [lengthMaxFilter, setLengthMaxFilter] = useState<number | ''>('');
   const [refreshing, setRefreshing] = useState(false);
+
+  const connectorIndex = useMemo(() => {
+    return new Map(connectors.map((connector) => [connector.connector_id, connector]));
+  }, [connectors]);
+
+  const connectorCompatibility = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    cables.forEach((cable) => {
+      if (!map.has(cable.connector1)) {
+        map.set(cable.connector1, new Set());
+      }
+      map.get(cable.connector1)!.add(cable.connector2);
+
+      if (!map.has(cable.connector2)) {
+        map.set(cable.connector2, new Set());
+      }
+      map.get(cable.connector2)!.add(cable.connector1);
+    });
+    return map;
+  }, [cables]);
+
+  const getCompatibleConnectors = useCallback(
+    (selected: number | '' | undefined) => {
+      if (!selected || connectorCompatibility.size === 0) {
+        return connectors;
+      }
+      const compatible = connectorCompatibility.get(selected);
+      if (!compatible || compatible.size === 0) {
+        return connectors.filter((connector) => connector.connector_id !== selected);
+      }
+      return connectors.filter((connector) => compatible.has(connector.connector_id));
+    },
+    [connectors, connectorCompatibility]
+  );
+
+  const connector2FilterOptions = useMemo(
+    () => getCompatibleConnectors(connector1Filter === '' ? undefined : connector1Filter),
+    [connector1Filter, getCompatibleConnectors]
+  );
+
+  useEffect(() => {
+    if (connector1Filter === '' || connector2Filter === '') {
+      return;
+    }
+    const compatible = connectorCompatibility.get(connector1Filter);
+    if (!compatible || !compatible.has(connector2Filter)) {
+      setConnector2Filter('');
+    }
+  }, [connector1Filter, connector2Filter, connectorCompatibility]);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
@@ -218,13 +267,21 @@ export function CablesTab() {
     setViewCable(cable);
   };
 
-  const getConnectorDisplay = (connectorId: number, gender?: string | null) => {
-    const connector = connectors.find(c => c.connector_id === connectorId);
-    if (!connector) return '-';
+  const formatGenderText = (gender?: string | null) => {
+    if (!gender) return '';
+    return gender === 'male' ? 'male' : 'female';
+  };
 
-    const genderIcon = gender === 'male' ? ' ♂' : gender === 'female' ? ' ♀' : '';
+  const formatConnectorLabel = (connector: CableConnector, overrideGender?: string | null) => {
     const abbr = connector.abbreviation ? ` (${connector.abbreviation})` : '';
-    return `${connector.name}${abbr}${genderIcon}`;
+    const genderText = formatGenderText(overrideGender ?? connector.gender);
+    return `${connector.name}${abbr}${genderText ? ` • ${genderText}` : ''}`;
+  };
+
+  const getConnectorDisplay = (connectorId: number, gender?: string | null) => {
+    const connector = connectorIndex.get(connectorId);
+    if (!connector) return '-';
+    return formatConnectorLabel(connector, gender);
   };
 
   const getCableTypeName = (typeId: number) => {
@@ -273,7 +330,7 @@ export function CablesTab() {
             <option value="">Alle Stecker 1</option>
             {connectors.map((connector) => (
               <option key={connector.connector_id} value={connector.connector_id}>
-                {connector.name} {connector.abbreviation ? `(${connector.abbreviation})` : ''}
+                {formatConnectorLabel(connector)}
               </option>
             ))}
           </select>
@@ -285,9 +342,9 @@ export function CablesTab() {
             className="input-field"
           >
             <option value="">Alle Stecker 2</option>
-            {connectors.map((connector) => (
+            {connector2FilterOptions.map((connector) => (
               <option key={connector.connector_id} value={connector.connector_id}>
-                {connector.name} {connector.abbreviation ? `(${connector.abbreviation})` : ''}
+                {formatConnectorLabel(connector)}
               </option>
             ))}
           </select>
@@ -546,10 +603,7 @@ export function CablesTab() {
                     <option value="">Stecker auswählen...</option>
                     {connectors.map((connector) => (
                       <option key={connector.connector_id} value={connector.connector_id}>
-                        {connector.name}
-                        {connector.abbreviation && ` (${connector.abbreviation})`}
-                        {connector.gender === 'male' && ' ♂'}
-                        {connector.gender === 'female' && ' ♀'}
+                        {formatConnectorLabel(connector)}
                       </option>
                     ))}
                   </select>
@@ -570,10 +624,7 @@ export function CablesTab() {
                     <option value="">Stecker auswählen...</option>
                     {connectors.map((connector) => (
                       <option key={connector.connector_id} value={connector.connector_id}>
-                        {connector.name}
-                        {connector.abbreviation && ` (${connector.abbreviation})`}
-                        {connector.gender === 'male' && ' ♂'}
-                        {connector.gender === 'female' && ' ♀'}
+                        {formatConnectorLabel(connector)}
                       </option>
                     ))}
                   </select>

@@ -1032,7 +1032,7 @@ docker tag nobentie/warehousecore:1.56 nobentie/warehousecore:latest
 **Push to Docker Hub:**
 ```bash
 # Push version tag
-docker push nobentie/warehousecore:2.57
+docker push nobentie/warehousecore:2.58
 
 # Push latest tag
 docker push nobentie/warehousecore:latest
@@ -1054,12 +1054,12 @@ docker pull nobentie/warehousecore:latest
 # (DO NOT use docker-compose restart manually)
 ```
 
-**Current Version:** 2.57
+**Current Version:** 2.58
 
 **Recent Changes:**
+- 2.58: Cable filters show gendered connector labels and dynamically limit Stecker 2 based on Stecker 1 compatibility
 - 2.57: Devices tree moved into the Products page (Issue #17) with a dedicated “Gerätebaum” tab, legacy `/devices` route removed
 - 2.56: Infrastructure refinements for Komodo deployment alignment
-- 2.55: Label persistence tweaks for RentalCore synchronization
 
 **Run with docker-compose (local development):**
 ```bash
@@ -1262,7 +1262,7 @@ For issues or questions:
 
 ---
 
-**Version:** 2.57
+**Version:** 2.58
 **Last Updated:** 2025-11-01
 **Maintainer:** WarehouseCore Development Team
 
@@ -1312,6 +1312,13 @@ For issues or questions:
   - Label printing integration for cases
   - Consistent dark theme design matching other admin tabs
   - Full device management within cases from admin interface
+
+### Version 2.58 (2025-11-14)
+- **UX: Filtered connector pairing in cables view**
+  - Selecting a value in the Stecker 1 filter now limits Stecker 2 options to combinations that exist in the database.
+  - Connector dropdowns show explicit gender labels (male/female) alongside names/abbreviations for instant clarity.
+  - Invalid Stecker-2 selections reset automatically when Stecker 1 changes, preventing empty result sets.
+  - Applies to both the list filters and connector displays in tables/cards/modals to keep terminology aligned.
 
 ### Version 2.57 (2025-11-14)
 - **Feature: Unified Products + Devices Tree** ✨ **[Issue #17]**
