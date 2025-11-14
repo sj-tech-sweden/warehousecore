@@ -16,7 +16,7 @@ interface ProductPackage {
   package_code: string;
   name: string;
   description?: string | null;
-  price?: number | null;
+  price?: number | string | null;
   total_items: number;
   created_at: string;
   updated_at: string;
@@ -62,6 +62,19 @@ const initialFormData: PackageFormData = {
   aliases: [],
 };
 
+function formatPrice(value?: number | string | null, fallback = '-') {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const numericValue = typeof value === 'number' ? value : parseFloat(value);
+  if (Number.isNaN(numericValue)) {
+    return fallback;
+  }
+
+  return `${numericValue.toFixed(2)} €`;
+}
+
 export function ProductPackagesTab() {
   const [packages, setPackages] = useState<ProductPackage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +90,7 @@ export function ProductPackagesTab() {
   const [aliasInput, setAliasInput] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const scrollPosition = useRef(0);
+  const viewPackagePriceDisplay = viewPackage ? formatPrice(viewPackage.price, '') : '';
 
   const fetchPackages = async () => {
     try {
@@ -357,7 +371,7 @@ export function ProductPackagesTab() {
                   <td className="py-3 px-4 text-white font-medium">{pkg.name}</td>
                   <td className="py-3 px-4 text-gray-400">{pkg.description || '-'}</td>
                   <td className="py-3 px-4 text-right text-white">
-                    {pkg.price ? `${pkg.price.toFixed(2)} €` : '-'}
+                    {formatPrice(pkg.price)}
                   </td>
                   <td className="py-3 px-4 text-right text-white">{pkg.total_items}</td>
                   <td className="py-3 px-4 text-right">
@@ -606,10 +620,10 @@ export function ProductPackagesTab() {
                 </div>
               )}
 
-              {viewPackage.price && (
+              {viewPackagePriceDisplay && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-400 mb-1">Preis</h4>
-                  <p className="text-white text-xl font-bold">{viewPackage.price.toFixed(2)} €</p>
+                  <p className="text-white text-xl font-bold">{viewPackagePriceDisplay}</p>
                 </div>
               )}
 
