@@ -565,6 +565,7 @@ export interface CableConnector {
 export interface CableType {
   cable_type_id: number;
   name: string;
+  count?: number;
 }
 
 export interface CableCreateInput {

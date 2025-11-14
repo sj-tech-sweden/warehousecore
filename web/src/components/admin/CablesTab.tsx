@@ -289,6 +289,11 @@ export function CablesTab() {
     return type?.name || '-';
   };
 
+  const totalCableCount = useMemo(
+    () => cableTypes.reduce((sum, type) => sum + (type.count ?? 0), 0),
+    [cableTypes]
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -426,6 +431,44 @@ export function CablesTab() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Cable Type Summary */}
+      <div className="glass-dark rounded-xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <p className="text-sm uppercase tracking-wide text-gray-400">Typübersicht</p>
+            <h3 className="text-xl font-semibold text-white">Alle Kabeltypen</h3>
+          </div>
+          <div className="text-sm text-gray-300">
+            Gesamtbestand:{' '}
+            <span className="text-white font-semibold">{totalCableCount}</span>
+          </div>
+        </div>
+        {cableTypes.length === 0 ? (
+          <p className="text-sm text-gray-400">Keine Kabeltypen gefunden.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-400 border-b border-white/10">
+                  <th className="py-2 pr-4 font-semibold">Typ</th>
+                  <th className="py-2 text-right font-semibold">Anzahl</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {cableTypes.map((type) => (
+                  <tr key={type.cable_type_id}>
+                    <td className="py-2 pr-4 text-white">{type.name}</td>
+                    <td className="py-2 text-right text-gray-200 font-semibold">
+                      {type.count ?? 0}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Cable List */}

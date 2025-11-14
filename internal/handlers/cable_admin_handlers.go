@@ -43,6 +43,7 @@ type CableConnector struct {
 type CableType struct {
 	CableTypeID int    `json:"cable_type_id"`
 	Name        string `json:"name"`
+	Count       int    `json:"count"`
 }
 
 // GetAllCables retrieves all cables with optional filtering
@@ -433,7 +434,16 @@ func GetCableConnectors(w http.ResponseWriter, r *http.Request) {
 func GetCableTypes(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 
-	query := `SELECT cable_typesID, name FROM cable_types ORDER BY name`
+	query := `
+		SELECT
+			ct.cable_typesID,
+			ct.name,
+			COALESCE(COUNT(c.cableID), 0) AS cable_count
+		FROM cable_types ct
+		LEFT JOIN cables c ON c.typ = ct.cable_typesID
+		GROUP BY ct.cable_typesID, ct.name
+		ORDER BY ct.name
+	`
 
 	rows, err := db.Query(query)
 	if err != nil {
@@ -446,7 +456,7 @@ func GetCableTypes(w http.ResponseWriter, r *http.Request) {
 	var types []CableType
 	for rows.Next() {
 		var cableType CableType
-		err := rows.Scan(&cableType.CableTypeID, &cableType.Name)
+		err := rows.Scan(&cableType.CableTypeID, &cableType.Name, &cableType.Count)
 		if err != nil {
 			log.Printf("Error scanning cable type: %v", err)
 			continue
