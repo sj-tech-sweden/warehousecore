@@ -1032,7 +1032,7 @@ docker tag nobentie/warehousecore:1.56 nobentie/warehousecore:latest
 **Push to Docker Hub:**
 ```bash
 # Push version tag
-docker push nobentie/warehousecore:2.59
+docker push nobentie/warehousecore:2.60
 
 # Push latest tag
 docker push nobentie/warehousecore:latest
@@ -1054,12 +1054,12 @@ docker pull nobentie/warehousecore:latest
 # (DO NOT use docker-compose restart manually)
 ```
 
-**Current Version:** 2.59
+**Current Version:** 2.60
 
 **Recent Changes:**
-- 2.59: Kabelübersicht zeigt jeden Typ einmal inkl. Bestand und API liefert Typzählungen
+- 2.60: Kabelübersicht gruppiert nach Stecker1/Stecker2/Länge und zeigt Gesamtanzahl pro Kombination
+- 2.59: Kabeltypen-Endpunkt liefert Bestandszahlen für jedes Label
 - 2.58: Cable filters show gendered connector labels and dynamically limit Stecker 2 based on Stecker 1 compatibility
-- 2.57: Devices tree moved into the Products page (Issue #17) with a dedicated “Gerätebaum” tab, legacy `/devices` route removed
 
 **Run with docker-compose (local development):**
 ```bash
@@ -1262,7 +1262,7 @@ For issues or questions:
 
 ---
 
-**Version:** 2.59
+**Version:** 2.60
 **Last Updated:** 2025-11-01
 **Maintainer:** WarehouseCore Development Team
 
@@ -1313,11 +1313,16 @@ For issues or questions:
   - Consistent dark theme design matching other admin tabs
   - Full device management within cases from admin interface
 
+### Version 2.60 (2025-11-14)
+- **Feature: Kabel-Kombinationsübersicht**
+  - The cables dashboard now groups inventory by cable type + Stecker 1 + Stecker 2 + Länge so each combination appears exactly once.
+  - Added “Einzigartige Kombinationen” table that mirrors strings such as `Audio (XLR 3P - XLR 3P) • 1.00 m` plus an “Anzahl”-column.
+  - Counts update live after CRUD actions and the headline shows the summed stock across all combinations.
+
 ### Version 2.59 (2025-11-14)
 - **Feature: Kabeltypen-Bestand**
   - Admin endpoint `/admin/cable-types` now includes `count` per type derived directly from the DB, so downstream tools can display accurate totals.
-  - Cables UI adds a “Typübersicht” table that lists each type exactly once with the current number of cables.
-  - Summary automatically totals the entire cable inventory and keeps the detail table in sync with edits/deletes.
+  - Cables UI surfaces the counts in the summary (deprecated by 2.60’s combination view, but still available for downstream integrations).
 
 ### Version 2.58 (2025-11-14)
 - **UX: Filtered connector pairing in cables view**

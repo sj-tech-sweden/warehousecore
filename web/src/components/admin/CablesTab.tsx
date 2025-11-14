@@ -289,9 +289,41 @@ export function CablesTab() {
     return type?.name || '-';
   };
 
+  const cableCombinationSummary = useMemo(() => {
+    const summaryMap = new Map<string, {
+      typeId: number;
+      connector1: number;
+      connector2: number;
+      length: number;
+      count: number;
+    }>();
+
+    cables.forEach((cable) => {
+      const key = `${cable.typ}|${cable.connector1}|${cable.connector2}|${cable.length}`;
+      if (!summaryMap.has(key)) {
+        summaryMap.set(key, {
+          typeId: cable.typ,
+          connector1: cable.connector1,
+          connector2: cable.connector2,
+          length: cable.length,
+          count: 0,
+        });
+      }
+      summaryMap.get(key)!.count += 1;
+    });
+
+    return Array.from(summaryMap.values()).map((entry) => ({
+      ...entry,
+      typeName: getCableTypeName(entry.typeId),
+      connector1Label: getConnectorDisplay(entry.connector1),
+      connector2Label: getConnectorDisplay(entry.connector2),
+      lengthLabel: `${entry.length.toFixed(2)} m`,
+    }));
+  }, [cables, cableTypes, connectorIndex]);
+
   const totalCableCount = useMemo(
-    () => cableTypes.reduce((sum, type) => sum + (type.count ?? 0), 0),
-    [cableTypes]
+    () => cableCombinationSummary.reduce((sum, entry) => sum + entry.count, 0),
+    [cableCombinationSummary]
   );
 
   return (
@@ -433,36 +465,37 @@ export function CablesTab() {
         </div>
       </div>
 
-      {/* Cable Type Summary */}
+      {/* Cable Combination Summary */}
       <div className="glass-dark rounded-xl p-4 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <p className="text-sm uppercase tracking-wide text-gray-400">Typübersicht</p>
-            <h3 className="text-xl font-semibold text-white">Alle Kabeltypen</h3>
+            <p className="text-sm uppercase tracking-wide text-gray-400">Kabelübersicht</p>
+            <h3 className="text-xl font-semibold text-white">Einzigartige Kombinationen</h3>
           </div>
           <div className="text-sm text-gray-300">
             Gesamtbestand:{' '}
             <span className="text-white font-semibold">{totalCableCount}</span>
           </div>
         </div>
-        {cableTypes.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine Kabeltypen gefunden.</p>
+        {cableCombinationSummary.length === 0 ? (
+          <p className="text-sm text-gray-400">Keine Kabel vorhanden.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-gray-400 border-b border-white/10">
-                  <th className="py-2 pr-4 font-semibold">Typ</th>
+                  <th className="py-2 pr-4 font-semibold">Bezeichnung</th>
                   <th className="py-2 text-right font-semibold">Anzahl</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {cableTypes.map((type) => (
-                  <tr key={type.cable_type_id}>
-                    <td className="py-2 pr-4 text-white">{type.name}</td>
-                    <td className="py-2 text-right text-gray-200 font-semibold">
-                      {type.count ?? 0}
+                {cableCombinationSummary.map((combo, index) => (
+                  <tr key={`${combo.typeId}-${combo.connector1}-${combo.connector2}-${combo.length}-${index}`}>
+                    <td className="py-2 pr-4 text-white">
+                      {combo.typeName || 'Unbekannt'} (
+                      {combo.connector1Label} - {combo.connector2Label}) • {combo.lengthLabel}
                     </td>
+                    <td className="py-2 text-right text-gray-200 font-semibold">{combo.count}</td>
                   </tr>
                 ))}
               </tbody>
