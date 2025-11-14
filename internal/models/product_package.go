@@ -8,6 +8,7 @@ import (
 // ProductPackage represents a package of products with a fixed price
 type ProductPackage struct {
 	PackageID   int             `json:"package_id" db:"package_id"`
+	PackageCode string          `json:"package_code" db:"package_code"`
 	Name        string          `json:"name" db:"name"`
 	Description sql.NullString  `json:"description" db:"description"`
 	Price       sql.NullFloat64 `json:"price" db:"price"`
@@ -29,6 +30,7 @@ type ProductPackageWithItems struct {
 	ProductPackage
 	Items      []PackageItemDetail `json:"items,omitempty"`
 	TotalItems int                 `json:"total_items"`
+	Aliases    []string            `json:"aliases,omitempty"`
 }
 
 // PackageItemDetail provides detailed information about a product in the package

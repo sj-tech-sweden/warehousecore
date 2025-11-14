@@ -1,11 +1,16 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -22,6 +27,7 @@ func GetProductPackages(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT
 			pp.package_id,
+			pp.package_code,
 			pp.name,
 			pp.description,
 			pp.price,
@@ -56,6 +62,7 @@ func GetProductPackages(w http.ResponseWriter, r *http.Request) {
 		var pkg models.ProductPackageWithItems
 		err := rows.Scan(
 			&pkg.PackageID,
+			&pkg.PackageCode,
 			&pkg.Name,
 			&pkg.Description,
 			&pkg.Price,
@@ -89,6 +96,7 @@ func GetProductPackage(w http.ResponseWriter, r *http.Request) {
 	err = db.QueryRow(`
 		SELECT
 			package_id,
+			package_code,
 			name,
 			description,
 			price,
@@ -98,6 +106,7 @@ func GetProductPackage(w http.ResponseWriter, r *http.Request) {
 		WHERE package_id = ?
 	`, id).Scan(
 		&pkg.PackageID,
+		&pkg.PackageCode,
 		&pkg.Name,
 		&pkg.Description,
 		&pkg.Price,
@@ -158,6 +167,13 @@ func GetProductPackage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pkg.Items = items
+	aliases, err := fetchPackageAliases(db, id)
+	if err != nil {
+		log.Printf("Failed to fetch package aliases: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch package aliases"})
+		return
+	}
+	pkg.Aliases = aliases
 
 	respondJSON(w, http.StatusOK, pkg)
 }
@@ -165,10 +181,11 @@ func GetProductPackage(w http.ResponseWriter, r *http.Request) {
 // CreateProductPackage creates a new product package
 func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string                   `json:"name"`
-		Description *string                  `json:"description"`
-		Price       *float64                 `json:"price"`
+		Name        string                      `json:"name"`
+		Description *string                     `json:"description"`
+		Price       *float64                    `json:"price"`
 		Items       []models.ProductPackageItem `json:"items"`
+		Aliases     []string                    `json:"aliases"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -183,7 +200,15 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 
-	// Start transaction
+	packageCode, err := generatePackageCode(db)
+	if err != nil {
+		log.Printf("Failed to generate package code: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to assign package code"})
+		return
+	}
+
+	normalizedAliases := normalizeAliases(req.Aliases)
+
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("Failed to start transaction: %v", err)
@@ -194,9 +219,9 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 
 	// Create package
 	result, err := tx.Exec(`
-		INSERT INTO product_packages (name, description, price)
-		VALUES (?, ?, ?)
-	`, req.Name, req.Description, req.Price)
+		INSERT INTO product_packages (package_code, name, description, price)
+		VALUES (?, ?, ?, ?)
+	`, packageCode, req.Name, req.Description, req.Price)
 
 	if err != nil {
 		log.Printf("Failed to create product package: %v", err)
@@ -226,6 +251,12 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := replacePackageAliases(tx, packageID, normalizedAliases); err != nil {
+		log.Printf("Failed to save package aliases: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to save package aliases"})
+		return
+	}
+
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit transaction: %v", err)
@@ -234,8 +265,9 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"package_id": packageID,
-		"message":    "Product package created successfully",
+		"package_id":   packageID,
+		"package_code": packageCode,
+		"message":      "Product package created successfully",
 	})
 }
 
@@ -249,10 +281,11 @@ func UpdateProductPackage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name        string                   `json:"name"`
-		Description *string                  `json:"description"`
-		Price       *float64                 `json:"price"`
+		Name        string                      `json:"name"`
+		Description *string                     `json:"description"`
+		Price       *float64                    `json:"price"`
 		Items       []models.ProductPackageItem `json:"items"`
+		Aliases     []string                    `json:"aliases"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -266,6 +299,7 @@ func UpdateProductPackage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
+	normalizedAliases := normalizeAliases(req.Aliases)
 
 	// Start transaction
 	tx, err := db.Begin()
@@ -323,7 +357,12 @@ func UpdateProductPackage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Commit transaction
+	if err := replacePackageAliases(tx, int64(id), normalizedAliases); err != nil {
+		log.Printf("Failed to update package aliases: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update package aliases"})
+		return
+	}
+
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit transaction: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update package"})
@@ -358,6 +397,152 @@ func DeleteProductPackage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Product package deleted successfully"})
+}
+
+type PackageAliasEntry struct {
+	Alias       string   `json:"alias"`
+	PackageID   int      `json:"package_id"`
+	PackageCode string   `json:"package_code"`
+	PackageName string   `json:"package_name"`
+	Price       *float64 `json:"price,omitempty"`
+}
+
+// GetProductPackageAliasMap returns all alias mappings for OCR integrations
+func GetProductPackageAliasMap(w http.ResponseWriter, r *http.Request) {
+	db := repository.GetSQLDB()
+
+	rows, err := db.Query(`
+		SELECT
+			ppa.alias,
+			pp.package_id,
+			pp.package_code,
+			pp.name,
+			pp.price
+		FROM product_package_aliases ppa
+		JOIN product_packages pp ON ppa.package_id = pp.package_id
+		ORDER BY ppa.alias
+	`)
+	if err != nil {
+		log.Printf("Failed to query package aliases: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch package aliases"})
+		return
+	}
+	defer rows.Close()
+
+	var entries []PackageAliasEntry
+	for rows.Next() {
+		var entry PackageAliasEntry
+		var price sql.NullFloat64
+		if err := rows.Scan(&entry.Alias, &entry.PackageID, &entry.PackageCode, &entry.PackageName, &price); err != nil {
+			log.Printf("Failed to scan alias row: %v", err)
+			continue
+		}
+		if price.Valid {
+			val := price.Float64
+			entry.Price = &val
+		}
+		entries = append(entries, entry)
+	}
+
+	if entries == nil {
+		entries = []PackageAliasEntry{}
+	}
+
+	respondJSON(w, http.StatusOK, entries)
+}
+
+func normalizeAliases(values []string) []string {
+	seen := make(map[string]struct{})
+	var result []string
+	for _, alias := range values {
+		trimmed := strings.TrimSpace(alias)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func replacePackageAliases(tx *sql.Tx, packageID int64, aliases []string) error {
+	if tx == nil {
+		return errors.New("transaction is nil")
+	}
+
+	if _, err := tx.Exec("DELETE FROM product_package_aliases WHERE package_id = ?", packageID); err != nil {
+		return err
+	}
+
+	for _, alias := range aliases {
+		if _, err := tx.Exec("INSERT INTO product_package_aliases (package_id, alias) VALUES (?, ?)", packageID, alias); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func fetchPackageAliases(db *sql.DB, packageID int) ([]string, error) {
+	rows, err := db.Query("SELECT alias FROM product_package_aliases WHERE package_id = ? ORDER BY alias", packageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var aliases []string
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			return nil, err
+		}
+		aliases = append(aliases, alias)
+	}
+	if aliases == nil {
+		aliases = []string{}
+	}
+	return aliases, nil
+}
+
+const packageCodeCharset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+func randomPackageCodeSegment(length int) (string, error) {
+	var result strings.Builder
+	for i := 0; i < length; i++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(packageCodeCharset))))
+		if err != nil {
+			return "", err
+		}
+		result.WriteByte(packageCodeCharset[n.Int64()])
+	}
+	return result.String(), nil
+}
+
+func generatePackageCode(db *sql.DB) (string, error) {
+	if db == nil {
+		return "", errors.New("database connection is nil")
+	}
+
+	for attempts := 0; attempts < 20; attempts++ {
+		segment, err := randomPackageCodeSegment(5)
+		if err != nil {
+			return "", err
+		}
+		code := fmt.Sprintf("PKG-%s", segment)
+
+		var exists bool
+		if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM product_packages WHERE package_code = ?)", code).Scan(&exists); err != nil {
+			return "", err
+		}
+		if !exists {
+			return code, nil
+		}
+	}
+
+	return "", errors.New("could not generate unique package code")
 }
 
 // AddItemToPackage adds a product to an existing package

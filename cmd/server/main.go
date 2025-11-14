@@ -312,6 +312,7 @@ func main() {
 	// Profile endpoints (authenticated users)
 	protected.HandleFunc("/profile/me", handlers.GetMyProfile).Methods("GET")
 	protected.HandleFunc("/profile/me", handlers.UpdateMyProfile).Methods("PUT")
+	protected.HandleFunc("/product-packages/alias-map", handlers.GetProductPackageAliasMap).Methods("GET")
 
 	// Apply middleware
 	api.Use(middleware.Logger)

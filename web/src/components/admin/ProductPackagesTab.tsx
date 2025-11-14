@@ -12,12 +12,14 @@ import { api } from '../../lib/api';
 
 interface ProductPackage {
   package_id: number;
+  package_code: string;
   name: string;
   description?: string | null;
   price?: number | null;
   total_items: number;
   created_at: string;
   updated_at: string;
+  aliases?: string[];
 }
 
 interface PackageItemDetail {
@@ -48,6 +50,7 @@ interface PackageFormData {
     product_id: number;
     quantity: number;
   }>;
+  aliases: string[];
 }
 
 const initialFormData: PackageFormData = {
@@ -55,6 +58,7 @@ const initialFormData: PackageFormData = {
   description: '',
   price: '',
   items: [],
+  aliases: [],
 };
 
 export function ProductPackagesTab() {
@@ -69,6 +73,7 @@ export function ProductPackagesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<number | ''>('');
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [aliasInput, setAliasInput] = useState('');
 
   const fetchPackages = async () => {
     try {
@@ -117,6 +122,7 @@ export function ProductPackagesTab() {
               product_id: item.product_id,
               quantity: item.quantity,
             })) || [],
+            aliases: data.aliases || [],
           });
         })
         .catch(err => console.error('Failed to fetch package details:', err));
@@ -124,6 +130,7 @@ export function ProductPackagesTab() {
       setEditingPackage(null);
       setFormData(initialFormData);
     }
+    setAliasInput('');
     setModalOpen(true);
   };
 
@@ -133,6 +140,7 @@ export function ProductPackagesTab() {
     setFormData(initialFormData);
     setSelectedProduct('');
     setSelectedQuantity(1);
+    setAliasInput('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -145,6 +153,7 @@ export function ProductPackagesTab() {
         description: formData.description || null,
         price: formData.price ? parseFloat(formData.price) : null,
         items: formData.items,
+        aliases: formData.aliases,
       };
 
       if (editingPackage) {
@@ -213,6 +222,25 @@ export function ProductPackagesTab() {
   const handleRemoveItem = (index: number) => {
     const newItems = formData.items.filter((_, i) => i !== index);
     setFormData({ ...formData, items: newItems });
+  };
+
+  const handleAddAlias = () => {
+    const value = aliasInput.trim();
+    if (!value) return;
+    const exists = formData.aliases.some(alias => alias.toLowerCase() === value.toLowerCase());
+    if (exists) {
+      setAliasInput('');
+      return;
+    }
+    setFormData({ ...formData, aliases: [...formData.aliases, value] });
+    setAliasInput('');
+  };
+
+  const handleRemoveAlias = (aliasToRemove: string) => {
+    setFormData({
+      ...formData,
+      aliases: formData.aliases.filter(alias => alias !== aliasToRemove),
+    });
   };
 
   const getProductName = (productId: number) => {
@@ -429,6 +457,57 @@ export function ProductPackagesTab() {
                 )}
               </div>
 
+              <div className="border-t border-gray-700 pt-4">
+                <h4 className="text-lg font-semibold text-white mb-2">OCR-Zuordnungen</h4>
+                <p className="text-sm text-gray-400 mb-3">
+                  Definiere Schlagwörter oder Kürzel, die bei OCR-Erkennung automatisch diesem Paket zugeordnet werden.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={aliasInput}
+                    onChange={(e) => setAliasInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddAlias();
+                      }
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent-red"
+                    placeholder="z.B. Basic Audio Set"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddAlias}
+                    className="btn-secondary px-4"
+                  >
+                    Hinzufügen
+                  </button>
+                </div>
+                {formData.aliases.length === 0 ? (
+                  <p className="text-gray-500 text-sm mt-2">Noch keine Schlüsselwörter definiert.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {formData.aliases.map((alias) => (
+                      <span
+                        key={alias}
+                        className="px-3 py-1 rounded-full bg-white/10 text-white text-sm flex items-center gap-2"
+                      >
+                        {alias}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAlias(alias)}
+                          className="text-gray-400 hover:text-white"
+                          aria-label="Alias entfernen"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
@@ -476,6 +555,21 @@ export function ProductPackagesTab() {
                   <p className="text-white text-xl font-bold">{viewPackage.price.toFixed(2)} €</p>
                 </div>
               )}
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-400 mb-1">OCR-Schlüsselwörter</h4>
+                {viewPackage.aliases && viewPackage.aliases.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {viewPackage.aliases.map((alias) => (
+                      <span key={alias} className="px-3 py-1 rounded-full bg-white/10 text-white text-sm">
+                        {alias}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">Keine Schlüsselwörter definiert.</p>
+                )}
+              </div>
 
               <div>
                 <h4 className="text-sm font-medium text-gray-400 mb-3">Produkte ({viewPackage.total_items} Artikel)</h4>

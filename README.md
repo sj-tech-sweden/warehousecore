@@ -74,6 +74,7 @@ WarehouseCore manages the physical warehouse operations alongside RentalCore (th
    - Search and filter packages by name or description
    - View detailed package contents with product information
    - Full CRUD interface integrated in Products page
+   - Maintain OCR keyword mappings per package (alias map via `GET /api/v1/product-packages/alias-map`)
    - Designed for OCR integration in RentalCore job creation
    - **Admin CRUD UI** - Complete package management with product selection
 
@@ -1032,7 +1033,7 @@ docker tag nobentie/warehousecore:1.56 nobentie/warehousecore:latest
 **Push to Docker Hub:**
 ```bash
 # Push version tag
-docker push nobentie/warehousecore:2.60
+docker push nobentie/warehousecore:2.62
 
 # Push latest tag
 docker push nobentie/warehousecore:latest
@@ -1054,9 +1055,10 @@ docker pull nobentie/warehousecore:latest
 # (DO NOT use docker-compose restart manually)
 ```
 
-**Current Version:** 2.61
+**Current Version:** 2.62
 
 **Recent Changes:**
+- 2.62: Product packages gain package codes, OCR alias management UI, and alias-map API
 - 2.61: Haupt-Kabeltabelle gruppiert nach Typ/Stecker/Länge mit Inline-Details
 - 2.60: Kabelübersicht gruppiert nach Stecker1/Stecker2/Länge und zeigt Gesamtanzahl pro Kombination
 - 2.59: Kabeltypen-Endpunkt liefert Bestandszahlen für jedes Label
@@ -1263,13 +1265,20 @@ For issues or questions:
 
 ---
 
-**Version:** 2.61
+**Version:** 2.62
 **Last Updated:** 2025-11-01
 **Maintainer:** WarehouseCore Development Team
 
 ---
 
 ## Changelog
+
+### Version 2.62 (2025-11-14)
+- **Feature: Product Package OCR Aliases** ✨ **[Issue #19]**
+  - Added permanent `package_code` column plus alias management for every product package.
+  - Admin UI can now define OCR keywords per package; backend normalizes/deduplicates aliases.
+  - New table `product_package_aliases` (migration 020) and authenticated endpoint `GET /api/v1/product-packages/alias-map` provide one-stop lookup for RentalCore/OCR services.
+  - CRUD endpoints accept `aliases` arrays so packages + mappings stay in sync.
 
 ### Version 1.11 (2025-11-14)
 - **Product Packages Feature** ✨ **[Issue #19]**
@@ -1281,8 +1290,9 @@ For issues or questions:
     - `POST /admin/product-packages` - Create new package with products
     - `PUT /admin/product-packages/{id}` - Update existing package
     - `DELETE /admin/product-packages/{id}` - Delete package
-    - `POST /admin/product-packages/{id}/items` - Add item to package
-    - `DELETE /admin/product-packages/{package_id}/items/{item_id}` - Remove item
+  - `POST /admin/product-packages/{id}/items` - Add item to package
+  - `DELETE /admin/product-packages/{package_id}/items/{item_id}` - Remove item
+  - `GET /api/v1/product-packages/alias-map` - Authenticated alias map for OCR services
   - New frontend UI integrated into Products page:
     - Product Packages tab alongside Products tab
     - Create/edit packages with product selection and quantities
