@@ -1,9 +1,19 @@
-import { Package } from 'lucide-react';
+import { useState } from 'react';
+import { Package, Box } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ProductsTab } from '../components/admin/ProductsTab';
+import { ProductPackagesTab } from '../components/admin/ProductPackagesTab';
+
+type TabType = 'products' | 'packages';
 
 export function ProductsPage() {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<TabType>('products');
+
+  const tabs = [
+    { id: 'products' as TabType, label: 'Produkte', icon: Package },
+    { id: 'packages' as TabType, label: 'Produktpakete', icon: Box },
+  ];
 
   return (
     <div className="space-y-6">
@@ -15,8 +25,33 @@ export function ProductsPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="glass-dark rounded-2xl p-2">
+        <div className="flex gap-2">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-accent-red text-white shadow-lg'
+                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tab Content */}
       <div className="glass-dark rounded-2xl p-6">
-        <ProductsTab />
+        {activeTab === 'products' && <ProductsTab />}
+        {activeTab === 'packages' && <ProductPackagesTab />}
       </div>
     </div>
   );

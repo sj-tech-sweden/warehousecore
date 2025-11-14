@@ -244,6 +244,8 @@ func main() {
 	adminRead.HandleFunc("/manufacturers", handlers.GetManufacturers).Methods("GET")
 	adminRead.HandleFunc("/products", handlers.GetProducts).Methods("GET")
 	adminRead.HandleFunc("/products/{id}", handlers.GetProduct).Methods("GET")
+	adminRead.HandleFunc("/product-packages", handlers.GetProductPackages).Methods("GET")
+	adminRead.HandleFunc("/product-packages/{id}", handlers.GetProductPackage).Methods("GET")
 
 	// Admin-only routes (write operations)
 	admin := api.PathPrefix("/admin").Subrouter()
@@ -283,6 +285,11 @@ func main() {
 	admin.HandleFunc("/products/{id}", handlers.UpdateProduct).Methods("PUT")
 	admin.HandleFunc("/products/{id}", handlers.DeleteProduct).Methods("DELETE")
 	admin.HandleFunc("/products/{id}/devices", handlers.CreateDevicesForProduct).Methods("POST")
+	admin.HandleFunc("/product-packages", handlers.CreateProductPackage).Methods("POST")
+	admin.HandleFunc("/product-packages/{id}", handlers.UpdateProductPackage).Methods("PUT")
+	admin.HandleFunc("/product-packages/{id}", handlers.DeleteProductPackage).Methods("DELETE")
+	admin.HandleFunc("/product-packages/{id}/items", handlers.AddItemToPackage).Methods("POST")
+	admin.HandleFunc("/product-packages/{package_id}/items/{item_id}", handlers.RemoveItemFromPackage).Methods("DELETE")
 
 	// Cable admin endpoints
 	admin.HandleFunc("/cables", handlers.GetAllCables).Methods("GET")
