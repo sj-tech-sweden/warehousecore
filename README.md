@@ -1273,6 +1273,16 @@ For issues or questions:
 
 ## Changelog
 
+### Version 1.62 (2025-11-15)
+- **Responsive View Mode Defaults** - UX Enhancement
+  - Products Page: Default view mode now responds to screen size
+    - Mobile devices (<768px): Card view as default for better touch interaction
+    - Desktop devices (≥768px): Table view as default for data density
+  - Cables Page: Same responsive default behavior applied
+  - View modes automatically adjust on window resize
+  - Users can still manually toggle between table and card views
+  - Improves initial user experience based on device type
+
 ### Version 1.61 (2025-11-15)
 - **Mobile Responsiveness Improvements** - Fixed GitLab Issue #20
   - Products Page: Made tab bar scrollable with optimized button sizing; search field full-width; responsive action buttons
