@@ -88,6 +88,14 @@ interface ProductFormData {
   device_prefix?: string;
 }
 
+interface Device {
+  device_id: string;
+  product_id?: number;
+  status: string;
+  serial_number?: string;
+  barcode?: string;
+}
+
 const initialFormData: ProductFormData = {
   name: '',
   description: '',
@@ -145,6 +153,9 @@ export function ProductsTab() {
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('');
   const [refreshing, setRefreshing] = useState(false);
   const scrollPosition = useRef(0);
+  const [productDevices, setProductDevices] = useState<Device[]>([]);
+  const [devicesToDelete, setDevicesToDelete] = useState<Set<string>>(new Set());
+  const [loadingDevices, setLoadingDevices] = useState(false);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
@@ -301,10 +312,26 @@ export function ProductsTab() {
     return subbiercategories.filter(subbier => subbier.subcategory_id === formData.subcategory_id);
   }, [subbiercategories, formData.subcategory_id]);
 
+  const loadProductDevices = useCallback(async (productId: number) => {
+    setLoadingDevices(true);
+    try {
+      const { data } = await api.get<Device[]>(`/admin/products/${productId}/devices`);
+      setProductDevices(data || []);
+      setDevicesToDelete(new Set());
+    } catch (error) {
+      console.error('Failed to load product devices:', error);
+      setProductDevices([]);
+    } finally {
+      setLoadingDevices(false);
+    }
+  }, []);
+
   const closeModal = useCallback(() => {
     setModalOpen(false);
     setEditingProduct(null);
     setFormData(initialFormData);
+    setProductDevices([]);
+    setDevicesToDelete(new Set());
   }, []);
 
   const closeDetailModal = () => {
@@ -326,10 +353,50 @@ export function ProductsTab() {
       setFormData(mapProductToFormData(data));
       setEditingProduct(productId);
       setModalOpen(true);
+      await loadProductDevices(productId);
     } catch (error) {
       console.error('Failed to load product details:', error);
       window.alert('Produkt konnte nicht geladen werden.');
     }
+  };
+
+  const handleAddDevices = async () => {
+    if (!editingProduct) return;
+
+    const quantity = formData.device_quantity;
+    if (!quantity || quantity <= 0) {
+      window.alert('Bitte eine gültige Anzahl eingeben.');
+      return;
+    }
+
+    try {
+      await api.post(`/admin/products/${editingProduct}/devices`, {
+        product_id: editingProduct,
+        quantity: quantity,
+        prefix: formData.device_prefix || '',
+      });
+
+      // Reload devices
+      await loadProductDevices(editingProduct);
+
+      // Reset device creation fields
+      setFormData({ ...formData, device_quantity: undefined, device_prefix: '' });
+    } catch (error) {
+      console.error('Failed to add devices:', error);
+      window.alert('Fehler beim Hinzufügen der Geräte.');
+    }
+  };
+
+  const handleRemoveDevice = (deviceId: string) => {
+    setDevicesToDelete(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(deviceId)) {
+        newSet.delete(deviceId);
+      } else {
+        newSet.add(deviceId);
+      }
+      return newSet;
+    });
   };
 
   const handleDelete = async (productId: number, name: string) => {
@@ -379,6 +446,19 @@ export function ProductsTab() {
 
       if (editingProduct) {
         await api.put(`/admin/products/${editingProduct}`, payload);
+
+        // Handle device deletions if editing
+        if (devicesToDelete.size > 0) {
+          const deletePromises = Array.from(devicesToDelete).map(deviceId =>
+            api.delete(`/admin/devices/${deviceId}`)
+          );
+          try {
+            await Promise.all(deletePromises);
+          } catch (deviceError) {
+            console.error('Failed to delete some devices:', deviceError);
+            window.alert('Produkt gespeichert, aber einige Geräte konnten nicht gelöscht werden.');
+          }
+        }
       } else {
         const { data } = await api.post<Product>('/admin/products', payload);
         productId = data.product_id;
@@ -986,51 +1066,118 @@ export function ProductsTab() {
                 </div>
               </div>
 
-              {!editingProduct && (
-                <div className="space-y-4 rounded-xl border border-white/10 p-4">
-                  <h3 className="text-sm font-semibold text-white">Geräte erstellen (optional)</h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-white">
-                        Anzahl Geräte
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.device_quantity ?? ''}
-                        onChange={event =>
-                          setFormData({
-                            ...formData,
-                            device_quantity: parseInteger(event.target.value),
-                          })
-                        }
-                        placeholder="z. B. 10"
-                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                      />
+              <div className="space-y-4 rounded-xl border border-white/10 p-4">
+                <h3 className="text-sm font-semibold text-white">
+                  {editingProduct ? 'Geräte verwalten' : 'Geräte erstellen (optional)'}
+                </h3>
+
+                {editingProduct && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-300">
+                        {productDevices.length} Gerät(e) zugeordnet
+                      </span>
+                      {loadingDevices && (
+                        <span className="text-xs text-gray-400">Lade...</span>
+                      )}
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-white">
-                        Geräte-Präfix
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.device_prefix ?? ''}
-                        onChange={event =>
-                          setFormData({
-                            ...formData,
-                            device_prefix: event.target.value,
-                          })
-                        }
-                        placeholder="z. B. LED"
-                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                      />
-                    </div>
+
+                    {productDevices.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg bg-white/5 p-3">
+                        {productDevices.map(device => (
+                          <div
+                            key={device.device_id}
+                            className={`flex items-center justify-between rounded-lg px-3 py-2 transition ${
+                              devicesToDelete.has(device.device_id)
+                                ? 'bg-red-500/20 border border-red-500/50'
+                                : 'bg-white/5 hover:bg-white/10'
+                            }`}
+                          >
+                            <div className="flex-1">
+                              <span className="text-sm font-medium text-white">
+                                {device.device_id}
+                              </span>
+                              <span className="ml-2 text-xs text-gray-400">
+                                {device.status}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDevice(device.device_id)}
+                              className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                                devicesToDelete.has(device.device_id)
+                                  ? 'bg-gray-600 text-white hover:bg-gray-700'
+                                  : 'bg-red-600/80 text-white hover:bg-red-600'
+                              }`}
+                            >
+                              {devicesToDelete.has(device.device_id) ? 'Behalten' : 'Entfernen'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {devicesToDelete.size > 0 && (
+                      <p className="text-xs text-red-400">
+                        {devicesToDelete.size} Gerät(e) werden beim Speichern gelöscht
+                      </p>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-400">
-                    Geräte werden automatisch mit aufsteigender Nummerierung erstellt (z. B. {formData.device_prefix || 'XXX'}0001).
-                  </p>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      Anzahl Geräte {editingProduct && 'hinzufügen'}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.device_quantity ?? ''}
+                      onChange={event =>
+                        setFormData({
+                          ...formData,
+                          device_quantity: parseInteger(event.target.value),
+                        })
+                      }
+                      placeholder="z. B. 10"
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      Geräte-Präfix
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.device_prefix ?? ''}
+                      onChange={event =>
+                        setFormData({
+                          ...formData,
+                          device_prefix: event.target.value,
+                        })
+                      }
+                      placeholder="z. B. LED"
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                    />
+                  </div>
                 </div>
-              )}
+
+                {editingProduct && (
+                  <button
+                    type="button"
+                    onClick={handleAddDevices}
+                    disabled={!formData.device_quantity || formData.device_quantity <= 0}
+                    className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Geräte jetzt hinzufügen
+                  </button>
+                )}
+
+                <p className="text-xs text-gray-400">
+                  Geräte werden automatisch mit aufsteigender Nummerierung erstellt (z. B. {formData.device_prefix || 'XXX'}0001).
+                </p>
+              </div>
 
               <div className="flex gap-3 pt-4">
                 <button

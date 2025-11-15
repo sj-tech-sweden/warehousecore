@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 	"warehousecore/internal/services"
 )
@@ -586,4 +587,87 @@ func CreateDevicesForProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, response)
+}
+
+// GetProductDevices retrieves all devices for a specific product
+func GetProductDevices(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+
+	query := `
+		SELECT d.deviceID, d.productID, d.serialnumber, d.barcode, d.qr_code, d.status,
+		       d.current_location, d.zone_id,
+		       d.condition_rating, d.usage_hours, d.purchaseDate, d.lastmaintenance, d.nextmaintenance,
+		       d.notes, d.label_path,
+		       COALESCE(p.name, '') AS product_name,
+		       COALESCE(cat.name, '') AS product_category,
+		       COALESCE(z.name, '') AS zone_name,
+		       COALESCE(z.code, '') AS zone_code,
+		       dc.caseID,
+		       COALESCE(c.name, '') AS case_name,
+		       jd.jobID,
+		       COALESCE(j.job_code, '') AS job_number
+		FROM devices d
+		LEFT JOIN products p ON d.productID = p.productID
+		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
+		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
+		LEFT JOIN cases c ON dc.caseID = c.caseID
+		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID
+		LEFT JOIN jobs j ON jd.jobID = j.jobID
+		WHERE d.productID = ?
+		ORDER BY d.deviceID ASC
+	`
+
+	rows, err := db.Query(query, productID)
+	if err != nil {
+		log.Printf("[PRODUCT DEVICES] Failed to query devices for product %d: %v", productID, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product devices"})
+		return
+	}
+	defer rows.Close()
+
+	var responses []DeviceAdminResponse
+	for rows.Next() {
+		var device models.DeviceWithDetails
+		err := rows.Scan(
+			&device.DeviceID,
+			&device.ProductID,
+			&device.SerialNumber,
+			&device.Barcode,
+			&device.QRCode,
+			&device.Status,
+			&device.CurrentLocation,
+			&device.ZoneID,
+			&device.ConditionRating,
+			&device.UsageHours,
+			&device.PurchaseDate,
+			&device.LastMaintenance,
+			&device.NextMaintenance,
+			&device.Notes,
+			&device.LabelPath,
+			&device.ProductName,
+			&device.ProductCategory,
+			&device.ZoneName,
+			&device.ZoneCode,
+			&device.CaseID,
+			&device.CaseName,
+			&device.CurrentJobID,
+			&device.JobNumber,
+		)
+		if err != nil {
+			log.Printf("[PRODUCT DEVICES] Failed to scan device: %v", err)
+			continue
+		}
+
+		responses = append(responses, toDeviceAdminResponse(&device))
+	}
+
+	respondJSON(w, http.StatusOK, responses)
 }

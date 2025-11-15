@@ -284,6 +284,7 @@ func main() {
 	admin.HandleFunc("/products", handlers.CreateProduct).Methods("POST")
 	admin.HandleFunc("/products/{id}", handlers.UpdateProduct).Methods("PUT")
 	admin.HandleFunc("/products/{id}", handlers.DeleteProduct).Methods("DELETE")
+	admin.HandleFunc("/products/{id}/devices", handlers.GetProductDevices).Methods("GET")
 	admin.HandleFunc("/products/{id}/devices", handlers.CreateDevicesForProduct).Methods("POST")
 	admin.HandleFunc("/product-packages", handlers.CreateProductPackage).Methods("POST")
 	admin.HandleFunc("/product-packages/{id}", handlers.UpdateProductPackage).Methods("PUT")
