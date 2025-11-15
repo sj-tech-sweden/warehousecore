@@ -52,7 +52,10 @@ export function CablesTab() {
   const [editingCable, setEditingCable] = useState<number | null>(null);
   const [formData, setFormData] = useState<CableFormData>(initialFormData);
   const [submitting, setSubmitting] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    // Set default based on screen width: mobile (<768px) = cards, desktop = table
+    return typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table';
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [connector1Filter, setConnector1Filter] = useState<number | ''>('');
   const [connector2Filter, setConnector2Filter] = useState<number | ''>('');
@@ -111,6 +114,21 @@ export function CablesTab() {
   }, [connector1Filter, connector2Filter, connectorCompatibility]);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
+
+  // Update view mode based on screen size
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = window.innerWidth < 768;
+      setViewMode(current => {
+        // Only auto-switch if user hasn't manually changed the view
+        // You can remove this check to always update on resize
+        return isMobile ? 'cards' : 'table';
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const fetchCables = useCallback(async () => {
     setLoadingCables(true);
