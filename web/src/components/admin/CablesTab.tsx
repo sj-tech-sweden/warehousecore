@@ -119,11 +119,7 @@ export function CablesTab() {
   useEffect(() => {
     const handleResize = () => {
       const isMobile = window.innerWidth < 768;
-      setViewMode(current => {
-        // Only auto-switch if user hasn't manually changed the view
-        // You can remove this check to always update on resize
-        return isMobile ? 'cards' : 'table';
-      });
+      setViewMode(isMobile ? 'cards' : 'table');
     };
 
     window.addEventListener('resize', handleResize);
