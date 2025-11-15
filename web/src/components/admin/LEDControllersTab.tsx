@@ -539,16 +539,16 @@ export function LEDControllersTab() {
             const heartbeatAt = heartbeatAtRaw ? new Date(heartbeatAtRaw) : undefined;
             const uptimeLabel = formatUptime(uptimeSeconds);
             return (
-              <div key={controller.id} className="glass rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-white/10">
+              <div key={controller.id} className="glass rounded-xl p-4 flex flex-col gap-3 border border-white/10">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${status.className}`}></div>
-                    <div>
-                      <h3 className="text-white font-semibold text-sm sm:text-base flex items-center gap-2">
-                        {controller.display_name}
-                        {!controller.is_active && <span className="text-xs text-gray-500">deaktiviert</span>}
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${status.className}`}></div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-white font-semibold text-sm sm:text-base flex items-center gap-2 flex-wrap">
+                        <span className="truncate">{controller.display_name}</span>
+                        {!controller.is_active && <span className="text-xs text-gray-500 flex-shrink-0">deaktiviert</span>}
                       </h3>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-400 truncate">
                         ID: <span className="font-mono">{controller.controller_id}</span> • Topic: <span className="font-mono">{controller.topic_suffix}</span>
                       </p>
                       <p className={`text-xs ${status.className}`}>{status.label}</p>
@@ -560,11 +560,11 @@ export function LEDControllersTab() {
                       {controller.last_seen && (
                         <p className="text-xs text-gray-500">Letzter Kontakt: {new Date(controller.last_seen).toLocaleString()}</p>
                       )}
-                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-y-1 text-xs text-gray-400">
-                        {controller.hostname && <span>Hostname: <span className="font-mono text-gray-300">{controller.hostname}</span></span>}
-                        {controller.ip_address && <span>IP: <span className="font-mono text-gray-300">{controller.ip_address}</span></span>}
-                        {controller.mac_address && <span>MAC: <span className="font-mono text-gray-300">{controller.mac_address}</span></span>}
-                        {controller.firmware_version && <span>Firmware: <span className="font-mono text-gray-300">{controller.firmware_version}</span></span>}
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-y-1 text-xs text-gray-400 break-all">
+                        {controller.hostname && <span className="truncate">Hostname: <span className="font-mono text-gray-300">{controller.hostname}</span></span>}
+                        {controller.ip_address && <span className="truncate">IP: <span className="font-mono text-gray-300">{controller.ip_address}</span></span>}
+                        {controller.mac_address && <span className="truncate">MAC: <span className="font-mono text-gray-300">{controller.mac_address}</span></span>}
+                        {controller.firmware_version && <span className="truncate">Firmware: <span className="font-mono text-gray-300">{controller.firmware_version}</span></span>}
                         {typeof ledCount === 'number' && <span>LEDs: <span className="font-mono text-gray-300">{ledCount}</span></span>}
                         {wifiRSSI !== undefined && <span>WiFi RSSI: <span className="font-mono text-gray-300">{wifiRSSI} dBm</span></span>}
                         {uptimeLabel && <span>Uptime: <span className="font-mono text-gray-300">{uptimeLabel}</span></span>}
@@ -573,7 +573,7 @@ export function LEDControllersTab() {
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {status.label === 'Online' && (
                     <button
                       onClick={() => handleRestart(controller.id)}
@@ -581,7 +581,7 @@ export function LEDControllersTab() {
                       className="px-3 py-2 rounded-lg text-sm font-semibold bg-orange-600/20 text-orange-400 hover:bg-orange-600/30 flex items-center gap-2 disabled:opacity-50"
                       title="ESP32 neu starten"
                     >
-                      <RotateCw className="w-4 h-4" /> {restarting === controller.id ? 'Startet...' : 'Neustart'}
+                      <RotateCw className="w-4 h-4" /> <span className="hidden sm:inline">{restarting === controller.id ? 'Startet...' : 'Neustart'}</span>
                     </button>
                   )}
                   <button
@@ -589,7 +589,7 @@ export function LEDControllersTab() {
                     className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 flex items-center gap-2"
                     title="Controller bearbeiten & konfigurieren"
                   >
-                    <Settings className="w-4 h-4" /> Bearbeiten
+                    <Settings className="w-4 h-4" /> <span className="hidden sm:inline">Bearbeiten</span>
                   </button>
                   <button
                     onClick={() => handleDelete(controller.id)}

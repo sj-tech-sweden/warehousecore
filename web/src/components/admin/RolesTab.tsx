@@ -106,7 +106,7 @@ export function RolesTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Users List */}
         <div className="space-y-2">
           <h3 className="text-white font-semibold mb-3">Benutzer</h3>
@@ -121,15 +121,15 @@ export function RolesTab() {
               }`}
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-accent-red/20 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-accent-red/20 flex items-center justify-center flex-shrink-0">
                   <Users className="w-5 h-5 text-accent-red" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-white font-semibold">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold truncate">
                     {user.first_name} {user.last_name}
                   </p>
-                  <p className="text-gray-400 text-sm">{user.email}</p>
-                  <div className="flex gap-1 mt-1">
+                  <p className="text-gray-400 text-sm truncate">{user.email}</p>
+                  <div className="flex flex-wrap gap-1 mt-1">
                     {user.roles.map(role => (
                       <span
                         key={role.id}

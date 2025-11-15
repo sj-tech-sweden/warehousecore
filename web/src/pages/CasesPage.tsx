@@ -932,9 +932,9 @@ function SummaryCard({ label, value, tone }: SummaryCardProps) {
   }[tone];
 
   return (
-    <div className={`rounded-xl border border-white/10 bg-gradient-to-br ${toneClass} p-4 sm:p-5`}>
-      <p className="text-xs uppercase tracking-wide text-gray-300">{label}</p>
-      <p className="text-2xl font-bold text-white mt-2">{value}</p>
+    <div className={`rounded-xl border border-white/10 bg-gradient-to-br ${toneClass} p-3 sm:p-4`}>
+      <p className="text-xs uppercase tracking-wide text-gray-300 truncate">{label}</p>
+      <p className="text-xl sm:text-2xl font-bold text-white mt-1 sm:mt-2">{value}</p>
     </div>
   );
 }

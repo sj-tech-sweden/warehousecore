@@ -432,7 +432,7 @@ export function ProductsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-xl font-bold text-white">Produkte verwalten</h2>
           <p className="text-sm text-gray-400">
@@ -441,15 +441,15 @@ export function ProductsTab() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-          <div className="flex items-center gap-2">
-            <div className="relative">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
                 placeholder="Suchen (Name, Beschreibung …)"
-                className="w-56 rounded-lg bg-white/10 py-2 pl-9 pr-3 text-sm text-white placeholder-gray-500 outline-none transition focus:bg-white/15 focus:ring-1 focus:ring-accent-red"
+                className="w-full rounded-lg bg-white/10 py-2 pl-9 pr-3 text-sm text-white placeholder-gray-500 outline-none transition focus:bg-white/15 focus:ring-1 focus:ring-accent-red"
               />
             </div>
 
@@ -470,14 +470,14 @@ export function ProductsTab() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20"
+                className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20 whitespace-nowrap"
               >
                 Filter zurücksetzen
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setViewMode('table')}
@@ -488,7 +488,7 @@ export function ProductsTab() {
               }`}
             >
               <List className="h-4 w-4" />
-              Tabelle
+              <span className="hidden sm:inline">Tabelle</span>
             </button>
             <button
               type="button"
@@ -500,7 +500,7 @@ export function ProductsTab() {
               }`}
             >
               <LayoutGrid className="h-4 w-4" />
-              Karten
+              <span className="hidden sm:inline">Karten</span>
             </button>
             <button
               type="button"
@@ -509,14 +509,15 @@ export function ProductsTab() {
               className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
             >
               <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Aktualisieren
+              <span className="hidden sm:inline">Aktualisieren</span>
             </button>
             <button
               onClick={handleOpenCreateModal}
               className="flex items-center gap-2 rounded-xl bg-accent-red px-4 py-2 font-semibold text-white hover:shadow-lg"
             >
               <Plus className="h-4 w-4" />
-              Neues Produkt
+              <span className="hidden sm:inline">Neues Produkt</span>
+              <span className="sm:hidden">Neu</span>
             </button>
           </div>
         </div>

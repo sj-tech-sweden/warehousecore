@@ -609,7 +609,7 @@ export default function LabelDesignerPage() {
               placeholder="Template Name"
             />
             <select
-              className="input-select"
+              className="input-select w-full"
               value={currentTemplateId || ''}
               onChange={(e) => {
                 const id = e.target.value;
@@ -936,13 +936,13 @@ export default function LabelDesignerPage() {
                 <Printer size={18} /> Vorschau Drucken
               </button>
               <button onClick={generateMissingLabels} disabled={exporting || (devices.length === 0 && cases.length === 0)} className="btn-action btn-primary" style={{ backgroundColor: '#10b981' }}>
-                <Save size={18} /> {exporting ? 'Generiere...' : 'Fehlende Labels Generieren'}
+                <Save size={18} /> <span className="hidden sm:inline">{exporting ? 'Generiere...' : 'Fehlende Labels Generieren'}</span><span className="sm:hidden">{exporting ? 'Generiere...' : 'Fehlende'}</span>
               </button>
               <button onClick={generateAllLabels} disabled={exporting || (devices.length === 0 && cases.length === 0)} className="btn-action btn-primary">
-                <Save size={18} /> {exporting ? `Generiere ${devices.length + cases.length}...` : `Alle Labels Generieren (${devices.length} Devices + ${cases.length} Cases)`}
+                <Save size={18} /> <span className="hidden sm:inline">{exporting ? `Generiere ${devices.length + cases.length}...` : `Alle Labels Generieren (${devices.length} Devices + ${cases.length} Cases)`}</span><span className="sm:hidden">{exporting ? 'Generiere...' : 'Alle'}</span>
               </button>
               <button onClick={exportAllLabels} disabled={exporting || (devices.length === 0 && cases.length === 0)} className="btn-action">
-                <Download size={18} /> {exporting ? 'Exportiere Labels...' : 'Alle Labels Exportieren (ZIP)'}
+                <Download size={18} /> <span className="hidden sm:inline">{exporting ? 'Exportiere Labels...' : 'Alle Labels Exportieren (ZIP)'}</span><span className="sm:hidden">{exporting ? 'Export...' : 'Export'}</span>
               </button>
             </div>
           </div>

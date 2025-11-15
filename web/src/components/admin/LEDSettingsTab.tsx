@@ -603,14 +603,15 @@ export function LEDSettingsTab() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className={`flex-1 py-3 px-6 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 py-3 px-4 sm:px-6 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
                 saving
                   ? 'bg-gray-600 cursor-not-allowed'
                   : 'bg-gradient-to-r from-accent-red to-red-700 hover:shadow-lg hover:shadow-red-500/50 hover:scale-105 active:scale-95'
               }`}
             >
-              <Save className="w-5 h-5" />
-              <span>{saving ? 'Speichert...' : 'Einstellungen speichern'}</span>
+              <Save className="w-5 h-5 flex-shrink-0" />
+              <span className="hidden sm:inline">{saving ? 'Speichert...' : 'Einstellungen speichern'}</span>
+              <span className="sm:hidden">{saving ? 'Speichert...' : 'Speichern'}</span>
             </button>
             <button
               onClick={() =>
@@ -626,26 +627,28 @@ export function LEDSettingsTab() {
                 )
               }
               disabled={previewLoading}
-              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
                 previewLoading
                   ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                   : 'bg-white/10 text-white hover:bg-white/20'
               }`}
             >
-              <Lightbulb className="w-5 h-5 text-yellow-300" />
-              <span>{previewLoading ? 'Vorschau läuft…' : 'LED Vorschau'}</span>
+              <Lightbulb className="w-5 h-5 flex-shrink-0 text-yellow-300" />
+              <span className="hidden sm:inline">{previewLoading ? 'Vorschau läuft…' : 'LED Vorschau'}</span>
+              <span className="sm:hidden">{previewLoading ? 'Läuft…' : 'Vorschau'}</span>
             </button>
             <button
               onClick={handlePreviewStop}
               disabled={(!previewActive && !previewLoading) || stopLoading}
-              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
                 (!previewActive && !previewLoading) || stopLoading
                   ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                   : 'bg-white/5 text-white hover:bg-white/10'
               }`}
             >
-              <Square className="w-5 h-5 text-red-300" />
-              <span>{stopLoading ? 'Stoppt…' : 'Vorschau stoppen'}</span>
+              <Square className="w-5 h-5 flex-shrink-0 text-red-300" />
+              <span className="hidden sm:inline">{stopLoading ? 'Stoppt…' : 'Vorschau stoppen'}</span>
+              <span className="sm:hidden">{stopLoading ? 'Stoppt…' : 'Stop'}</span>
             </button>
           </div>
 

@@ -379,7 +379,7 @@ export function CablesTab() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Search */}
           <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Suchen (Name)..."
@@ -455,22 +455,23 @@ export function CablesTab() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={clearFilters}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-gray-300 transition-colors"
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-gray-300 transition-colors flex items-center gap-1"
             >
-              <X className="w-4 h-4 inline mr-1" />
-              Filter löschen
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Filter löschen</span>
+              <span className="sm:hidden">Löschen</span>
             </button>
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-gray-300 transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-gray-300 transition-colors disabled:opacity-50 flex items-center gap-1"
             >
-              <RefreshCcw className={`w-4 h-4 inline mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-              Aktualisieren
+              <RefreshCcw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Aktualisieren</span>
             </button>
           </div>
 
@@ -481,6 +482,7 @@ export function CablesTab() {
               className={`p-2 rounded-lg transition-colors ${
                 viewMode === 'table' ? 'bg-accent-red text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'
               }`}
+              title="Tabellenansicht"
             >
               <List className="w-5 h-5" />
             </button>
@@ -489,6 +491,7 @@ export function CablesTab() {
               className={`p-2 rounded-lg transition-colors ${
                 viewMode === 'cards' ? 'bg-accent-red text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'
               }`}
+              title="Kartenansicht"
             >
               <LayoutGrid className="w-5 h-5" />
             </button>
