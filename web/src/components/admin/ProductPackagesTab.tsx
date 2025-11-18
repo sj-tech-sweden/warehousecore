@@ -59,6 +59,16 @@ interface PackageFormData {
   category_id: number | '';
   subcategory_id: string;
   subbiercategory_id: string;
+  device_quantity?: number;
+  device_prefix?: string;
+}
+
+interface Device {
+  device_id: string;
+  product_id?: number;
+  status: string;
+  serial_number?: string;
+  barcode?: string;
 }
 
 const initialFormData: PackageFormData = {
@@ -70,6 +80,8 @@ const initialFormData: PackageFormData = {
   category_id: '',
   subcategory_id: '',
   subbiercategory_id: '',
+  device_quantity: undefined,
+  device_prefix: '',
 };
 
 function formatPrice(value?: number | string | null, fallback = '-') {
@@ -102,6 +114,9 @@ export function ProductPackagesTab() {
   const scrollPosition = useRef(0);
   const viewPackagePriceDisplay = viewPackage ? formatPrice(viewPackage.price, '') : '';
   const [categories, setCategories] = useState<Array<{ categoryID: number; name: string }>>([]);
+  const [packageDevices, setPackageDevices] = useState<Device[]>([]);
+  const [devicesToDelete, setDevicesToDelete] = useState<Set<string>>(new Set());
+  const [loadingDevices, setLoadingDevices] = useState(false);
 
   const fetchPackages = async () => {
     try {
@@ -173,31 +188,91 @@ export function ProductPackagesTab() {
     return undefined;
   }, [modalOpen, viewPackage]);
 
-  const handleOpenModal = (pkg?: ProductPackage) => {
+  const loadPackageDevices = async (productId: number) => {
+    setLoadingDevices(true);
+    try {
+      const { data } = await api.get<Device[]>(`/admin/products/${productId}/devices`);
+      setPackageDevices(data || []);
+      setDevicesToDelete(new Set());
+    } catch (error) {
+      console.error('Failed to load package devices:', error);
+      setPackageDevices([]);
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
+
+  const handleAddDevices = async (productId: number) => {
+    const quantity = formData.device_quantity;
+    if (!quantity || quantity <= 0) {
+      window.alert('Bitte eine gültige Anzahl eingeben.');
+      return;
+    }
+
+    try {
+      await api.post(`/admin/products/${productId}/devices`, {
+        product_id: productId,
+        quantity: quantity,
+        prefix: formData.device_prefix || '',
+      });
+
+      // Reload devices
+      await loadPackageDevices(productId);
+
+      // Reset device creation fields
+      setFormData({ ...formData, device_quantity: undefined, device_prefix: '' });
+    } catch (error) {
+      console.error('Failed to add devices:', error);
+      window.alert('Fehler beim Hinzufügen der Geräte.');
+    }
+  };
+
+  const handleRemoveDevice = (deviceId: string) => {
+    setDevicesToDelete(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(deviceId)) {
+        newSet.delete(deviceId);
+      } else {
+        newSet.add(deviceId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleOpenModal = async (pkg?: ProductPackage) => {
     if (pkg) {
       setEditingPackage(pkg.package_id);
       // Fetch full package details with items
-      api.get<ProductPackageWithItems>(`/admin/product-packages/${pkg.package_id}`)
-        .then(res => {
-          const data = res.data;
-          setFormData({
-            name: data.name,
-            description: data.description || '',
-            price: data.price?.toString() || '',
-            items: data.items?.map(item => ({
-              product_id: item.product_id,
-              quantity: item.quantity,
-            })) || [],
-            aliases: data.aliases || [],
-            category_id: data.category_id || '',
-            subcategory_id: data.subcategory_id || '',
-            subbiercategory_id: '',
-          });
-        })
-        .catch(err => console.error('Failed to fetch package details:', err));
+      try {
+        const res = await api.get<ProductPackageWithItems>(`/admin/product-packages/${pkg.package_id}`);
+        const data = res.data;
+        setFormData({
+          name: data.name,
+          description: data.description || '',
+          price: data.price?.toString() || '',
+          items: data.items?.map(item => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+          })) || [],
+          aliases: data.aliases || [],
+          category_id: data.category_id || '',
+          subcategory_id: data.subcategory_id || '',
+          subbiercategory_id: '',
+          device_quantity: undefined,
+          device_prefix: '',
+        });
+        // Load devices for the package's product
+        if (data.product_id) {
+          await loadPackageDevices(data.product_id);
+        }
+      } catch (err) {
+        console.error('Failed to fetch package details:', err);
+      }
     } else {
       setEditingPackage(null);
       setFormData(initialFormData);
+      setPackageDevices([]);
+      setDevicesToDelete(new Set());
     }
     setAliasInput('');
     setFormError(null);
@@ -212,6 +287,8 @@ export function ProductPackagesTab() {
     setSelectedQuantity(1);
     setAliasInput('');
     setFormError(null);
+    setPackageDevices([]);
+    setDevicesToDelete(new Set());
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -243,10 +320,44 @@ export function ProductPackagesTab() {
         subbiercategory_id: formData.subbiercategory_id || null,
       };
 
+      let productId: number | undefined;
+
       if (editingPackage) {
         await api.put(`/admin/product-packages/${editingPackage}`, payload);
+
+        // Get the product_id for this package
+        const pkgResponse = await api.get<ProductPackageWithItems>(`/admin/product-packages/${editingPackage}`);
+        productId = pkgResponse.data.product_id;
+
+        // Delete devices that were marked for deletion
+        if (devicesToDelete.size > 0 && productId) {
+          const deletePromises = Array.from(devicesToDelete).map(deviceId =>
+            api.delete(`/admin/devices/${deviceId}`)
+          );
+          try {
+            await Promise.all(deletePromises);
+          } catch (deviceError) {
+            console.error('Failed to delete some devices:', deviceError);
+            window.alert('Paket gespeichert, aber einige Geräte konnten nicht gelöscht werden.');
+          }
+        }
       } else {
-        await api.post('/admin/product-packages', payload);
+        const { data } = await api.post<ProductPackageWithItems>('/admin/product-packages', payload);
+        productId = data.product_id;
+
+        // Create devices if quantity specified
+        if (formData.device_quantity && formData.device_quantity > 0 && productId) {
+          try {
+            await api.post(`/admin/products/${productId}/devices`, {
+              product_id: productId,
+              quantity: formData.device_quantity,
+              prefix: formData.device_prefix || '',
+            });
+          } catch (deviceError) {
+            console.error('Failed to create devices:', deviceError);
+            window.alert('Paket erstellt, aber Geräte konnten nicht angelegt werden.');
+          }
+        }
       }
 
       handleCloseModal();
@@ -623,6 +734,126 @@ export function ProductPackagesTab() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Device Management Section */}
+              <div className="border-t border-gray-700 pt-4">
+                <h4 className="text-lg font-semibold text-white mb-3">
+                  {editingPackage ? 'Geräte verwalten' : 'Geräte erstellen (optional)'}
+                </h4>
+
+                {editingPackage && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-300">
+                        {packageDevices.length} Gerät(e) zugeordnet
+                      </span>
+                      {loadingDevices && (
+                        <span className="text-xs text-gray-400">Lade...</span>
+                      )}
+                    </div>
+
+                    {packageDevices.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg bg-white/5 p-3">
+                        {packageDevices.map(device => (
+                          <div
+                            key={device.device_id}
+                            className={`flex items-center justify-between rounded-lg px-3 py-2 transition ${
+                              devicesToDelete.has(device.device_id)
+                                ? 'bg-red-500/20 border border-red-500/50'
+                                : 'bg-white/5 hover:bg-white/10'
+                            }`}
+                          >
+                            <div className="flex-1">
+                              <span className="text-sm font-medium text-white">
+                                {device.device_id}
+                              </span>
+                              <span className="ml-2 text-xs text-gray-400">
+                                {device.status}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDevice(device.device_id)}
+                              className={`p-2 rounded-lg transition ${
+                                devicesToDelete.has(device.device_id)
+                                  ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+                                  : 'text-gray-400 hover:bg-white/10 hover:text-red-400'
+                              }`}
+                              title={devicesToDelete.has(device.device_id) ? 'Löschen rückgängig' : 'Zum Löschen markieren'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {devicesToDelete.size > 0 && (
+                      <p className="text-xs text-red-300">
+                        {devicesToDelete.size} Gerät(e) zum Löschen markiert. Änderungen werden beim Speichern angewendet.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      Anzahl Geräte {editingPackage && 'hinzufügen'}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.device_quantity ?? ''}
+                      onChange={event =>
+                        setFormData({
+                          ...formData,
+                          device_quantity: event.target.value ? parseInt(event.target.value) : undefined,
+                        })
+                      }
+                      placeholder="z. B. 10"
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      Geräte-Präfix
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.device_prefix || ''}
+                      onChange={event =>
+                        setFormData({
+                          ...formData,
+                          device_prefix: event.target.value,
+                        })
+                      }
+                      placeholder="z. B. PKG"
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                    />
+                  </div>
+                </div>
+
+                {editingPackage && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const pkgResponse = await api.get<ProductPackageWithItems>(`/admin/product-packages/${editingPackage}`);
+                      if (pkgResponse.data.product_id) {
+                        await handleAddDevices(pkgResponse.data.product_id);
+                      }
+                    }}
+                    disabled={!formData.device_quantity || formData.device_quantity <= 0}
+                    className="w-full mt-3 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Geräte jetzt hinzufügen
+                  </button>
+                )}
+
+                <p className="text-xs text-gray-400 mt-3">
+                  Geräte werden automatisch mit aufsteigender Nummerierung erstellt (z. B. {formData.device_prefix || 'PKG'}0001).
+                </p>
               </div>
 
               <div className="flex gap-3 pt-4">
