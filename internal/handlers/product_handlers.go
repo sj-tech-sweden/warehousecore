@@ -289,13 +289,27 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if this product is a package product (managed by product_packages)
+	var packageID int
+	db := repository.GetSQLDB()
+	err = db.QueryRow("SELECT package_id FROM product_packages WHERE product_id = ?", id).Scan(&packageID)
+	if err == nil {
+		// Product is managed by a package - cannot be edited directly
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":   "Package product cannot be edited directly",
+			"message": "This product is managed by a package. Please edit it via the Packages tab.",
+		})
+		return
+	} else if err != sql.ErrNoRows {
+		log.Printf("Failed to check if product is a package: %v", err)
+	}
+
 	var req Product
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 		return
 	}
 
-	db := repository.GetSQLDB()
 	result, err := db.Exec(`
 		UPDATE products SET
 			name = ?, categoryID = ?, subcategoryID = ?, subbiercategoryID = ?,
@@ -335,6 +349,20 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
+
+	// Check if this product is a package product (managed by product_packages)
+	var packageID int
+	err = db.QueryRow("SELECT package_id FROM product_packages WHERE product_id = ?", id).Scan(&packageID)
+	if err == nil {
+		// Product is managed by a package - cannot be deleted directly
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":   "Package product cannot be deleted directly",
+			"message": "This product is managed by a package. Please delete it via the Packages tab.",
+		})
+		return
+	} else if err != sql.ErrNoRows {
+		log.Printf("Failed to check if product is a package: %v", err)
+	}
 
 	// Get product name for logging
 	var productName string
