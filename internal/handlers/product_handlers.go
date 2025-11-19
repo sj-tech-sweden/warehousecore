@@ -289,19 +289,14 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if this product is a package product (managed by product_packages)
-	var packageID int
 	db := repository.GetSQLDB()
-	err = db.QueryRow("SELECT package_id FROM product_packages WHERE product_id = ?", id).Scan(&packageID)
-	if err == nil {
-		// Product is managed by a package - cannot be edited directly
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":   "Package product cannot be edited directly",
-			"message": "This product is managed by a package. Please edit it via the Packages tab.",
-		})
-		return
-	} else if err != sql.ErrNoRows {
+
+	// Check if this product is linked to a package so we can keep metadata in sync
+	var packageID sql.NullInt64
+	if err := db.QueryRow("SELECT package_id FROM product_packages WHERE product_id = ?", id).Scan(&packageID); err != nil && err != sql.ErrNoRows {
 		log.Printf("Failed to check if product is a package: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
+		return
 	}
 
 	var req Product
@@ -310,7 +305,15 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := db.Exec(`
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("Failed to start product update transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
+		return
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
 		UPDATE products SET
 			name = ?, categoryID = ?, subcategoryID = ?, subbiercategoryID = ?,
 			manufacturerID = ?, brandID = ?, description = ?, maintenanceInterval = ?,
@@ -336,7 +339,30 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{"message": "Product updated successfully"})
+	if packageID.Valid {
+		if _, err := tx.Exec(`
+			UPDATE product_packages
+			SET name = ?, description = ?, price = ?
+			WHERE package_id = ?
+		`, req.Name, req.Description, req.ItemCostPerDay, packageID.Int64); err != nil {
+			log.Printf("Failed to update linked product package for product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update linked product package"})
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Failed to commit product update transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
+		return
+	}
+
+	message := "Product updated successfully"
+	if packageID.Valid {
+		message = "Package product updated successfully"
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": message})
 }
 
 // DeleteProduct deletes a product and cascades to delete all associated devices
@@ -441,7 +467,7 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{
-		"message":        message,
+		"message":         message,
 		"deleted_devices": fmt.Sprintf("%d", deviceCount),
 	})
 }
