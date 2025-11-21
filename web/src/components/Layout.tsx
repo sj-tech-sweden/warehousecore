@@ -98,28 +98,30 @@ export function Layout({ children }: LayoutProps) {
     });
   }, [userRoles]);
 
-  const baseNavItems = useMemo(() => ([
-    { path: '/', icon: Home, label: t('nav.dashboard') },
-    { path: '/scan', icon: ScanLine, label: t('nav.scan') },
-    { path: '/labels', icon: Tag, label: t('nav.labels') },
-    { path: '/cases', icon: Boxes, label: t('nav.cases') },
-    { path: '/zones', icon: MapPin, label: t('nav.zones') },
-    { path: '/jobs', icon: Briefcase, label: t('nav.jobs') },
-    { path: '/maintenance', icon: Wrench, label: t('nav.maintenance') },
+  const mainNavItems = useMemo(() => ([
+    { key: 'dashboard', path: '/', icon: Home, label: t('nav.dashboard') },
+    { key: 'scan', path: '/scan', icon: ScanLine, label: t('nav.scan') },
+    { key: 'labels', path: '/labels', icon: Tag, label: t('nav.labels') },
+    { key: 'cases', path: '/cases', icon: Boxes, label: t('nav.cases') },
+    { key: 'zones', path: '/zones', icon: MapPin, label: t('nav.zones') },
+    { key: 'jobs', path: '/jobs', icon: Briefcase, label: t('nav.jobs') },
+    { key: 'maintenance', path: '/maintenance', icon: Wrench, label: t('nav.maintenance') },
   ]), [t]);
+
+  const navIndex = useMemo(() => {
+    const map = new Map<string, typeof mainNavItems[number]>();
+    mainNavItems.forEach((item) => map.set(item.key, item));
+    return map;
+  }, [mainNavItems]);
 
   const productNavItems = useMemo(() => ([
     { path: '/products', icon: Package, label: t('nav.products') },
     { path: '/cables', icon: Cable, label: t('nav.cables') },
   ]), [t]);
 
-  const navItems = useMemo(() => {
-    const items = [...baseNavItems];
-    if (hasAdminAccess) {
-      items.push({ path: '/admin', icon: Settings, label: t('nav.admin') });
-    }
-    return items;
-  }, [baseNavItems, hasAdminAccess, t]);
+  const adminNavItem = useMemo(() => (
+    { path: '/admin', icon: Settings, label: t('nav.admin') }
+  ), [t]);
 
   const productNavActive = useMemo(
     () => productNavItems.some(item => location.pathname.startsWith(item.path)),
@@ -221,6 +223,32 @@ export function Layout({ children }: LayoutProps) {
             {(sidebarOpen || isMobile) && <span className="font-semibold">RentalCore</span>}
           </a>
 
+          {['dashboard', 'scan'].map((key) => {
+            const item = navIndex.get(key);
+            if (!item) return null;
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={closeSidebar}
+                className={`flex items-center rounded-lg transition-all ${
+                  isActive
+                    ? 'bg-accent-red text-white shadow-lg shadow-accent-red/20'
+                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                } ${
+                  sidebarOpen || isMobile ? 'gap-3 px-4 py-3' : 'justify-center p-3'
+                }`}
+                title={!sidebarOpen && !isMobile ? item.label : ''}
+              >
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                {(sidebarOpen || isMobile) && <span className="font-medium">{item.label}</span>}
+              </Link>
+            );
+          })}
+
           <div>
             <button
               type="button"
@@ -275,7 +303,9 @@ export function Layout({ children }: LayoutProps) {
             )}
           </div>
 
-          {navItems.map((item) => {
+          {['labels', 'cases', 'zones', 'jobs', 'maintenance'].map((key) => {
+            const item = navIndex.get(key);
+            if (!item) return null;
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
 
@@ -298,6 +328,25 @@ export function Layout({ children }: LayoutProps) {
               </Link>
             );
           })}
+
+          {hasAdminAccess && (
+            <Link
+              key={adminNavItem.path}
+              to={adminNavItem.path}
+              onClick={closeSidebar}
+              className={`flex items-center rounded-lg transition-all ${
+                location.pathname === adminNavItem.path
+                  ? 'bg-accent-red text-white shadow-lg shadow-accent-red/20'
+                  : 'text-gray-400 hover:bg-white/10 hover:text-white'
+              } ${
+                sidebarOpen || isMobile ? 'gap-3 px-4 py-3' : 'justify-center p-3'
+              }`}
+              title={!sidebarOpen && !isMobile ? adminNavItem.label : ''}
+            >
+              <Settings className="w-5 h-5 flex-shrink-0" />
+              {(sidebarOpen || isMobile) && <span className="font-medium">{adminNavItem.label}</span>}
+            </Link>
+          )}
         </nav>
 
         <div className={`p-4 border-t border-white/10 bg-dark/50 ${

@@ -1055,9 +1055,10 @@ docker pull nobentie/warehousecore:latest
 # (DO NOT use docker-compose restart manually)
 ```
 
-**Current Version:** 2.69
+**Current Version:** 2.70
 
 **Recent Changes:**
+- 2.70: Sidebar navigation order aligned with RentalCore (Dashboard, Scan, Produktmanagement, Cases, Lagerbereiche, Aufträge, Admin)
 - 2.69: Full device management in product edit modal - add/remove devices, view device list with status
 - 2.68: UI Consistency - Product modal placement standardization with ModalPortal
 - 2.62: Product packages gain package codes, OCR alias management UI, and alias-map API
@@ -1272,6 +1273,11 @@ For issues or questions:
 ---
 
 ## Changelog
+
+### Version 2.70 (2025-11-21)
+- **Sidebar order aligned with RentalCore**
+  - Navigation reordered to: Dashboard, Scan, Produktmanagement (with product submenu), Cases, Lagerbereiche, Aufträge, Admin
+  - Keeps admin visibility role-gated while mirroring RentalCore theming and grouping
 
 ### Version 2.69 (2025-11-15)
 - **Feature: Full Device Management in Product Edit Modal**

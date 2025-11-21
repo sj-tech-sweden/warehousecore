@@ -39,5 +39,7 @@
 - please keep the navigation menu in the readme uptodate
 - my mysql user: warehouse_user, my mysql pw: <configured_in_env>, my mysql host: db.example.com, my Database: rentalcore
 - Always push when you are finished editing or so your changes to dockerhub and github. For dockerhub check which version was the latest version pushed to dockerhub and push the following version. Also ALWAYS PUSH THE :latest version
+- You may use the existing Docker login on this host for pushes (username: nobentie) and do not re-enter credentials unless needed.
+- Always push to GitLab after completing work and keep all README files updated to reflect the latest changes and versions.
 - dont let old versions of files there. and dont name updated or fixed versions like [filename]_updated_fixed_complete_CORRECT use normal file names and remove the old files.
 - you can make edits on the Database Tables !!!NOT THE DATA!!! on your own
