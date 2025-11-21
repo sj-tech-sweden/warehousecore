@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Eye,
+  GitBranch,
   LayoutGrid,
   List,
   Package,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
+import { DeviceTreeTab } from './DeviceTreeTab';
 
 interface Product {
   product_id: number;
@@ -145,7 +147,7 @@ export function ProductsTab() {
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [metadataLoaded, setMetadataLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+  const [viewMode, setViewMode] = useState<'table' | 'cards' | 'tree'>(() => {
     // Set default based on screen width: mobile (<768px) = cards, desktop = table
     return typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table';
   });
@@ -599,6 +601,18 @@ export function ProductsTab() {
             </button>
             <button
               type="button"
+              onClick={() => setViewMode('tree')}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                viewMode === 'tree'
+                  ? 'bg-white/15 text-white'
+                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <GitBranch className="h-4 w-4" />
+              <span className="hidden sm:inline">Gerätebaum</span>
+            </button>
+            <button
+              type="button"
               onClick={handleRefresh}
               disabled={refreshing}
               className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
@@ -735,7 +749,7 @@ export function ProductsTab() {
             </table>
           </div>
         </div>
-      ) : (
+      ) : viewMode === 'cards' ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sortedProducts.map(product => (
             <div key={product.product_id} className="glass rounded-xl p-4">
@@ -784,6 +798,10 @@ export function ProductsTab() {
               </div>
             </div>
           ))}
+        </div>
+      ) : (
+        <div className="mt-2">
+          <DeviceTreeTab />
         </div>
       )}
 

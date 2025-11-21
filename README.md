@@ -1055,9 +1055,10 @@ docker pull nobentie/warehousecore:latest
 # (DO NOT use docker-compose restart manually)
 ```
 
-**Current Version:** 2.70
+**Current Version:** 2.71
 
 **Recent Changes:**
+- 2.71: Gerätebaum als zusätzliche Ansicht direkt in „Produkte“ (View-Toggle)
 - 2.70: Sidebar navigation order aligned with RentalCore (Dashboard, Scan, Produktmanagement, Cases, Lagerbereiche, Aufträge, Admin)
 - 2.69: Full device management in product edit modal - add/remove devices, view device list with status
 - 2.68: UI Consistency - Product modal placement standardization with ModalPortal
@@ -1273,6 +1274,11 @@ For issues or questions:
 ---
 
 ## Changelog
+
+### Version 2.71 (2025-11-21)
+- **Gerätebaum als Ansicht auf der Produktseite**
+  - Device Tree ist nun ein weiterer View-Toggle direkt unter „Produkte“ (neben Tabelle/Karten), kein eigener Tab mehr
+  - Ermöglicht schnellen Wechsel zwischen Tabellen-, Karten- und Gerätebaum-Ansicht ohne Kontextwechsel
 
 ### Version 2.70 (2025-11-21)
 - **Sidebar order aligned with RentalCore**
