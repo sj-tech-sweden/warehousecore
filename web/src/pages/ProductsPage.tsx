@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Package, Box } from 'lucide-react';
+import { Package, Box, Building2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ProductsTab } from '../components/admin/ProductsTab';
 import { ProductPackagesTab } from '../components/admin/ProductPackagesTab';
+import { RentedProductsTab } from '../components/admin/RentedProductsTab';
 
-type TabType = 'products' | 'packages';
+type TabType = 'products' | 'packages' | 'rented';
 
 export function ProductsPage() {
   const { t } = useTranslation();
@@ -13,6 +14,7 @@ export function ProductsPage() {
   const tabs = [
     { id: 'products' as TabType, label: 'Produkte', icon: Package },
     { id: 'packages' as TabType, label: 'Produktpakete', icon: Box },
+    { id: 'rented' as TabType, label: 'Mietprodukte', icon: Building2 },
   ];
 
   return (
@@ -53,6 +55,7 @@ export function ProductsPage() {
       <div className="glass-dark rounded-2xl p-6">
         {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'packages' && <ProductPackagesTab />}
+        {activeTab === 'rented' && <RentedProductsTab />}
       </div>
     </div>
   );

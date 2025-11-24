@@ -180,6 +180,10 @@ func main() {
 	api.HandleFunc("/jobs/{id}", handlers.GetJobSummary).Methods("GET")
 	api.HandleFunc("/jobs/{id}/complete", handlers.CompleteJob).Methods("POST")
 
+	// Public rental equipment endpoint (for RentalCore integration)
+	api.HandleFunc("/rental-equipment", handlers.GetRentalEquipment).Methods("GET")
+	api.HandleFunc("/rental-equipment/{id}", handlers.GetRentalEquipmentByID).Methods("GET")
+
 	// Case endpoints
 	api.HandleFunc("/cases", handlers.GetCases).Methods("GET")
 	api.HandleFunc("/cases", handlers.CreateCase).Methods("POST")
@@ -246,6 +250,9 @@ func main() {
 	adminRead.HandleFunc("/products/{id}", handlers.GetProduct).Methods("GET")
 	adminRead.HandleFunc("/product-packages", handlers.GetProductPackages).Methods("GET")
 	adminRead.HandleFunc("/product-packages/{id}", handlers.GetProductPackage).Methods("GET")
+	adminRead.HandleFunc("/rental-equipment", handlers.GetRentalEquipment).Methods("GET")
+	adminRead.HandleFunc("/rental-equipment/suppliers", handlers.GetRentalEquipmentSuppliers).Methods("GET")
+	adminRead.HandleFunc("/rental-equipment/{id}", handlers.GetRentalEquipmentByID).Methods("GET")
 
 	// Admin-only routes (write operations)
 	admin := api.PathPrefix("/admin").Subrouter()
@@ -291,6 +298,9 @@ func main() {
 	admin.HandleFunc("/product-packages/{id}", handlers.DeleteProductPackage).Methods("DELETE")
 	admin.HandleFunc("/product-packages/{id}/items", handlers.AddItemToPackage).Methods("POST")
 	admin.HandleFunc("/product-packages/{package_id}/items/{item_id}", handlers.RemoveItemFromPackage).Methods("DELETE")
+	admin.HandleFunc("/rental-equipment", handlers.CreateRentalEquipment).Methods("POST")
+	admin.HandleFunc("/rental-equipment/{id}", handlers.UpdateRentalEquipment).Methods("PUT")
+	admin.HandleFunc("/rental-equipment/{id}", handlers.DeleteRentalEquipment).Methods("DELETE")
 
 	// Cable admin endpoints
 	admin.HandleFunc("/cables", handlers.GetAllCables).Methods("GET")

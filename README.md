@@ -67,7 +67,7 @@ WarehouseCore manages the physical warehouse operations alongside RentalCore (th
    - Case detail modal with device list view
    - **Admin CRUD UI** - Complete case management in admin dashboard
 
-4. **Product Packages** ✨ **NEW [Issue #19]**
+4. **Product Packages**
    - Create reusable product packages for common job configurations
    - Add multiple products with specific quantities to packages
    - Set package pricing for simplified job calculations
@@ -78,13 +78,27 @@ WarehouseCore manages the physical warehouse operations alongside RentalCore (th
    - Designed for OCR integration in RentalCore job creation
    - **Admin CRUD UI** - Complete package management with product selection
 
-5. **Storage Zones**
+5. **Rental Equipment (Mietprodukte)** NEW
+   - Manage products rented from external suppliers
+   - Track rental price (cost to you) vs. customer price (what customer pays)
+   - Automatic profit margin calculation
+   - Supplier management with auto-complete suggestions
+   - Filter by supplier name and search across all fields
+   - Active/inactive status for availability control
+   - Category and description support
+   - Internal notes for supplier contacts, delivery times, etc.
+   - Table and card view modes
+   - Full CRUD interface in "Mietprodukte" tab under Products page
+   - Public API endpoints for RentalCore integration
+   - **Admin CRUD UI** - Complete rental equipment management
+
+6. **Storage Zones**
    - Hierarchical zone structure
    - Shelf, rack, case, vehicle, stage types
    - Capacity tracking
    - Active/inactive management
 
-5. **Scan System**
+7. **Scan System**
    - Barcode and QR code support
    - Intake/outtake/transfer/check actions
   - Duplicate scan detection
