@@ -35,6 +35,13 @@ type Product struct {
 	Depth               *float64 `json:"depth"`
 	PowerConsumption    *float64 `json:"power_consumption"`
 	PosInCategory       *int     `json:"pos_in_category"`
+	IsAccessory         bool     `json:"is_accessory"`
+	IsConsumable        bool     `json:"is_consumable"`
+	CountTypeID         *int     `json:"count_type_id"`
+	StockQuantity       *float64 `json:"stock_quantity"`
+	MinStockLevel       *float64 `json:"min_stock_level"`
+	GenericBarcode      *string  `json:"generic_barcode"`
+	PricePerUnit        *float64 `json:"price_per_unit"`
 
 	// Joined fields for display
 	CategoryName        *string `json:"category_name,omitempty"`
@@ -42,6 +49,8 @@ type Product struct {
 	SubbiercategoryName *string `json:"subbiercategory_name,omitempty"`
 	BrandName           *string `json:"brand_name,omitempty"`
 	ManufacturerName    *string `json:"manufacturer_name,omitempty"`
+	CountTypeName       *string `json:"count_type_name,omitempty"`
+	CountTypeAbbr       *string `json:"count_type_abbr,omitempty"`
 }
 
 // DeviceCreateRequest represents a request to create devices
@@ -84,17 +93,27 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 			p.depth,
 			p.powerconsumption,
 			p.pos_in_category,
+			p.is_accessory,
+			p.is_consumable,
+			p.count_type_id,
+			p.stock_quantity,
+			p.min_stock_level,
+			p.generic_barcode,
+			p.price_per_unit,
 			c.name as category_name,
 			sc.name as subcategory_name,
 			sbc.name as subbiercategory_name,
 			b.name as brand_name,
-			m.name as manufacturer_name
+			m.name as manufacturer_name,
+			ct.name as count_type_name,
+			ct.abbreviation as count_type_abbr
 		FROM products p
 		LEFT JOIN categories c ON p.categoryID = c.categoryID
 		LEFT JOIN subcategories sc ON p.subcategoryID = sc.subcategoryID
 		LEFT JOIN subbiercategories sbc ON p.subbiercategoryID = sbc.subbiercategoryID
 		LEFT JOIN brands b ON p.brandID = b.brandID
 		LEFT JOIN manufacturer m ON p.manufacturerID = m.manufacturerID
+		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
 		WHERE 1=1
 	`
 
@@ -146,11 +165,20 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 			&p.Depth,
 			&p.PowerConsumption,
 			&p.PosInCategory,
+			&p.IsAccessory,
+			&p.IsConsumable,
+			&p.CountTypeID,
+			&p.StockQuantity,
+			&p.MinStockLevel,
+			&p.GenericBarcode,
+			&p.PricePerUnit,
 			&p.CategoryName,
 			&p.SubcategoryName,
 			&p.SubbiercategoryName,
 			&p.BrandName,
 			&p.ManufacturerName,
+			&p.CountTypeName,
+			&p.CountTypeAbbr,
 		)
 		if err != nil {
 			log.Printf("Failed to scan product: %v", err)
@@ -190,17 +218,27 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 			p.depth,
 			p.powerconsumption,
 			p.pos_in_category,
+			p.is_accessory,
+			p.is_consumable,
+			p.count_type_id,
+			p.stock_quantity,
+			p.min_stock_level,
+			p.generic_barcode,
+			p.price_per_unit,
 			c.name as category_name,
 			sc.name as subcategory_name,
 			sbc.name as subbiercategory_name,
 			b.name as brand_name,
-			m.name as manufacturer_name
+			m.name as manufacturer_name,
+			ct.name as count_type_name,
+			ct.abbreviation as count_type_abbr
 		FROM products p
 		LEFT JOIN categories c ON p.categoryID = c.categoryID
 		LEFT JOIN subcategories sc ON p.subcategoryID = sc.subcategoryID
 		LEFT JOIN subbiercategories sbc ON p.subbiercategoryID = sbc.subbiercategoryID
 		LEFT JOIN brands b ON p.brandID = b.brandID
 		LEFT JOIN manufacturer m ON p.manufacturerID = m.manufacturerID
+		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
 		WHERE p.productID = ?
 	`
 
@@ -222,11 +260,20 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 		&p.Depth,
 		&p.PowerConsumption,
 		&p.PosInCategory,
+		&p.IsAccessory,
+		&p.IsConsumable,
+		&p.CountTypeID,
+		&p.StockQuantity,
+		&p.MinStockLevel,
+		&p.GenericBarcode,
+		&p.PricePerUnit,
 		&p.CategoryName,
 		&p.SubcategoryName,
 		&p.SubbiercategoryName,
 		&p.BrandName,
 		&p.ManufacturerName,
+		&p.CountTypeName,
+		&p.CountTypeAbbr,
 	)
 
 	if err == sql.ErrNoRows {
@@ -259,13 +306,15 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO products (
 			name, categoryID, subcategoryID, subbiercategoryID, manufacturerID, brandID,
 			description, maintenanceInterval, itemcostperday, weight, height, width, depth,
-			powerconsumption, pos_in_category
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			powerconsumption, pos_in_category, is_accessory, is_consumable, count_type_id,
+			stock_quantity, min_stock_level, generic_barcode, price_per_unit
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID,
 		req.ManufacturerID, req.BrandID, req.Description, req.MaintenanceInterval,
 		req.ItemCostPerDay, req.Weight, req.Height, req.Width, req.Depth,
-		req.PowerConsumption, req.PosInCategory,
+		req.PowerConsumption, req.PosInCategory, req.IsAccessory, req.IsConsumable,
+		req.CountTypeID, req.StockQuantity, req.MinStockLevel, req.GenericBarcode, req.PricePerUnit,
 	)
 
 	if err != nil {
@@ -318,13 +367,18 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 			name = ?, categoryID = ?, subcategoryID = ?, subbiercategoryID = ?,
 			manufacturerID = ?, brandID = ?, description = ?, maintenanceInterval = ?,
 			itemcostperday = ?, weight = ?, height = ?, width = ?, depth = ?,
-			powerconsumption = ?, pos_in_category = ?
+			powerconsumption = ?, pos_in_category = ?,
+			is_accessory = ?, is_consumable = ?, count_type_id = ?,
+			stock_quantity = ?, min_stock_level = ?, generic_barcode = ?, price_per_unit = ?
 		WHERE productID = ?
 	`,
 		req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID,
 		req.ManufacturerID, req.BrandID, req.Description, req.MaintenanceInterval,
 		req.ItemCostPerDay, req.Weight, req.Height, req.Width, req.Depth,
-		req.PowerConsumption, req.PosInCategory, id,
+		req.PowerConsumption, req.PosInCategory,
+		req.IsAccessory, req.IsConsumable, req.CountTypeID,
+		req.StockQuantity, req.MinStockLevel, req.GenericBarcode, req.PricePerUnit,
+		id,
 	)
 
 	if err != nil {
