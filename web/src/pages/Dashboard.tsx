@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Package, Warehouse, AlertTriangle, TrendingUp } from 'lucide-react';
 import { dashboardApi } from '../lib/api';
 import type { DashboardStats, Movement } from '../lib/api';
+import { LowStockAlertsWidget } from '../components/LowStockAlertsWidget';
 
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -194,6 +195,9 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      {/* Low Stock Alerts */}
+      <LowStockAlertsWidget />
 
       {/* Recent Activity */}
       <div className="glass-dark rounded-xl sm:rounded-2xl p-4 sm:p-6">

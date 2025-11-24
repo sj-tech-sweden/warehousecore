@@ -38,6 +38,16 @@ interface Product {
   subbiercategory_name?: string | null;
   brand_name?: string | null;
   manufacturer_name?: string | null;
+  // Accessories & Consumables fields
+  is_accessory?: boolean;
+  is_consumable?: boolean;
+  count_type_id?: number | null;
+  stock_quantity?: number | null;
+  min_stock_level?: number | null;
+  generic_barcode?: string | null;
+  price_per_unit?: number | null;
+  count_type_name?: string | null;
+  count_type_abbr?: string | null;
 }
 
 interface Category {
@@ -88,6 +98,14 @@ interface ProductFormData {
   pos_in_category?: number;
   device_quantity?: number;
   device_prefix?: string;
+  // Accessories & Consumables fields
+  is_accessory?: boolean;
+  is_consumable?: boolean;
+  count_type_id?: number;
+  stock_quantity?: number;
+  min_stock_level?: number;
+  generic_barcode?: string;
+  price_per_unit?: number;
 }
 
 interface Device {
@@ -96,6 +114,13 @@ interface Device {
   status: string;
   serial_number?: string;
   barcode?: string;
+}
+
+interface CountType {
+  count_type_id: number;
+  name: string;
+  abbreviation: string;
+  is_active: boolean;
 }
 
 const initialFormData: ProductFormData = {
@@ -145,6 +170,7 @@ export function ProductsTab() {
   const [subbiercategories, setSubbiercategories] = useState<Subbiercategory[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [countTypes, setCountTypes] = useState<CountType[]>([]);
   const [metadataLoaded, setMetadataLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'cards' | 'tree'>(() => {
@@ -238,6 +264,16 @@ export function ProductsTab() {
       setSubbiercategories(subbierRes.data || []);
       setBrands(brandRes.data || []);
       setManufacturers(manufacturerRes.data || []);
+
+      // Load count types from RentalCore
+      try {
+        const countTypesRes = await fetch('http://rentalcore:8081/api/count-types');
+        const countTypesData = await countTypesRes.json();
+        setCountTypes(countTypesData.count_types || []);
+      } catch (error) {
+        console.error('Failed to load count types:', error);
+      }
+
       setMetadataLoaded(true);
     } catch (error) {
       console.error('Failed to load metadata:', error);
@@ -296,6 +332,14 @@ export function ProductsTab() {
       pos_in_category: product.pos_in_category ?? undefined,
       device_quantity: undefined,
       device_prefix: '',
+      // Accessories & Consumables fields
+      is_accessory: product.is_accessory ?? false,
+      is_consumable: product.is_consumable ?? false,
+      count_type_id: product.count_type_id ?? undefined,
+      stock_quantity: product.stock_quantity ?? undefined,
+      min_stock_level: product.min_stock_level ?? undefined,
+      generic_barcode: product.generic_barcode ?? '',
+      price_per_unit: product.price_per_unit ?? undefined,
     }),
     []
   );
@@ -441,6 +485,14 @@ export function ProductsTab() {
       maintenance_interval: formData.maintenance_interval ?? null,
       power_consumption: formData.power_consumption ?? null,
       pos_in_category: formData.pos_in_category ?? null,
+      // Accessories & Consumables fields
+      is_accessory: formData.is_accessory ?? false,
+      is_consumable: formData.is_consumable ?? false,
+      count_type_id: formData.count_type_id ?? null,
+      stock_quantity: formData.stock_quantity ?? null,
+      min_stock_level: formData.min_stock_level ?? null,
+      generic_barcode: formData.generic_barcode?.trim() || null,
+      price_per_unit: formData.price_per_unit ?? null,
     };
 
     try {
@@ -1082,6 +1134,130 @@ export function ProductsTab() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-4 rounded-xl border border-white/10 p-4">
+                <h3 className="text-sm font-semibold text-white">Product Type & Inventory</h3>
+
+                <div className="flex gap-4 mb-4">
+                  <label className="flex items-center gap-2 text-white cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_accessory || false}
+                      onChange={e => setFormData({ ...formData, is_accessory: e.target.checked })}
+                      className="w-5 h-5 rounded border-white/20 bg-white/10 text-accent-red focus:ring-accent-red"
+                    />
+                    <span>This is an Accessory</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-white cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_consumable || false}
+                      onChange={e => setFormData({ ...formData, is_consumable: e.target.checked })}
+                      className="w-5 h-5 rounded border-white/20 bg-white/10 text-accent-red focus:ring-accent-red"
+                    />
+                    <span>This is a Consumable</span>
+                  </label>
+                </div>
+
+                <p className="text-xs text-gray-400 mb-4">
+                  Accessories are optional items (cables, clamps). Consumables are used items (fog fluid, tape).
+                </p>
+
+                {(formData.is_accessory || formData.is_consumable) && (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-white">
+                        Measurement Unit <span className="text-accent-red">*</span>
+                      </label>
+                      <select
+                        value={formData.count_type_id || ''}
+                        onChange={e => setFormData({
+                          ...formData,
+                          count_type_id: e.target.value ? Number(e.target.value) : undefined
+                        })}
+                        required={formData.is_accessory || formData.is_consumable}
+                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
+                      >
+                        <option value="">Select unit...</option>
+                        {countTypes.map(ct => (
+                          <option key={ct.count_type_id} value={ct.count_type_id}>
+                            {ct.name} ({ct.abbreviation})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-white">
+                        Generic Barcode
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.generic_barcode || ''}
+                        onChange={e => setFormData({ ...formData, generic_barcode: e.target.value })}
+                        placeholder="e.g., ACC-SAFE40, CONS-FOG"
+                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Single barcode for all units of this type</p>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-white">
+                        Current Stock Quantity
+                      </label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={formData.stock_quantity ?? ''}
+                        onChange={e => setFormData({
+                          ...formData,
+                          stock_quantity: parseNumber(e.target.value)
+                        })}
+                        placeholder="0"
+                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-white">
+                        Minimum Stock Level
+                      </label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={formData.min_stock_level ?? ''}
+                        onChange={e => setFormData({
+                          ...formData,
+                          min_stock_level: parseNumber(e.target.value)
+                        })}
+                        placeholder="Low stock alert threshold"
+                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-white">
+                        Price per Unit (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.price_per_unit ?? ''}
+                        onChange={e => setFormData({
+                          ...formData,
+                          price_per_unit: parseNumber(e.target.value)
+                        })}
+                        placeholder="0.00"
+                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4 rounded-xl border border-white/10 p-4">

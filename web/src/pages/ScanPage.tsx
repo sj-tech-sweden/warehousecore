@@ -33,6 +33,20 @@ export function ScanPage() {
       return;
     }
 
+    // Check if scan code is an Accessory (format: ACC-*)
+    const accessoryMatch = scanCode.match(/^ACC-/i);
+    if (accessoryMatch) {
+      await handleAccessoryScan(scanCode);
+      return;
+    }
+
+    // Check if scan code is a Consumable (format: CONS-*)
+    const consumableMatch = scanCode.match(/^CONS-/i);
+    if (consumableMatch) {
+      await handleConsumableScan(scanCode);
+      return;
+    }
+
     setLoading(true);
     try {
       // Step 1: Scan device
@@ -94,6 +108,112 @@ export function ScanPage() {
         setDeviceScanCode('');
         setScanCode('');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAccessoryScan = async (barcode: string) => {
+    setScanCode('');
+    setLoading(true);
+
+    try {
+      const direction = action === 'outtake' ? 'out' : action === 'intake' ? 'in' : 'check';
+
+      const response = await fetch('http://rentalcore:8081/api/scan/accessory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barcode: barcode,
+          direction: direction,
+          quantity: 1, // Always 1 for accessories
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setResult({
+          success: true,
+          message: `✅ Accessory scanned: 1x ${data.product.name}`,
+          action,
+          duplicate: false,
+        });
+      } else {
+        setResult({
+          success: false,
+          message: data.error || 'Accessory scan failed',
+          action,
+          duplicate: false,
+        });
+      }
+    } catch (error: any) {
+      console.error('Accessory scan failed:', error);
+      setResult({
+        success: false,
+        message: 'Failed to scan accessory',
+        action,
+        duplicate: false,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConsumableScan = async (barcode: string) => {
+    setScanCode('');
+    const quantity = window.prompt('Enter quantity:');
+
+    if (!quantity || isNaN(Number(quantity)) || Number(quantity) <= 0) {
+      setResult({
+        success: false,
+        message: 'Invalid quantity entered',
+        action,
+        duplicate: false,
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const direction = action === 'outtake' ? 'out' : action === 'intake' ? 'in' : 'check';
+
+      const response = await fetch('http://rentalcore:8081/api/scan/consumable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barcode: barcode,
+          direction: direction,
+          quantity: Number(quantity),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setResult({
+          success: true,
+          message: `✅ Consumable scanned: ${quantity}x ${data.product.name}`,
+          action,
+          duplicate: false,
+        });
+      } else {
+        setResult({
+          success: false,
+          message: data.error || 'Consumable scan failed',
+          action,
+          duplicate: false,
+        });
+      }
+    } catch (error: any) {
+      console.error('Consumable scan failed:', error);
+      setResult({
+        success: false,
+        message: 'Failed to scan consumable',
+        action,
+        duplicate: false,
+      });
     } finally {
       setLoading(false);
     }
