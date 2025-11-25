@@ -487,36 +487,67 @@ func (s *ScanService) processConsumableIntake(tx *sql.Tx, product *ConsumablePro
 
 // processConsumableOuttake decreases stock when taking consumable from warehouse
 func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumableProduct, zoneID *int64, jobID *int64, productIDStr *string, scanCode string, userID *int64, ipAddr, userAgent string) (*models.ScanResponse, error) {
-	if zoneID == nil {
-		err := fmt.Errorf("zone_id is required for consumable outtake")
-		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
-		return &models.ScanResponse{
-			Success: false,
-			Message: err.Error(),
-		}, nil
-	}
-
 	// Default quantity is 1 - in future could be extended to ask user
 	quantity := 1.0
 
-	// Check current stock in this zone
+	// If no zone specified, automatically select the zone with the most stock
+	var selectedZoneID sql.NullInt64
 	var currentStock float64
-	err := tx.QueryRow(`
-		SELECT COALESCE(quantity, 0) FROM product_locations
-		WHERE product_id = ? AND zone_id = ?
-	`, product.ProductID, *zoneID).Scan(&currentStock)
-	if err != nil && err != sql.ErrNoRows {
-		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
-		return &models.ScanResponse{
-			Success: false,
-			Message: fmt.Sprintf("Failed to check stock: %v", err),
-		}, nil
+	var err error
+
+	if zoneID == nil {
+		// Auto-select zone with most stock
+		err = tx.QueryRow(`
+			SELECT zone_id, quantity
+			FROM product_locations
+			WHERE product_id = ? AND quantity >= ?
+			ORDER BY quantity DESC
+			LIMIT 1
+		`, product.ProductID, quantity).Scan(&selectedZoneID, &currentStock)
+
+		if err == sql.ErrNoRows {
+			err = fmt.Errorf("no stock available for %s", product.Name)
+			s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, nil, userID, false, err.Error(), ipAddr, userAgent)
+			tx.Commit()
+			return &models.ScanResponse{
+				Success: false,
+				Message: err.Error(),
+			}, nil
+		} else if err != nil {
+			s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, nil, userID, false, err.Error(), ipAddr, userAgent)
+			tx.Commit()
+			return &models.ScanResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to find stock location: %v", err),
+			}, nil
+		}
+
+		// Set zoneID to the selected zone (might be NULL)
+		if selectedZoneID.Valid {
+			zoneIDValue := selectedZoneID.Int64
+			zoneID = &zoneIDValue
+		} else {
+			// Zone is NULL - this is valid for product_locations
+			zoneID = nil
+		}
+	} else {
+		// Use specified zone - check stock
+		err = tx.QueryRow(`
+			SELECT COALESCE(quantity, 0) FROM product_locations
+			WHERE product_id = ? AND zone_id = ?
+		`, product.ProductID, *zoneID).Scan(&currentStock)
+		if err != nil && err != sql.ErrNoRows {
+			s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
+			tx.Commit()
+			return &models.ScanResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to check stock: %v", err),
+			}, nil
+		}
 	}
 
 	if currentStock < quantity {
-		err := fmt.Errorf("insufficient stock (available: %.0f, requested: %.0f)", currentStock, quantity)
+		err = fmt.Errorf("insufficient stock (available: %.0f, requested: %.0f)", currentStock, quantity)
 		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 		tx.Commit()
 		return &models.ScanResponse{
@@ -528,8 +559,8 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 	// Decrease stock
 	_, err = tx.Exec(`
 		UPDATE product_locations SET quantity = quantity - ?
-		WHERE product_id = ? AND zone_id = ?
-	`, quantity, product.ProductID, *zoneID)
+		WHERE product_id = ? AND zone_id <=> ?
+	`, quantity, product.ProductID, zoneID)
 	if err != nil {
 		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 		tx.Commit()
