@@ -170,6 +170,7 @@ func main() {
 	api.HandleFunc("/zones/scan", handlers.GetZoneByBarcode).Methods("GET")             // Zone barcode lookup
 	api.HandleFunc("/zones/{id}/devices", handlers.GetZoneDevices).Methods("GET")       // Must be before /zones/{id}
 	api.HandleFunc("/zones/{id}/devices", handlers.AssignDevicesToZone).Methods("POST") // Assign devices to zone
+	api.HandleFunc("/zones/{id}/products", handlers.GetZoneProducts).Methods("GET")     // Get products in zone
 	api.HandleFunc("/zones/{id}", handlers.GetZone).Methods("GET")
 	api.HandleFunc("/zones/{id}", handlers.UpdateZone).Methods("PUT")
 	api.HandleFunc("/zones/{id}", handlers.DeleteZone).Methods("DELETE")

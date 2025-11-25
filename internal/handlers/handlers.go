@@ -1208,7 +1208,16 @@ func GetZoneDevices(w http.ResponseWriter, r *http.Request) {
 		devices = append(devices, d)
 	}
 
-	// Also get products in this zone
+	respondJSON(w, http.StatusOK, devices)
+}
+
+// GetZoneProducts returns all products (consumables/accessories) in a zone
+func GetZoneProducts(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	zoneID := vars["id"]
+
+	db := repository.GetSQLDB()
+
 	type ProductInZone struct {
 		ProductID    int     `json:"product_id"`
 		ProductName  string  `json:"product_name"`
@@ -1218,7 +1227,7 @@ func GetZoneDevices(w http.ResponseWriter, r *http.Request) {
 		IsConsumable bool    `json:"is_consumable"`
 	}
 
-	productsRows, err := db.Query(`
+	rows, err := db.Query(`
 		SELECT pl.product_id, p.name, pl.quantity,
 		       COALESCE(ct.abbreviation, ''),
 		       COALESCE(p.is_accessory, 0),
@@ -1230,23 +1239,23 @@ func GetZoneDevices(w http.ResponseWriter, r *http.Request) {
 		ORDER BY p.name
 	`, zoneID)
 
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	products := []ProductInZone{}
-	if err == nil {
-		defer productsRows.Close()
-		for productsRows.Next() {
-			var prod ProductInZone
-			if err := productsRows.Scan(&prod.ProductID, &prod.ProductName, &prod.Quantity, &prod.Unit, &prod.IsAccessory, &prod.IsConsumable); err != nil {
-				log.Printf("Error scanning product row: %v", err)
-				continue
-			}
-			products = append(products, prod)
+	for rows.Next() {
+		var prod ProductInZone
+		if err := rows.Scan(&prod.ProductID, &prod.ProductName, &prod.Quantity, &prod.Unit, &prod.IsAccessory, &prod.IsConsumable); err != nil {
+			log.Printf("Error scanning product row: %v", err)
+			continue
 		}
+		products = append(products, prod)
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"devices":  devices,
-		"products": products,
-	})
+	respondJSON(w, http.StatusOK, products)
 }
 
 // UpdateZone updates a zone
