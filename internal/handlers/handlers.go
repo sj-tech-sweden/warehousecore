@@ -381,9 +381,9 @@ func proxyToRentalCore(w http.ResponseWriter, r *http.Request, scanReq *models.S
 	// Determine endpoint based on product type
 	var endpoint string
 	if isAccessory {
-		endpoint = "/api/scan/accessory"
+		endpoint = "/api/v1/scan/accessory"
 	} else {
-		endpoint = "/api/scan/consumable"
+		endpoint = "/api/v1/scan/consumable"
 	}
 
 	// Map action to direction
