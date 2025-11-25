@@ -480,11 +480,41 @@ func handleAccessoryConsumableScan(w http.ResponseWriter, scanReq *models.ScanRe
 		return
 	}
 
-	// Log zone info if provided
+	// Update product location if zone is provided
 	zoneInfo := "no zone"
 	if scanReq.ZoneID != nil {
 		zoneInfo = fmt.Sprintf("zone_id=%d", *scanReq.ZoneID)
+
+		// Update or insert product location
+		if scanReq.Action == "intake" {
+			// Add quantity to this zone location
+			err = db.Exec(`
+				INSERT INTO product_locations (product_id, zone_id, quantity)
+				VALUES (?, ?, ?)
+				ON DUPLICATE KEY UPDATE quantity = quantity + ?
+			`, product.ProductID, *scanReq.ZoneID, quantity, quantity).Error
+
+			if err != nil {
+				log.Printf("Failed to update product location: %v", err)
+			}
+		} else if scanReq.Action == "outtake" {
+			// Remove quantity from this zone location
+			err = db.Exec(`
+				UPDATE product_locations
+				SET quantity = GREATEST(0, quantity - ?)
+				WHERE product_id = ? AND zone_id = ?
+			`, quantity, product.ProductID, *scanReq.ZoneID).Error
+
+			if err != nil {
+				log.Printf("Failed to update product location: %v", err)
+			}
+
+			// Delete location if quantity is 0
+			db.Exec("DELETE FROM product_locations WHERE product_id = ? AND zone_id = ? AND quantity = 0",
+				product.ProductID, *scanReq.ZoneID)
+		}
 	}
+
 	log.Printf("✅ Stock updated: %s | %s | Old: %.1f → New: %.1f | %s",
 		product.Name, scanReq.Action, product.StockQuantity, newStock, zoneInfo)
 
@@ -1178,7 +1208,45 @@ func GetZoneDevices(w http.ResponseWriter, r *http.Request) {
 		devices = append(devices, d)
 	}
 
-	respondJSON(w, http.StatusOK, devices)
+	// Also get products in this zone
+	type ProductInZone struct {
+		ProductID    int     `json:"product_id"`
+		ProductName  string  `json:"product_name"`
+		Quantity     float64 `json:"quantity"`
+		Unit         string  `json:"unit"`
+		IsAccessory  bool    `json:"is_accessory"`
+		IsConsumable bool    `json:"is_consumable"`
+	}
+
+	productsRows, err := db.Query(`
+		SELECT pl.product_id, p.name, pl.quantity,
+		       COALESCE(ct.abbreviation, ''),
+		       COALESCE(p.is_accessory, 0),
+		       COALESCE(p.is_consumable, 0)
+		FROM product_locations pl
+		LEFT JOIN products p ON pl.product_id = p.productID
+		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
+		WHERE pl.zone_id = ? AND pl.quantity > 0
+		ORDER BY p.name
+	`, zoneID)
+
+	products := []ProductInZone{}
+	if err == nil {
+		defer productsRows.Close()
+		for productsRows.Next() {
+			var prod ProductInZone
+			if err := productsRows.Scan(&prod.ProductID, &prod.ProductName, &prod.Quantity, &prod.Unit, &prod.IsAccessory, &prod.IsConsumable); err != nil {
+				log.Printf("Error scanning product row: %v", err)
+				continue
+			}
+			products = append(products, prod)
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"devices":  devices,
+		"products": products,
+	})
 }
 
 // UpdateZone updates a zone
