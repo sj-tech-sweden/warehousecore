@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, Package, ChevronRight, ArrowLeft, Plus, Trash2 } from 'lucide-react';
-import { zonesApi } from '../lib/api';
+import { MapPin, Package, ChevronRight, ArrowLeft, Plus, Trash2, FlaskConical } from 'lucide-react';
+import { zonesApi, type ProductInZone } from '../lib/api';
 import { DeviceTreeModal } from '../components/DeviceTreeModal';
 import { DeviceDetailModal } from '../components/DeviceDetailModal';
 import type { Device } from '../lib/api';
@@ -48,6 +48,7 @@ export function ZoneDetailPage() {
   const navigate = useNavigate();
   const [zone, setZone] = useState<ZoneDetails | null>(null);
   const [devices, setDevices] = useState<DeviceInZone[]>([]);
+  const [products, setProducts] = useState<ProductInZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
@@ -82,6 +83,7 @@ export function ZoneDetailPage() {
     if (id) {
       loadZoneDetails();
       loadDevices();
+      loadProducts();
     }
   }, [id]);
 
@@ -103,6 +105,15 @@ export function ZoneDetailPage() {
       setDevices(data);
     } catch (error) {
       console.error('Failed to load devices:', error);
+    }
+  };
+
+  const loadProducts = async () => {
+    try {
+      const { data } = await zonesApi.getProducts(Number(id));
+      setProducts(data);
+    } catch (error) {
+      console.error('Failed to load products:', error);
     }
   };
 
@@ -432,7 +443,55 @@ export function ZoneDetailPage() {
         </div>
       )}
 
-      {devices.length === 0 && (!zone.subzones || zone.subzones.length === 0) && (
+      {/* Products (Consumables & Accessories) */}
+      {products.length > 0 && (
+        <div>
+          <h3 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4 flex items-center gap-2">
+            <FlaskConical className="w-4 h-4 sm:w-5 sm:h-5" />
+            Verbrauchsmaterialien & Zubehör ({products.length})
+          </h3>
+          <div className="glass-dark rounded-xl sm:rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead>
+                  <tr className="border-b border-white/10">
+                    <th className="text-left p-2 sm:p-4 text-xs sm:text-sm font-semibold text-gray-400 whitespace-nowrap">Produkt</th>
+                    <th className="text-left p-2 sm:p-4 text-xs sm:text-sm font-semibold text-gray-400 whitespace-nowrap">Typ</th>
+                    <th className="text-left p-2 sm:p-4 text-xs sm:text-sm font-semibold text-gray-400 whitespace-nowrap">Menge</th>
+                    <th className="text-left p-2 sm:p-4 text-xs sm:text-sm font-semibold text-gray-400 whitespace-nowrap">Einheit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr
+                      key={product.product_id}
+                      className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                    >
+                      <td className="p-2 sm:p-4 text-xs sm:text-base text-white">{product.product_name}</td>
+                      <td className="p-2 sm:p-4 text-xs sm:text-sm">
+                        {product.is_consumable && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-medium">
+                            Verbrauchsmaterial
+                          </span>
+                        )}
+                        {product.is_accessory && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs font-medium">
+                            Zubehör
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2 sm:p-4 text-xs sm:text-base text-white font-semibold">{product.quantity}</td>
+                      <td className="p-2 sm:p-4 text-xs sm:text-sm text-gray-400">{product.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {devices.length === 0 && products.length === 0 && (!zone.subzones || zone.subzones.length === 0) && (
         <div className="text-center py-8 sm:py-12 glass rounded-xl sm:rounded-2xl">
           <Package className="w-12 h-12 sm:w-16 sm:h-16 text-gray-600 mx-auto mb-3 sm:mb-4" />
           <p className="text-sm sm:text-base text-gray-400 mb-3 sm:mb-4">Diese Zone ist leer</p>
