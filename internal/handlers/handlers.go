@@ -358,9 +358,13 @@ func HandleScan(w http.ResponseWriter, r *http.Request) {
 		Where("generic_barcode = ?", scanCode).
 		First(&product).Error
 
+	log.Printf("🔍 Scan: %s | DB Query Error: %v | IsAccessory: %v | IsConsumable: %v",
+		scanCode, err, product.IsAccessory, product.IsConsumable)
+
 	if err == nil && (product.IsAccessory || product.IsConsumable) {
-		// This is an accessory or consumable - proxy to RentalCore
-		proxyToRentalCore(w, r, &req, product.IsAccessory)
+		// This is an accessory or consumable - handle directly in WarehouseCore
+		log.Printf("📦 Processing %s as %s", scanCode, map[bool]string{true: "Accessory", false: "Consumable"}[product.IsAccessory])
+		handleAccessoryConsumableScan(w, &req, product.IsAccessory)
 		return
 	}
 
@@ -376,7 +380,124 @@ func HandleScan(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-// proxyToRentalCore forwards accessory/consumable scans to RentalCore
+// handleAccessoryConsumableScan processes accessory/consumable scans directly in WarehouseCore
+func handleAccessoryConsumableScan(w http.ResponseWriter, scanReq *models.ScanRequest, isAccessory bool) {
+	db := repository.GetDB()
+
+	// Get product details
+	var product struct {
+		ProductID      int     `gorm:"column:productID"`
+		Name           string  `gorm:"column:name"`
+		StockQuantity  float64 `gorm:"column:stock_quantity"`
+		MinStockLevel  float64 `gorm:"column:min_stock_level"`
+		CountTypeName  string  `gorm:"column:count_type_name"`
+		CountTypeAbbr  string  `gorm:"column:count_type_abbr"`
+	}
+
+	err := db.Table("products").
+		Select("products.productID, products.name, products.stock_quantity, products.min_stock_level, ct.name as count_type_name, ct.abbreviation as count_type_abbr").
+		Joins("LEFT JOIN count_types ct ON products.count_type_id = ct.count_type_id").
+		Where("generic_barcode = ?", scanReq.ScanCode).
+		First(&product).Error
+
+	if err != nil {
+		log.Printf("Failed to get product details: %v", err)
+		respondJSON(w, http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"message": "Produkt nicht gefunden",
+			"action":  scanReq.Action,
+		})
+		return
+	}
+
+	// Determine quantity (for consumables, frontend passes it via prompt, for accessories always 1)
+	quantity := 1.0
+	if !isAccessory && scanReq.JobID != nil {
+		quantity = float64(*scanReq.JobID)
+	}
+
+	// Calculate new stock based on action
+	var newStock float64
+	var message string
+
+	switch scanReq.Action {
+	case "intake":
+		newStock = product.StockQuantity + quantity
+		message = fmt.Sprintf("✅ %s eingelagert: %.1f %s (Neuer Bestand: %.1f)",
+			product.Name, quantity, product.CountTypeAbbr, newStock)
+	case "outtake":
+		if product.StockQuantity < quantity {
+			respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+				"success": false,
+				"message": fmt.Sprintf("❌ Nicht genug Bestand! Verfügbar: %.1f %s", product.StockQuantity, product.CountTypeAbbr),
+				"action":  scanReq.Action,
+			})
+			return
+		}
+		newStock = product.StockQuantity - quantity
+		message = fmt.Sprintf("✅ %s ausgelagert: %.1f %s (Verbleibender Bestand: %.1f)",
+			product.Name, quantity, product.CountTypeAbbr, newStock)
+	case "check":
+		message = fmt.Sprintf("📊 %s - Aktueller Bestand: %.1f %s",
+			product.Name, product.StockQuantity, product.CountTypeAbbr)
+		if product.StockQuantity <= product.MinStockLevel {
+			message += fmt.Sprintf(" ⚠️ Unter Mindestbestand (%.1f)", product.MinStockLevel)
+		}
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": message,
+			"action":  scanReq.Action,
+			"product": map[string]interface{}{
+				"product_id":      product.ProductID,
+				"name":            product.Name,
+				"stock_quantity":  product.StockQuantity,
+				"min_stock_level": product.MinStockLevel,
+				"unit":            product.CountTypeAbbr,
+			},
+		})
+		return
+	default:
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "Ungültige Aktion",
+			"action":  scanReq.Action,
+		})
+		return
+	}
+
+	// Update stock in database
+	err = db.Table("products").
+		Where("productID = ?", product.ProductID).
+		Update("stock_quantity", newStock).Error
+
+	if err != nil {
+		log.Printf("Failed to update stock: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "Fehler beim Aktualisieren des Bestands",
+			"action":  scanReq.Action,
+		})
+		return
+	}
+
+	log.Printf("✅ Stock updated: %s | %s | Old: %.1f → New: %.1f",
+		product.Name, scanReq.Action, product.StockQuantity, newStock)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": message,
+		"action":  scanReq.Action,
+		"product": map[string]interface{}{
+			"product_id":      product.ProductID,
+			"name":            product.Name,
+			"stock_quantity":  newStock,
+			"min_stock_level": product.MinStockLevel,
+			"unit":            product.CountTypeAbbr,
+		},
+	})
+}
+
+// proxyToRentalCore forwards accessory/consumable scans to RentalCore (DEPRECATED - kept for reference)
 func proxyToRentalCore(w http.ResponseWriter, r *http.Request, scanReq *models.ScanRequest, isAccessory bool) {
 	// Determine endpoint based on product type
 	var endpoint string
