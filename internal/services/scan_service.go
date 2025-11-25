@@ -36,13 +36,20 @@ func (s *ScanService) ProcessScan(req models.ScanRequest, userID *int64, ipAddr,
 	// Find device by barcode/QR code
 	device, err := s.findDeviceByScan(req.ScanCode)
 	if err != nil {
-		// Log failed scan
-		s.logScanEvent(tx, req.ScanCode, nil, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
-		return &models.ScanResponse{
-			Success: false,
-			Message: fmt.Sprintf("Device not found: %v", err),
-		}, nil
+		// Device not found - check if it's a consumable/accessory
+		consumable, consumableErr := s.findConsumableByScan(req.ScanCode)
+		if consumableErr != nil {
+			// Neither device nor consumable found
+			s.logScanEvent(tx, req.ScanCode, nil, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
+			tx.Commit()
+			return &models.ScanResponse{
+				Success: false,
+				Message: fmt.Sprintf("Product not found: %v", err),
+			}, nil
+		}
+
+		// Found consumable - handle consumable scan
+		return s.processConsumableScan(tx, consumable, req, userID, ipAddr, userAgent)
 	}
 
 	// Check for duplicate scan (same job)
@@ -374,4 +381,217 @@ func (s *ScanService) updateLEDsAfterOuttake(jobID int64, fromZoneID int64) {
 	} else {
 		log.Printf("[LED] Successfully updated bin %s after device removal for job %d", zoneCode, jobID)
 	}
+}
+
+// ConsumableProduct represents a consumable or accessory product
+type ConsumableProduct struct {
+	ProductID    int64
+	Name         string
+	IsConsumable bool
+	IsAccessory  bool
+	Barcode      sql.NullString
+}
+
+// findConsumableByScan looks up a consumable/accessory by barcode or product ID
+func (s *ScanService) findConsumableByScan(scanCode string) (*ConsumableProduct, error) {
+	var product ConsumableProduct
+	err := s.db.QueryRow(`
+		SELECT productID, name, is_consumable, is_accessory, barcode
+		FROM products
+		WHERE (is_consumable = 1 OR is_accessory = 1)
+		  AND (barcode = ? OR CAST(productID AS CHAR) = ?)
+		LIMIT 1
+	`, scanCode, scanCode).Scan(
+		&product.ProductID, &product.Name, &product.IsConsumable,
+		&product.IsAccessory, &product.Barcode,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &product, nil
+}
+
+// processConsumableScan handles scanning of consumables/accessories
+func (s *ScanService) processConsumableScan(tx *sql.Tx, product *ConsumableProduct, req models.ScanRequest, userID *int64, ipAddr, userAgent string) (*models.ScanResponse, error) {
+	productIDStr := fmt.Sprintf("PROD-%d", product.ProductID)
+
+	// Handle different actions
+	switch req.Action {
+	case "intake":
+		return s.processConsumableIntake(tx, product, req.ZoneID, &productIDStr, req.ScanCode, userID, ipAddr, userAgent)
+	case "outtake":
+		return s.processConsumableOuttake(tx, product, req.ZoneID, req.JobID, &productIDStr, req.ScanCode, userID, ipAddr, userAgent)
+	case "check":
+		return s.processConsumableCheck(tx, product, &productIDStr, req.ScanCode, userID, ipAddr, userAgent)
+	default:
+		err := fmt.Errorf("unsupported action for consumables: %s", req.Action)
+		s.logScanEvent(tx, req.ScanCode, &productIDStr, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+}
+
+// processConsumableIntake increases stock when returning consumable to warehouse
+func (s *ScanService) processConsumableIntake(tx *sql.Tx, product *ConsumableProduct, zoneID *int64, productIDStr *string, scanCode string, userID *int64, ipAddr, userAgent string) (*models.ScanResponse, error) {
+	if zoneID == nil {
+		err := fmt.Errorf("zone_id is required for consumable intake")
+		s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	// Default quantity is 1 - in future could be extended to ask user
+	quantity := 1.0
+
+	// Update or insert stock in product_locations
+	_, err := tx.Exec(`
+		INSERT INTO product_locations (product_id, zone_id, quantity)
+		VALUES (?, ?, ?)
+		ON DUPLICATE KEY UPDATE quantity = quantity + ?
+	`, product.ProductID, *zoneID, quantity, quantity)
+	if err != nil {
+		s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to update stock: %v", err),
+		}, nil
+	}
+
+	// Update total stock_quantity in products table
+	_, err = tx.Exec(`
+		UPDATE products SET stock_quantity = stock_quantity + ? WHERE productID = ?
+	`, quantity, product.ProductID)
+	if err != nil {
+		log.Printf("Warning: failed to update total stock: %v", err)
+	}
+
+	s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, true, "", ipAddr, userAgent)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit: %w", err)
+	}
+
+	return &models.ScanResponse{
+		Success: true,
+		Message: fmt.Sprintf("%s: +%.0f returned to warehouse", product.Name, quantity),
+		Action:  "intake",
+	}, nil
+}
+
+// processConsumableOuttake decreases stock when taking consumable from warehouse
+func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumableProduct, zoneID *int64, jobID *int64, productIDStr *string, scanCode string, userID *int64, ipAddr, userAgent string) (*models.ScanResponse, error) {
+	if zoneID == nil {
+		err := fmt.Errorf("zone_id is required for consumable outtake")
+		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	// Default quantity is 1 - in future could be extended to ask user
+	quantity := 1.0
+
+	// Check current stock in this zone
+	var currentStock float64
+	err := tx.QueryRow(`
+		SELECT COALESCE(quantity, 0) FROM product_locations
+		WHERE product_id = ? AND zone_id = ?
+	`, product.ProductID, *zoneID).Scan(&currentStock)
+	if err != nil && err != sql.ErrNoRows {
+		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to check stock: %v", err),
+		}, nil
+	}
+
+	if currentStock < quantity {
+		err := fmt.Errorf("insufficient stock (available: %.0f, requested: %.0f)", currentStock, quantity)
+		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	// Decrease stock
+	_, err = tx.Exec(`
+		UPDATE product_locations SET quantity = quantity - ?
+		WHERE product_id = ? AND zone_id = ?
+	`, quantity, product.ProductID, *zoneID)
+	if err != nil {
+		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to update stock: %v", err),
+		}, nil
+	}
+
+	// Update total stock_quantity in products table
+	_, err = tx.Exec(`
+		UPDATE products SET stock_quantity = stock_quantity - ? WHERE productID = ?
+	`, quantity, product.ProductID)
+	if err != nil {
+		log.Printf("Warning: failed to update total stock: %v", err)
+	}
+
+	s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, true, "", ipAddr, userAgent)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit: %w", err)
+	}
+
+	message := fmt.Sprintf("%s: -%.0f taken from warehouse", product.Name, quantity)
+	if jobID != nil {
+		message = fmt.Sprintf("%s: -%.0f assigned to job %d", product.Name, quantity, *jobID)
+	}
+
+	return &models.ScanResponse{
+		Success: true,
+		Message: message,
+		Action:  "outtake",
+	}, nil
+}
+
+// processConsumableCheck shows consumable stock status
+func (s *ScanService) processConsumableCheck(tx *sql.Tx, product *ConsumableProduct, productIDStr *string, scanCode string, userID *int64, ipAddr, userAgent string) (*models.ScanResponse, error) {
+	// Get total stock
+	var totalStock float64
+	err := s.db.QueryRow(`
+		SELECT COALESCE(stock_quantity, 0) FROM products WHERE productID = ?
+	`, product.ProductID).Scan(&totalStock)
+	if err != nil {
+		s.logScanEvent(tx, scanCode, productIDStr, "check", nil, nil, userID, false, err.Error(), ipAddr, userAgent)
+		tx.Commit()
+		return &models.ScanResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to get stock: %v", err),
+		}, nil
+	}
+
+	s.logScanEvent(tx, scanCode, productIDStr, "check", nil, nil, userID, true, "", ipAddr, userAgent)
+	tx.Commit()
+
+	productType := "Consumable"
+	if product.IsAccessory {
+		productType = "Accessory"
+	}
+
+	return &models.ScanResponse{
+		Success: true,
+		Message: fmt.Sprintf("%s: %s (Stock: %.0f)", product.Name, productType, totalStock),
+		Action:  "check",
+	}, nil
 }

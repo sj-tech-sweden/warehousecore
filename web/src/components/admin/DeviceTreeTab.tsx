@@ -598,7 +598,11 @@ function DeviceTreeItem({ device, onOpenDevice, onLocateDevice, onOpenZone }: De
     <div className="flex flex-col gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-semibold text-white">{device.device_id}</span>
+          {isConsumable || isAccessory ? (
+            <span className="text-sm font-semibold text-white">{device.product_name || device.device_id}</span>
+          ) : (
+            <span className="font-mono text-sm font-semibold text-white">{device.device_id}</span>
+          )}
           {isConsumable && (
             <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-blue-500/20 text-blue-400">
               Verbrauchsmaterial
@@ -618,7 +622,7 @@ function DeviceTreeItem({ device, onOpenDevice, onLocateDevice, onOpenZone }: De
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-400">
-          {device.product_name && <span>{device.product_name}</span>}
+          {!isConsumable && !isAccessory && device.product_name && <span>{device.product_name}</span>}
           {(isConsumable || isAccessory) && stockQuantity !== undefined && (
             <span className="font-semibold text-white">
               Lagerbestand: {stockQuantity} {unit || ''}

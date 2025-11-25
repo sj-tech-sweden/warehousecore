@@ -402,6 +402,47 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Sync stock_quantity to product_locations for consumables/accessories
+	if (req.IsConsumable || req.IsAccessory) && req.StockQuantity != nil {
+		// Get current total from product_locations
+		var currentTotal float64
+		if err := tx.QueryRow(`
+			SELECT COALESCE(SUM(quantity), 0) FROM product_locations WHERE product_id = ?
+		`, id).Scan(&currentTotal); err != nil {
+			log.Printf("Warning: Failed to get current stock total: %v", err)
+		} else {
+			newTotal := *req.StockQuantity
+			difference := newTotal - currentTotal
+
+			if difference != 0 {
+				// Get or create a default zone for this product
+				var defaultZoneID sql.NullInt64
+				err := tx.QueryRow(`
+					SELECT zone_id FROM product_locations WHERE product_id = ? ORDER BY quantity DESC LIMIT 1
+				`, id).Scan(&defaultZoneID)
+
+				if err == sql.ErrNoRows {
+					// No locations exist - create in a default zone (zone_id = 1 or NULL)
+					// For now, we'll just insert with the full quantity and let user assign zone later
+					_, err = tx.Exec(`
+						INSERT INTO product_locations (product_id, zone_id, quantity) VALUES (?, NULL, ?)
+					`, id, newTotal)
+					if err != nil {
+						log.Printf("Warning: Failed to create default product location: %v", err)
+					}
+				} else if err == nil {
+					// Update the primary zone (the one with most stock)
+					_, err = tx.Exec(`
+						UPDATE product_locations SET quantity = quantity + ? WHERE product_id = ? AND zone_id <=> ?
+					`, difference, id, defaultZoneID)
+					if err != nil {
+						log.Printf("Warning: Failed to sync stock to product_locations: %v", err)
+					}
+				}
+			}
+		}
+	}
+
 	if packageID.Valid {
 		if _, err := tx.Exec(`
 			UPDATE product_packages
