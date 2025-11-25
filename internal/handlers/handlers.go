@@ -480,8 +480,13 @@ func handleAccessoryConsumableScan(w http.ResponseWriter, scanReq *models.ScanRe
 		return
 	}
 
-	log.Printf("✅ Stock updated: %s | %s | Old: %.1f → New: %.1f",
-		product.Name, scanReq.Action, product.StockQuantity, newStock)
+	// Log zone info if provided
+	zoneInfo := "no zone"
+	if scanReq.ZoneID != nil {
+		zoneInfo = fmt.Sprintf("zone_id=%d", *scanReq.ZoneID)
+	}
+	log.Printf("✅ Stock updated: %s | %s | Old: %.1f → New: %.1f | %s",
+		product.Name, scanReq.Action, product.StockQuantity, newStock, zoneInfo)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,

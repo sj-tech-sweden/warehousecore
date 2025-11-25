@@ -16,6 +16,7 @@ export function ScanPage() {
   // Two-step workflow for intake
   const [step, setStep] = useState<ScanStep>('device');
   const [deviceScanCode, setDeviceScanCode] = useState('');
+  const [consumableQuantity, setConsumableQuantity] = useState<number | undefined>(undefined);
 
   // Job-Code scan states
   const [showLEDModal, setShowLEDModal] = useState(false);
@@ -60,14 +61,12 @@ export function ScanPage() {
               return;
             }
 
-            // Do the intake directly with quantity (no zone needed for consumables)
-            const intakeResponse = await scansApi.process({
-              scan_code: scanCode,
-              action: 'intake',
-              job_id: Number(quantityStr),
-            });
-            setResult(intakeResponse.data);
+            // Store quantity and proceed to zone scan
+            setConsumableQuantity(Number(quantityStr));
+            setDeviceScanCode(scanCode);
+            setStep('zone');
             setScanCode('');
+            setResult(null);
             setLoading(false);
             return;
           }
@@ -86,16 +85,18 @@ export function ScanPage() {
         // Find zone by barcode
         const { data: zone } = await zonesApi.getByScan(scanCode);
 
-        // Now process the actual intake with zone_id
+        // Now process the actual intake with zone_id (and quantity if it's a consumable)
         const { data } = await scansApi.process({
           scan_code: deviceScanCode,
           action: 'intake',
           zone_id: zone.zone_id,
+          job_id: consumableQuantity, // Pass quantity for consumables
         });
 
         setResult(data);
         setScanCode('');
         setDeviceScanCode('');
+        setConsumableQuantity(undefined);
         setStep('device');
       }
       // All other actions (outtake, check) - single step
@@ -164,6 +165,7 @@ export function ScanPage() {
     setAction(newAction);
     setStep('device');
     setDeviceScanCode('');
+    setConsumableQuantity(undefined);
     setScanCode('');
     setResult(null);
   };
