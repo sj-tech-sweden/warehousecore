@@ -461,6 +461,23 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// After commit, sync stock_quantity from product_locations for consumables/accessories
+	// This ensures stock_quantity always reflects the sum of all product_locations
+	if req.IsConsumable || req.IsAccessory {
+		_, err := db.Exec(`
+			UPDATE products
+			SET stock_quantity = (
+				SELECT COALESCE(SUM(quantity), 0)
+				FROM product_locations
+				WHERE product_id = ?
+			)
+			WHERE productID = ?
+		`, id, id)
+		if err != nil {
+			log.Printf("Warning: Failed to sync stock_quantity after update: %v", err)
+		}
+	}
+
 	message := "Product updated successfully"
 	if packageID.Valid {
 		message = "Package product updated successfully"

@@ -355,6 +355,24 @@ func (s *ScanService) logScanEvent(tx *sql.Tx, scanCode string, deviceID *string
 	}
 }
 
+// syncProductStockFromLocations recalculates product.stock_quantity from sum of product_locations
+func (s *ScanService) syncProductStockFromLocations(productID int64) error {
+	_, err := s.db.Exec(`
+		UPDATE products
+		SET stock_quantity = (
+			SELECT COALESCE(SUM(quantity), 0)
+			FROM product_locations
+			WHERE product_id = ?
+		)
+		WHERE productID = ?
+		AND (is_consumable = 1 OR is_accessory = 1)
+	`, productID, productID)
+	if err != nil {
+		log.Printf("Warning: Failed to sync stock_quantity for product %d: %v", productID, err)
+	}
+	return err
+}
+
 // updateLEDsAfterOuttake updates LED colors for the zone after a device is taken out
 func (s *ScanService) updateLEDsAfterOuttake(jobID int64, fromZoneID int64) {
 	// Get zone code from zone ID
@@ -396,10 +414,10 @@ type ConsumableProduct struct {
 func (s *ScanService) findConsumableByScan(scanCode string) (*ConsumableProduct, error) {
 	var product ConsumableProduct
 	err := s.db.QueryRow(`
-		SELECT productID, name, is_consumable, is_accessory, barcode
+		SELECT productID, name, is_consumable, is_accessory, generic_barcode
 		FROM products
 		WHERE (is_consumable = 1 OR is_accessory = 1)
-		  AND (barcode = ? OR CAST(productID AS CHAR) = ?)
+		  AND (generic_barcode = ? OR CAST(productID AS CHAR) = ?)
 		LIMIT 1
 	`, scanCode, scanCode).Scan(
 		&product.ProductID, &product.Name, &product.IsConsumable,
@@ -464,19 +482,14 @@ func (s *ScanService) processConsumableIntake(tx *sql.Tx, product *ConsumablePro
 		}, nil
 	}
 
-	// Update total stock_quantity in products table
-	_, err = tx.Exec(`
-		UPDATE products SET stock_quantity = stock_quantity + ? WHERE productID = ?
-	`, quantity, product.ProductID)
-	if err != nil {
-		log.Printf("Warning: failed to update total stock: %v", err)
-	}
-
 	s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, true, "", ipAddr, userAgent)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit: %w", err)
 	}
+
+	// Sync total stock_quantity from product_locations (after commit)
+	s.syncProductStockFromLocations(product.ProductID)
 
 	return &models.ScanResponse{
 		Success: true,
@@ -570,19 +583,14 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 		}, nil
 	}
 
-	// Update total stock_quantity in products table
-	_, err = tx.Exec(`
-		UPDATE products SET stock_quantity = stock_quantity - ? WHERE productID = ?
-	`, quantity, product.ProductID)
-	if err != nil {
-		log.Printf("Warning: failed to update total stock: %v", err)
-	}
-
 	s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, true, "", ipAddr, userAgent)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit: %w", err)
 	}
+
+	// Sync total stock_quantity from product_locations (after commit)
+	s.syncProductStockFromLocations(product.ProductID)
 
 	message := fmt.Sprintf("%s: -%.0f taken from warehouse", product.Name, quantity)
 	if jobID != nil {
