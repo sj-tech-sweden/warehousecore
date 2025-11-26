@@ -84,6 +84,31 @@ export function ZoneDetailPage() {
       loadZoneDetails();
       loadDevices();
       loadProducts();
+
+      // Auto-refresh when page becomes visible
+      const handleVisibilityChange = () => {
+        if (!document.hidden) {
+          loadZoneDetails();
+          loadDevices();
+          loadProducts();
+        }
+      };
+
+      // Auto-refresh every 30 seconds
+      const interval = setInterval(() => {
+        if (!document.hidden) {
+          loadZoneDetails();
+          loadDevices();
+          loadProducts();
+        }
+      }, 30000);
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        clearInterval(interval);
+      };
     }
   }, [id]);
 
