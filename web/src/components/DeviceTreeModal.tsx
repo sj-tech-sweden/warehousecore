@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X, ChevronRight, Package } from 'lucide-react';
+import { ModalPortal } from './ModalPortal';
 
 interface Device {
   device_id: string;
@@ -100,8 +101,8 @@ export function DeviceTreeModal({ isOpen, onClose, onConfirm, zoneId }: DeviceTr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <div className="flex items-center justify-center min-h-full px-4 py-8">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
         <div className="glass-dark rounded-2xl w-full max-w-4xl flex flex-col shadow-2xl max-h-[85vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
@@ -169,7 +170,7 @@ export function DeviceTreeModal({ isOpen, onClose, onConfirm, zoneId }: DeviceTr
         </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 

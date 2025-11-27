@@ -301,7 +301,7 @@ export function LEDControllersTab() {
 
       {editor && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }}
           onClick={resetEditor}
         >

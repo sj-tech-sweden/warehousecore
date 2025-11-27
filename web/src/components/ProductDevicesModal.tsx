@@ -1,6 +1,7 @@
 import { Package, MapPin, Lightbulb } from 'lucide-react';
 import type { Device } from '../lib/api';
 import { formatStatus, getStatusColor } from '../lib/utils';
+import { ModalPortal } from './ModalPortal';
 
 interface ProductDevicesModalProps {
   productName: string;
@@ -26,8 +27,8 @@ export function ProductDevicesModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <div className="flex items-center justify-center min-h-full px-4 py-8">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
         <div className="glass-dark w-full max-w-4xl rounded-2xl shadow-2xl border border-white/10 flex flex-col max-h-[85vh]">
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div>
@@ -116,6 +117,6 @@ export function ProductDevicesModal({
         </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

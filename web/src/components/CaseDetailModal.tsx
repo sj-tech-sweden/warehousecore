@@ -2,6 +2,7 @@ import { MapPin, Package, Ruler, Weight, X, Lightbulb, Layers, Tag, Download, Pl
 import type { CaseDetail, CaseDevice } from '../lib/api';
 import { formatStatus, getStatusColor } from '../lib/utils';
 import { useMemo } from 'react';
+import { ModalPortal } from './ModalPortal';
 
 interface CaseDetailModalProps {
   caseInfo: CaseDetail | null;
@@ -52,8 +53,8 @@ export function CaseDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm overflow-y-auto">
-      <div className="flex items-center justify-center min-h-full px-4 py-8">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
         <div className="glass-dark w-full max-w-5xl rounded-2xl border border-white/10 shadow-2xl flex flex-col max-h-[85vh]">
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div>
@@ -249,6 +250,6 @@ export function CaseDetailModal({
         </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

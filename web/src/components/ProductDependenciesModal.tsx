@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, Plus, Trash2, Package, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api';
+import { ModalPortal } from './ModalPortal';
 
 interface ProductDependency {
   id: number;
@@ -119,8 +120,9 @@ export function ProductDependenciesModal({ productId, productName, onClose }: Pr
   const availableToAdd = filteredProducts.filter(p => !existingDepIds.includes(p.product_id));
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="glass rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
+        <div className="glass rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div>
@@ -329,7 +331,8 @@ export function ProductDependenciesModal({ productId, productName, onClose }: Pr
             Close
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
