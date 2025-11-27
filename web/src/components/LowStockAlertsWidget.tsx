@@ -32,7 +32,10 @@ export function LowStockAlertsWidget() {
   const loadLowStockAlerts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://rentalcore:8081/api/inventory/low-stock');
+      const response = await fetch('/api/v1/inventory/low-stock');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data: LowStockResponse = await response.json();
       setAlerts(data.alerts || []);
       setError(null);

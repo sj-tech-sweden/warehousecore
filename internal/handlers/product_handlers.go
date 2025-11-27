@@ -855,3 +855,56 @@ func GetProductDevices(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, responses)
 }
+
+// GetLowStockAlerts returns products with stock below minimum level
+func GetLowStockAlerts(w http.ResponseWriter, r *http.Request) {
+	db := repository.GetDB()
+
+	type LowStockAlert struct {
+		ProductID      int     `json:"product_id"`
+		Name           string  `json:"name"`
+		StockQuantity  float64 `json:"stock_quantity"`
+		MinStockLevel  float64 `json:"min_stock_level"`
+		CountTypeName  string  `json:"count_type_name"`
+		CountTypeAbbr  string  `json:"count_type_abbr"`
+		GenericBarcode string  `json:"generic_barcode"`
+		IsAccessory    bool    `json:"is_accessory"`
+		IsConsumable   bool    `json:"is_consumable"`
+	}
+
+	var alerts []LowStockAlert
+	err := db.Raw(`
+		SELECT
+			p.productID,
+			p.name,
+			COALESCE(p.stock_quantity, 0) as stock_quantity,
+			COALESCE(p.min_stock_level, 0) as min_stock_level,
+			COALESCE(ct.name, 'Units') as count_type_name,
+			COALESCE(ct.abbreviation, 'Stk') as count_type_abbr,
+			COALESCE(p.generic_barcode, '') as generic_barcode,
+			COALESCE(p.is_accessory, false) as is_accessory,
+			COALESCE(p.is_consumable, false) as is_consumable
+		FROM products p
+		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
+		WHERE (p.is_consumable = 1 OR p.is_accessory = 1)
+		  AND p.min_stock_level IS NOT NULL
+		  AND p.min_stock_level > 0
+		  AND COALESCE(p.stock_quantity, 0) < p.min_stock_level
+		ORDER BY (COALESCE(p.stock_quantity, 0) / p.min_stock_level) ASC
+	`).Scan(&alerts).Error
+	if err != nil {
+		log.Printf("Failed to fetch low stock alerts: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Failed to fetch low stock alerts",
+		})
+		return
+	}
+
+	if alerts == nil {
+		alerts = []LowStockAlert{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"alerts": alerts,
+	})
+}

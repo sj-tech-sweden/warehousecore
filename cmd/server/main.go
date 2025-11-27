@@ -185,6 +185,9 @@ func main() {
 	api.HandleFunc("/rental-equipment", handlers.GetRentalEquipment).Methods("GET")
 	api.HandleFunc("/rental-equipment/{id}", handlers.GetRentalEquipmentByID).Methods("GET")
 
+	// Inventory endpoints
+	api.HandleFunc("/inventory/low-stock", handlers.GetLowStockAlerts).Methods("GET")
+
 	// Case endpoints
 	api.HandleFunc("/cases", handlers.GetCases).Methods("GET")
 	api.HandleFunc("/cases", handlers.CreateCase).Methods("POST")
