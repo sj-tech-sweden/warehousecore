@@ -1174,6 +1174,8 @@ mysql -h db.example.com -u warehouse_user -p rentalcore < migrations/XXX_new_fea
 
 - **Tags:**
 - `latest` - Latest stable build
+- `3.07` - Modal scroll behavior fix: prevent background scrolling when modals open
+- `3.06` - Product dependencies system
 - `1.62` - LED-Befehle aufcontroller-spezifische Topics geroutet (Zonentyp-Zuordnung)
 - `1.61` - Admin-Tab „Mikrocontroller“ + Heartbeat-Registry
 - `1.60` - Bin-Vorschau zielt exakt auf das gewählte Fach
