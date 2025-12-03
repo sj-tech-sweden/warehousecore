@@ -16,7 +16,7 @@ import { api } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
 import { DeviceTreeTab } from './DeviceTreeTab';
 import { ProductDependenciesModal } from '../ProductDependenciesModal';
-import { ProductDetailModal, type ProductDetail } from '../ProductDetailModal';
+import { ProductDetailModal } from '../ProductDetailModal';
 
 interface Product {
   product_id: number;
@@ -164,7 +164,6 @@ export function ProductsTab() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewProduct, setViewProduct] = useState<Product | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
   const [editingProduct, setEditingProduct] = useState<number | null>(null);
   const [dependenciesModal, setDependenciesModal] = useState<{ productId: number; productName: string } | null>(null);
   const [formData, setFormData] = useState<ProductFormData>(initialFormData);
@@ -378,7 +377,6 @@ export function ProductsTab() {
 
   const closeDetailModal = () => {
     setViewProduct(null);
-    setLoadingDetail(false);
   };
 
   const handleOpenCreateModal = async () => {
