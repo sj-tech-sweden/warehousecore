@@ -513,6 +513,7 @@ func DownloadProductPicture(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
+	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", url.PathEscape(filename)))
 
 	if _, err := io.Copy(w, reader); err != nil {

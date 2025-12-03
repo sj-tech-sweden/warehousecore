@@ -47,7 +47,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   const [uploadingPictures, setUploadingPictures] = useState(false);
   const [pictureError, setPictureError] = useState<string | null>(null);
   const [picturesUnavailable, setPicturesUnavailable] = useState(false);
-  const [previewPicture, setPreviewPicture] = useState<ProductPicture | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const formatCurrency = (value?: number) => {
@@ -125,8 +125,8 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     try {
       await productPicturesApi.delete(product.product_id, fileName);
       await loadPictures();
-      if (previewPicture?.file_name === fileName) {
-        setPreviewPicture(null);
+      if (previewIndex !== null && pictures[previewIndex]?.file_name === fileName) {
+        setPreviewIndex(null);
       }
     } catch (error) {
       console.error('Failed to delete product picture', error);
@@ -205,13 +205,13 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     <div
                       key={picture.download_url}
                       className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/5"
-                      onClick={() => setPreviewPicture(picture)}
                     >
                       <img
                         src={picture.download_url}
                         alt={`${product.name} Bild`}
-                        className="h-36 w-full object-cover transition duration-300 group-hover:scale-105"
+                        className="h-36 w-full object-cover transition duration-300 group-hover:scale-105 cursor-zoom-in"
                         loading="lazy"
+                        onClick={() => setPreviewIndex(pictures.findIndex(p => p.file_name === picture.file_name))}
                       />
                       <button
                         type="button"
@@ -219,7 +219,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                           event.stopPropagation();
                           handleDeletePicture(picture.file_name);
                         }}
-                        className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition group-hover:opacity-100 disabled:opacity-50"
+                        className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs text-white opacity-90 transition group-hover:opacity-100 disabled:opacity-50"
                         disabled={deleting === picture.file_name}
                         title="Bild löschen"
                       >
@@ -433,33 +433,59 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
             )}
           </div>
 
-          {previewPicture && (
+          {previewIndex !== null && pictures[previewIndex] && (
             <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/90 p-4">
               <div className="relative w-full max-w-5xl">
                 <button
-                  onClick={() => setPreviewPicture(null)}
+                  onClick={() => setPreviewIndex(null)}
                   className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20"
                 >
                   Schließen
                 </button>
+                <div className="absolute left-2 top-1/2 -translate-y-1/2">
+                  <button
+                    onClick={() =>
+                      setPreviewIndex(prev => {
+                        if (prev === null) return prev;
+                        return (prev - 1 + pictures.length) % pictures.length;
+                      })
+                    }
+                    className="rounded-full bg-white/10 px-3 py-2 text-white hover:bg-white/20"
+                  >
+                    ‹
+                  </button>
+                </div>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <button
+                    onClick={() =>
+                      setPreviewIndex(prev => {
+                        if (prev === null) return prev;
+                        return (prev + 1) % pictures.length;
+                      })
+                    }
+                    className="rounded-full bg-white/10 px-3 py-2 text-white hover:bg-white/20"
+                  >
+                    ›
+                  </button>
+                </div>
                 <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
                   <img
-                    src={previewPicture.download_url}
-                    alt={previewPicture.file_name}
+                    src={pictures[previewIndex].download_url}
+                    alt={pictures[previewIndex].file_name}
                     className="max-h-[80vh] w-full object-contain bg-black"
                   />
                 </div>
                 <div className="mt-3 flex items-center justify-between text-sm text-gray-200">
                   <div>
-                    <p className="font-semibold text-white">{previewPicture.file_name}</p>
-                    <p>{formatDate(previewPicture.modified_at)}</p>
+                    <p className="font-semibold text-white">{pictures[previewIndex].file_name}</p>
+                    <p>{formatDate(pictures[previewIndex].modified_at)}</p>
                   </div>
                   <button
-                    onClick={() => handleDeletePicture(previewPicture.file_name)}
+                    onClick={() => handleDeletePicture(pictures[previewIndex].file_name)}
                     className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-                    disabled={deleting === previewPicture.file_name}
+                    disabled={deleting === pictures[previewIndex].file_name}
                   >
-                    {deleting === previewPicture.file_name ? 'Löscht...' : 'Bild löschen'}
+                    {deleting === pictures[previewIndex].file_name ? 'Löscht...' : 'Bild löschen'}
                   </button>
                 </div>
               </div>
