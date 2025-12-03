@@ -2814,6 +2814,8 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 
 	// Track which products we've already added (to avoid duplicates for consumables/accessories)
 	addedProducts := make(map[int]bool)
+	// Track devices to avoid duplicates (e.g., multiple job/device rows)
+	seenDevices := make(map[string]bool)
 
 	for rows.Next() {
 		var categoryID sql.NullInt64
@@ -2895,10 +2897,14 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 
 				// Add device to subbiercategory if exists
 				if deviceID.Valid && deviceID.String != "" {
+					if seenDevices[deviceID.String] {
+						continue
+					}
 					device := buildDeviceMap(deviceID, productName, status, barcode, qrCode, serialNumber,
 						productID, zoneID, zoneName, zoneCode, caseID, caseName, currentJobID, jobNumber,
 						conditionRating, usageHours, labelPath, purchaseDate, lastMaintenance, nextMaintenance, notes)
 
+					seenDevices[deviceID.String] = true
 					subBierCat := *subbiercategories[subBierCatID]
 					subBierCat["devices"] = append(subBierCat["devices"].([]interface{}), device)
 					subBierCat["device_count"] = subBierCat["device_count"].(int) + 1
@@ -2943,10 +2949,14 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 				// Handle devices or consumables/accessories at subcategory level
 				if deviceID.Valid && deviceID.String != "" {
 					// Add device directly to subcategory
+					if seenDevices[deviceID.String] {
+						continue
+					}
 					device := buildDeviceMap(deviceID, productName, status, barcode, qrCode, serialNumber,
 						productID, zoneID, zoneName, zoneCode, caseID, caseName, currentJobID, jobNumber,
 						conditionRating, usageHours, labelPath, purchaseDate, lastMaintenance, nextMaintenance, notes)
 
+					seenDevices[deviceID.String] = true
 					subCat := *subcategories[subCatID]
 					subCat["direct_devices"] = append(subCat["direct_devices"].([]interface{}), device)
 					subCat["device_count"] = subCat["device_count"].(int) + 1
