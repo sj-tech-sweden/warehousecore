@@ -2767,7 +2767,7 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 			dc.caseID as case_id,
 			COALESCE(cs.name, '') as case_name,
 			jd.jobID as current_job_id,
-			COALESCE(j.jobnumber, '') as job_number,
+			COALESCE(j.job_code, '') as job_number,
 			COALESCE(d.condition_rating, 0) as condition_rating,
 			COALESCE(d.usage_hours, 0) as usage_hours,
 			d.label_path,
