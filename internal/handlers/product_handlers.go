@@ -320,7 +320,7 @@ func GetProductPictures(w http.ResponseWriter, r *http.Request) {
 	items, err := productPictureService.ListPictures(productName)
 	if err != nil {
 		log.Printf("[PICTURES] List failed for product %d: %v", id, err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list pictures"})
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to list pictures"})
 		return
 	}
 
@@ -456,7 +456,11 @@ func DownloadProductPicture(w http.ResponseWriter, r *http.Request) {
 	reader, contentType, err := productPictureService.DownloadPicture(productName, filename)
 	if err != nil {
 		log.Printf("[PICTURES] Download failed for product %d (%s): %v", id, filename, err)
-		respondJSON(w, http.StatusNotFound, map[string]string{"error": "File not found"})
+		status := http.StatusNotFound
+		if strings.Contains(err.Error(), "upload") || strings.Contains(err.Error(), "list") {
+			status = http.StatusServiceUnavailable
+		}
+		respondJSON(w, status, map[string]string{"error": "File not found or storage unavailable"})
 		return
 	}
 	defer reader.Close()

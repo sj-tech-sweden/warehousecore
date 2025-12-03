@@ -75,9 +75,9 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     } catch (error) {
       console.error('Failed to load product pictures', error);
       const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status === 503) {
+      if (status === 503 || status === 500) {
         setPicturesUnavailable(true);
-        setPictureError('Bilderablage ist nicht konfiguriert.');
+        setPictureError('Bilderablage ist nicht erreichbar oder nicht konfiguriert.');
       } else {
         setPictureError('Bilder konnten nicht geladen werden.');
       }
