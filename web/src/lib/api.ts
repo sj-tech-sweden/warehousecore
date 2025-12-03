@@ -637,3 +637,22 @@ export const cablesAdminApi = {
   getConnectors: () => api.get<CableConnector[]>('/admin/cable-connectors'),
   getTypes: () => api.get<CableType[]>('/admin/cable-types'),
 };
+
+export interface ProductPicture {
+  file_name: string;
+  size: number;
+  content_type: string;
+  modified_at: string;
+  download_url: string;
+}
+
+export const productPicturesApi = {
+  list: (productId: number) => api.get<{ pictures: ProductPicture[] }>(`/admin/products/${productId}/pictures`),
+  upload: (productId: number, files: FileList | File[]) => {
+    const data = new FormData();
+    Array.from(files as ArrayLike<File>).forEach(file => data.append('files', file));
+    return api.post(`/admin/products/${productId}/pictures`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};

@@ -15,6 +15,7 @@ WarehouseCore is the digital twin of the Weidelbach warehouse, providing real-ti
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [API Documentation](#api-documentation)
+- [Product Pictures](#product-pictures)
 - [Database Schema](#database-schema)
 - [Deployment](#deployment)
 - [Development](#development)
@@ -129,6 +130,13 @@ Auto-Admin Seed:
 Cross-Links Navbar:
 - Domains werden via Backend in `window.__APP_CONFIG__` injiziert.
 - ENV: `RENTALCORE_DOMAIN`, `WAREHOUSECORE_DOMAIN` (ohne Protokoll/Port).
+
+### Product Pictures
+
+- Mehrfach-Uploads direkt im Produkt-Detailmodal
+- Speicherung im gemeinsamen Nextcloud-Dateipool von RentalCore (`NEXTCLOUD_WEBDAV_*` in `.env` setzen)
+- Pfadstruktur wird automatisch erstellt: `<BASE_PATH>/warehousecore/pictures/<Productname>/<Datei>`
+- Unterstützte Typen: JPG, PNG, GIF, WEBP, HEIC bis 10 MB je Datei
 
 Screens (Beschreibung):
 - Admin > Zonentypen: Tabelle mit CRUD für Key/Label/Beschreibung; LED-Defaults werden auf der LED-Seite gepflegt.

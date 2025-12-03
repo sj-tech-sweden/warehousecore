@@ -4,11 +4,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -16,6 +19,8 @@ import (
 	"warehousecore/internal/repository"
 	"warehousecore/internal/services"
 )
+
+var productPictureService = services.NewProductPictureServiceFromEnv()
 
 // Product represents a product (item type)
 type Product struct {
@@ -286,6 +291,193 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, p)
+}
+
+// GetProductPictures lists all stored pictures for a product.
+func GetProductPictures(w http.ResponseWriter, r *http.Request) {
+	if !productPictureService.Enabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Product pictures are not configured"})
+		return
+	}
+
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	productName, err := getProductName(id)
+	if err == sql.ErrNoRows {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+		return
+	} else if err != nil {
+		log.Printf("[PICTURES] Failed to resolve product name: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load product"})
+		return
+	}
+
+	items, err := productPictureService.ListPictures(productName)
+	if err != nil {
+		log.Printf("[PICTURES] List failed for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list pictures"})
+		return
+	}
+
+	// Sort newest first
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ModifiedAt.After(items[j].ModifiedAt)
+	})
+
+	type pictureResponse struct {
+		FileName    string    `json:"file_name"`
+		Size        int64     `json:"size"`
+		ContentType string    `json:"content_type"`
+		ModifiedAt  time.Time `json:"modified_at"`
+		DownloadURL string    `json:"download_url"`
+	}
+
+	resp := make([]pictureResponse, 0, len(items))
+	for _, pic := range items {
+		resp = append(resp, pictureResponse{
+			FileName:    pic.FileName,
+			Size:        pic.Size,
+			ContentType: pic.ContentType,
+			ModifiedAt:  pic.ModifiedAt,
+			DownloadURL: fmt.Sprintf("/api/v1/admin/products/%d/pictures/%s", id, url.PathEscape(pic.FileName)),
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"pictures": resp,
+	})
+}
+
+// UploadProductPictures stores one or more images for a product in Nextcloud.
+func UploadProductPictures(w http.ResponseWriter, r *http.Request) {
+	if !productPictureService.Enabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Product pictures are not configured"})
+		return
+	}
+
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	productName, err := getProductName(id)
+	if err == sql.ErrNoRows {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+		return
+	} else if err != nil {
+		log.Printf("[PICTURES] Failed to resolve product name: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load product"})
+		return
+	}
+
+	if err := r.ParseMultipartForm(productPictureService.MaxFileSize() * 4); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid multipart form: " + err.Error()})
+		return
+	}
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		if singleFile, singleHeader, err := r.FormFile("file"); err == nil {
+			singleFile.Close()
+			files = append(files, singleHeader)
+		}
+	}
+	if len(files) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No files provided"})
+		return
+	}
+
+	uploaded := make([]string, 0, len(files))
+
+	for _, header := range files {
+		src, err := header.Open()
+		if err != nil {
+			log.Printf("[PICTURES] Failed to open upload %s: %v", header.Filename, err)
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Failed to read uploaded file"})
+			return
+		}
+
+		stored, err := productPictureService.UploadPicture(productName, src, header)
+		src.Close()
+		if err != nil {
+			log.Printf("[PICTURES] Upload failed for product %d: %v", id, err)
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		uploaded = append(uploaded, stored)
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"message":          "Pictures uploaded successfully",
+		"uploaded_files":   uploaded,
+		"uploaded_count":   len(uploaded),
+		"product_name":     productName,
+		"nextcloud_folder": productPictureService.FolderForProduct(productName),
+	})
+}
+
+// DownloadProductPicture streams a product picture from Nextcloud.
+func DownloadProductPicture(w http.ResponseWriter, r *http.Request) {
+	if !productPictureService.Enabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Product pictures are not configured"})
+		return
+	}
+
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	filename, err := url.PathUnescape(vars["filename"])
+	if err != nil || filename == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid filename"})
+		return
+	}
+
+	productName, err := getProductName(id)
+	if err == sql.ErrNoRows {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+		return
+	} else if err != nil {
+		log.Printf("[PICTURES] Failed to resolve product name: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load product"})
+		return
+	}
+
+	reader, contentType, err := productPictureService.DownloadPicture(productName, filename)
+	if err != nil {
+		log.Printf("[PICTURES] Download failed for product %d (%s): %v", id, filename, err)
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "File not found"})
+		return
+	}
+	defer reader.Close()
+
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	} else {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", url.PathEscape(filename)))
+
+	if _, err := io.Copy(w, reader); err != nil {
+		log.Printf("[PICTURES] Failed to stream %s: %v", filename, err)
+	}
+}
+
+func getProductName(productID int) (string, error) {
+	db := repository.GetSQLDB()
+	var name string
+	err := db.QueryRow("SELECT name FROM products WHERE productID = ?", productID).Scan(&name)
+	return name, err
 }
 
 // CreateProduct creates a new product

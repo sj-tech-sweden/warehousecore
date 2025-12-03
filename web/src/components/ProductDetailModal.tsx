@@ -1,6 +1,10 @@
-import { X, Package, Ruler, Weight, Zap, Tag, Box, DollarSign, Wrench, Barcode, Info } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Package, Ruler, Weight, Zap, Tag, Box, DollarSign, Wrench, Barcode, Info, Image as ImageIcon, UploadCloud, Loader2 } from 'lucide-react';
 import { ModalPortal } from './ModalPortal';
 import { useBlockBodyScroll } from '../hooks/useBlockBodyScroll';
+import { productPicturesApi } from '../lib/api';
+import type { ChangeEvent } from 'react';
+import type { ProductPicture } from '../lib/api';
 
 export interface ProductDetail {
   product_id: number;
@@ -38,6 +42,11 @@ interface ProductDetailModalProps {
 export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailModalProps) {
   useBlockBodyScroll(isOpen);
 
+  const [pictures, setPictures] = useState<ProductPicture[]>([]);
+  const [loadingPictures, setLoadingPictures] = useState(false);
+  const [uploadingPictures, setUploadingPictures] = useState(false);
+  const [pictureError, setPictureError] = useState<string | null>(null);
+
   if (!isOpen || !product) return null;
 
   const formatCurrency = (value?: number) => {
@@ -53,6 +62,56 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   const categoryPath = () => {
     const parts = [product.category_name, product.subcategory_name, product.subbiercategory_name].filter(Boolean);
     return parts.length > 0 ? parts.join(' › ') : '—';
+  };
+
+  const loadPictures = async () => {
+    if (!product) return;
+    setLoadingPictures(true);
+    setPictureError(null);
+    try {
+      const response = await productPicturesApi.list(product.product_id);
+      setPictures(response.data.pictures || []);
+    } catch (error) {
+      console.error('Failed to load product pictures', error);
+      setPictureError('Bilder konnten nicht geladen werden.');
+    } finally {
+      setLoadingPictures(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && product) {
+      loadPictures();
+    } else {
+      setPictures([]);
+      setPictureError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, product?.product_id]);
+
+  const handleUploadPictures = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!product) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingPictures(true);
+    setPictureError(null);
+    try {
+      await productPicturesApi.upload(product.product_id, files);
+      await loadPictures();
+    } catch (error) {
+      console.error('Failed to upload product pictures', error);
+      setPictureError('Upload fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      setUploadingPictures(false);
+      event.target.value = '';
+    }
+  };
+
+  const formatDate = (iso: string) => {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('de-DE');
   };
 
   return (
@@ -81,6 +140,57 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
 
           {/* Content */}
           <div className="overflow-y-auto p-6 space-y-6">
+            <div className="glass rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3 gap-3">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-5 h-5 text-accent-red" />
+                  <h3 className="text-lg font-semibold text-white">Produktbilder</h3>
+                </div>
+                <label className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white cursor-pointer hover:bg-white/20 transition disabled:opacity-60 disabled:cursor-not-allowed">
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{uploadingPictures ? 'Lädt...' : 'Bilder hochladen'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleUploadPictures}
+                    disabled={uploadingPictures}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+              {pictureError && <p className="text-sm text-red-400 mb-2">{pictureError}</p>}
+              {loadingPictures ? (
+                <div className="flex items-center gap-2 text-gray-300">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Bilder werden geladen...</span>
+                </div>
+              ) : pictures.length === 0 ? (
+                <p className="text-gray-400">Noch keine Bilder hochgeladen.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                  {pictures.map(picture => (
+                    <div
+                      key={picture.download_url}
+                      className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/5"
+                    >
+                      <img
+                        src={picture.download_url}
+                        alt={`${product.name} Bild`}
+                        className="h-36 w-full object-cover transition duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-xs text-white">
+                        <p className="font-semibold truncate">{picture.file_name}</p>
+                        <p className="text-gray-300">{formatDate(picture.modified_at)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Type Badges */}
             <div className="flex gap-2">
               {product.is_consumable && (
