@@ -655,4 +655,6 @@ export const productPicturesApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  delete: (productId: number, fileName: string) =>
+    api.delete(`/admin/products/${productId}/pictures/${encodeURIComponent(fileName)}`),
 };

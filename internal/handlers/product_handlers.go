@@ -357,6 +357,45 @@ func GetProductPictures(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DeleteProductPicture deletes a stored image for a product.
+func DeleteProductPicture(w http.ResponseWriter, r *http.Request) {
+	if !productPictureService.Enabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Product pictures are not configured"})
+		return
+	}
+
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	filename, err := url.PathUnescape(vars["filename"])
+	if err != nil || filename == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid filename"})
+		return
+	}
+
+	productName, err := getProductName(id)
+	if err == sql.ErrNoRows {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+		return
+	} else if err != nil {
+		log.Printf("[PICTURES] Failed to resolve product name: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load product"})
+		return
+	}
+
+	if err := productPictureService.DeletePicture(productName, filename); err != nil {
+		log.Printf("[PICTURES] Delete failed for product %d (%s): %v", id, filename, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete picture"})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Picture deleted"})
+}
+
 // UploadProductPictures stores one or more images for a product in Nextcloud.
 func UploadProductPictures(w http.ResponseWriter, r *http.Request) {
 	if !productPictureService.Enabled() {

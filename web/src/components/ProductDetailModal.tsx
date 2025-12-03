@@ -47,6 +47,8 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   const [uploadingPictures, setUploadingPictures] = useState(false);
   const [pictureError, setPictureError] = useState<string | null>(null);
   const [picturesUnavailable, setPicturesUnavailable] = useState(false);
+  const [previewPicture, setPreviewPicture] = useState<ProductPicture | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const formatCurrency = (value?: number) => {
     if (value == null) return '—';
@@ -113,6 +115,24 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     } finally {
       setUploadingPictures(false);
       event.target.value = '';
+    }
+  };
+
+  const handleDeletePicture = async (fileName: string) => {
+    if (!product) return;
+    setDeleting(fileName);
+    setPictureError(null);
+    try {
+      await productPicturesApi.delete(product.product_id, fileName);
+      await loadPictures();
+      if (previewPicture?.file_name === fileName) {
+        setPreviewPicture(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete product picture', error);
+      setPictureError('Löschen fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -185,6 +205,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     <div
                       key={picture.download_url}
                       className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/5"
+                      onClick={() => setPreviewPicture(picture)}
                     >
                       <img
                         src={picture.download_url}
@@ -192,6 +213,18 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                         className="h-36 w-full object-cover transition duration-300 group-hover:scale-105"
                         loading="lazy"
                       />
+                      <button
+                        type="button"
+                        onClick={event => {
+                          event.stopPropagation();
+                          handleDeletePicture(picture.file_name);
+                        }}
+                        className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition group-hover:opacity-100 disabled:opacity-50"
+                        disabled={deleting === picture.file_name}
+                        title="Bild löschen"
+                      >
+                        {deleting === picture.file_name ? '...' : 'Löschen'}
+                      </button>
                       <div className="absolute inset-0 bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-xs text-white">
                         <p className="font-semibold truncate">{picture.file_name}</p>
@@ -399,6 +432,39 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
               </div>
             )}
           </div>
+
+          {previewPicture && (
+            <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/90 p-4">
+              <div className="relative w-full max-w-5xl">
+                <button
+                  onClick={() => setPreviewPicture(null)}
+                  className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20"
+                >
+                  Schließen
+                </button>
+                <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                  <img
+                    src={previewPicture.download_url}
+                    alt={previewPicture.file_name}
+                    className="max-h-[80vh] w-full object-contain bg-black"
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between text-sm text-gray-200">
+                  <div>
+                    <p className="font-semibold text-white">{previewPicture.file_name}</p>
+                    <p>{formatDate(previewPicture.modified_at)}</p>
+                  </div>
+                  <button
+                    onClick={() => handleDeletePicture(previewPicture.file_name)}
+                    className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                    disabled={deleting === previewPicture.file_name}
+                  >
+                    {deleting === previewPicture.file_name ? 'Löscht...' : 'Bild löschen'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="flex justify-end gap-3 p-6 border-t border-white/10">

@@ -302,6 +302,7 @@ func main() {
 	admin.HandleFunc("/products/{id}", handlers.UpdateProduct).Methods("PUT")
 	admin.HandleFunc("/products/{id}", handlers.DeleteProduct).Methods("DELETE")
 	admin.HandleFunc("/products/{id}/pictures", handlers.UploadProductPictures).Methods("POST")
+	admin.HandleFunc("/products/{id}/pictures/{filename}", handlers.DeleteProductPicture).Methods("DELETE")
 	admin.HandleFunc("/products/{id}/devices", handlers.GetProductDevices).Methods("GET")
 	admin.HandleFunc("/products/{id}/devices", handlers.CreateDevicesForProduct).Methods("POST")
 	admin.HandleFunc("/products/{id}/dependencies", handlers.GetProductDependencies).Methods("GET")

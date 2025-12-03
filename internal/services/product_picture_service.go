@@ -147,6 +147,9 @@ func (s *ProductPictureService) ListPictures(productName string) ([]ProductPictu
 		if entry.IsDir {
 			continue
 		}
+		if !isImageFile(entry) {
+			continue
+		}
 		pictures = append(pictures, ProductPictureInfo{
 			FileName:    path.Base(entry.Path),
 			Size:        entry.Size,
@@ -172,6 +175,17 @@ func (s *ProductPictureService) DownloadPicture(productName, fileName string) (i
 		return nil, "", err
 	}
 	return body, ct, nil
+}
+
+// DeletePicture removes a specific picture from Nextcloud.
+func (s *ProductPictureService) DeletePicture(productName, fileName string) error {
+	if !s.Enabled() {
+		return fmt.Errorf("product pictures not configured")
+	}
+	if fileName == "" {
+		return fmt.Errorf("filename required")
+	}
+	return s.client.Delete(s.productFilePath(productName, sanitizeFileName(fileName)))
 }
 
 func (s *ProductPictureService) productFolder(productName string) string {
@@ -209,4 +223,17 @@ func trimAndUnquote(val string) string {
 	val = strings.TrimSpace(val)
 	val = strings.Trim(val, "\"")
 	return val
+}
+
+func isImageFile(entry storage.RemoteEntry) bool {
+	if strings.HasPrefix(strings.ToLower(entry.ContentType), "image/") {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(entry.Path))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif":
+		return true
+	default:
+		return false
+	}
 }
