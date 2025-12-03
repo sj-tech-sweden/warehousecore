@@ -47,8 +47,6 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   const [uploadingPictures, setUploadingPictures] = useState(false);
   const [pictureError, setPictureError] = useState<string | null>(null);
 
-  if (!isOpen || !product) return null;
-
   const formatCurrency = (value?: number) => {
     if (value == null) return '—';
     return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
@@ -60,6 +58,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   };
 
   const categoryPath = () => {
+    if (!product) return '—';
     const parts = [product.category_name, product.subcategory_name, product.subbiercategory_name].filter(Boolean);
     return parts.length > 0 ? parts.join(' › ') : '—';
   };
@@ -113,6 +112,8 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     if (Number.isNaN(date.getTime())) return '—';
     return date.toLocaleString('de-DE');
   };
+
+  if (!isOpen || !product) return null;
 
   return (
     <ModalPortal>
