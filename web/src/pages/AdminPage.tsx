@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler } from 'lucide-react';
+import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler, KeyRound } from 'lucide-react';
 import { ZoneTypesTab } from '../components/admin/ZoneTypesTab';
 import { LEDSettingsTab } from '../components/admin/LEDSettingsTab';
 import { RolesTab } from '../components/admin/RolesTab';
@@ -7,8 +7,9 @@ import { LEDControllersTab } from '../components/admin/LEDControllersTab';
 import { CategoriesTab } from '../components/admin/CategoriesTab';
 import { APISettingsTab } from '../components/admin/APISettingsTab';
 import { CountTypesTab } from '../components/admin/CountTypesTab';
+import { APIKeysTab } from '../components/admin/APIKeysTab';
 
-type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'counttypes' | 'roles' | 'apisettings';
+type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'counttypes' | 'roles' | 'apisettings' | 'apikeys';
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('zonetypes');
@@ -21,6 +22,7 @@ export function AdminPage() {
     { id: 'counttypes' as TabType, label: 'Mess-Einheiten', icon: Ruler },
     { id: 'roles' as TabType, label: 'Rollen & Benutzer', icon: Users },
     { id: 'apisettings' as TabType, label: 'API-Einstellungen', icon: Database },
+    { id: 'apikeys' as TabType, label: 'API-Keys', icon: KeyRound },
   ];
 
   return (
@@ -67,6 +69,7 @@ export function AdminPage() {
         {activeTab === 'counttypes' && <CountTypesTab />}
         {activeTab === 'roles' && <RolesTab />}
         {activeTab === 'apisettings' && <APISettingsTab />}
+        {activeTab === 'apikeys' && <APIKeysTab />}
       </div>
     </div>
   );

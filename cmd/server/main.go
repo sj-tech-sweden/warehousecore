@@ -145,10 +145,13 @@ func main() {
 
 	// Health check (public)
 	api.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
-	// Public website feeds
-	api.HandleFunc("/public/products", handlers.GetWebsiteProducts).Methods("GET")
-	api.HandleFunc("/public/packages", handlers.GetWebsitePackages).Methods("GET")
-	api.HandleFunc("/public/products/{id}/pictures/{filename}", handlers.DownloadProductPicture).Methods("GET")
+
+	// Public website feeds (protected by API key)
+	public := api.PathPrefix("/public").Subrouter()
+	public.Use(middleware.APIKeyMiddleware)
+	public.HandleFunc("/products", handlers.GetWebsiteProducts).Methods("GET")
+	public.HandleFunc("/packages", handlers.GetWebsitePackages).Methods("GET")
+	public.HandleFunc("/products/{id}/pictures/{filename}", handlers.DownloadProductPicture).Methods("GET")
 
 	// Protected routes - apply auth middleware
 	protected := api.PathPrefix("").Subrouter()
@@ -264,6 +267,7 @@ func main() {
 	adminRead.HandleFunc("/rental-equipment", handlers.GetRentalEquipment).Methods("GET")
 	adminRead.HandleFunc("/rental-equipment/suppliers", handlers.GetRentalEquipmentSuppliers).Methods("GET")
 	adminRead.HandleFunc("/rental-equipment/{id}", handlers.GetRentalEquipmentByID).Methods("GET")
+	adminRead.HandleFunc("/api-keys", handlers.ListAPIKeys).Methods("GET")
 
 	// Admin-only routes (write operations)
 	admin := api.PathPrefix("/admin").Subrouter()
@@ -321,6 +325,9 @@ func main() {
 	admin.HandleFunc("/rental-equipment", handlers.CreateRentalEquipment).Methods("POST")
 	admin.HandleFunc("/rental-equipment/{id}", handlers.UpdateRentalEquipment).Methods("PUT")
 	admin.HandleFunc("/rental-equipment/{id}", handlers.DeleteRentalEquipment).Methods("DELETE")
+	admin.HandleFunc("/api-keys", handlers.CreateAPIKey).Methods("POST")
+	admin.HandleFunc("/api-keys/{id}/status", handlers.UpdateAPIKeyStatus).Methods("PUT")
+	admin.HandleFunc("/api-keys/{id}", handlers.DeleteAPIKey).Methods("DELETE")
 
 	// Cable admin endpoints
 	admin.HandleFunc("/cables", handlers.GetAllCables).Methods("GET")

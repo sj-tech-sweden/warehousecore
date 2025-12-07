@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -79,4 +81,10 @@ func GetDB() *gorm.DB {
 // GetSQLDB returns the raw SQL database connection
 func GetSQLDB() *sql.DB {
 	return DB
+}
+
+// HashAPIKey creates a stable SHA-256 hex hash of an API key.
+func HashAPIKey(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }

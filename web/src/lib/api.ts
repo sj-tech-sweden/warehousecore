@@ -570,6 +570,22 @@ export const adminSettingsApi = {
     }),
 };
 
+// API Keys
+export interface APIKeyItem {
+  id: number;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at?: string | null;
+}
+
+export const apiKeysAdminApi = {
+  list: () => api.get<{ keys: APIKeyItem[] }>('/admin/api-keys'),
+  create: (payload: { name: string }) => api.post<{ keys: APIKeyItem[]; api_key: string } | { api_key: string }>('/admin/api-keys', payload),
+  updateStatus: (id: number, is_active: boolean) => api.put(`/admin/api-keys/${id}/status`, { is_active }),
+  delete: (id: number) => api.delete(`/admin/api-keys/${id}`),
+};
+
 // Cable interfaces
 export interface Cable {
   cable_id: number;

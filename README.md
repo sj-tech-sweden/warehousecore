@@ -1222,9 +1222,11 @@ mysql -h db.example.com -u warehouse_user -p rentalcore < migrations/XXX_new_fea
   - `GET /api/v1/public/products` – alle Produkte mit `website_visible = true` inkl. ausgewählter Bilder/Thumbnail
   - `GET /api/v1/public/packages` – alle Packages mit `website_visible = true` inkl. Items und Package-Bildern (vom verknüpften Produkt)
   - `GET /api/v1/public/products/{id}/pictures/{filename}` – Bild-Download für Website
+  - Schutz via API-Key (`X-API-Key` oder `?api_key=`)
 - Admin:
   - Im Produkt-Detailmodal: Toggle „Auf Website anzeigen“, Bilder auswählen, Thumbnail setzen
   - Bei Packages: Flag `website_visible` setzen (Bilder/Thumb aus dem verknüpften Produkt)
+  - API-Keys verwalten: `/api/v1/admin/api-keys` (listen), `POST /api/v1/admin/api-keys` (erstellen, Key wird einmalig im Response geliefert), `PUT /api/v1/admin/api-keys/{id}/status` (aktiv/deaktiv), `DELETE /api/v1/admin/api-keys/{id}`
 
 ---
 - `1.35` - Frontend with LED control button
