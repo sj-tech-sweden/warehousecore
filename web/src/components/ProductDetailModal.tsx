@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, Package, Ruler, Weight, Zap, Tag, Box, DollarSign, Wrench, Barcode, Info, Image as ImageIcon, UploadCloud, Loader2 } from 'lucide-react';
+import { X, Package, Ruler, Weight, Zap, Tag, Box, DollarSign, Wrench, Barcode, Info, Image as ImageIcon, UploadCloud, Loader2, Eye } from 'lucide-react';
 import { ModalPortal } from './ModalPortal';
 import { useBlockBodyScroll } from '../hooks/useBlockBodyScroll';
-import { productPicturesApi } from '../lib/api';
+import { productPicturesApi, productWebsiteApi } from '../lib/api';
 import type { ChangeEvent } from 'react';
 import type { ProductPicture } from '../lib/api';
 
@@ -31,6 +31,9 @@ export interface ProductDetail {
   price_per_unit?: number;
   count_type_abbreviation?: string;
   device_count?: number;
+  website_visible?: boolean;
+  website_thumbnail?: string | null;
+  website_images?: string[];
 }
 
 interface ProductDetailModalProps {
@@ -51,6 +54,11 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   const [deleting, setDeleting] = useState<string | null>(null);
   const [preloadedUrls, setPreloadedUrls] = useState<Set<string>>(new Set());
   const [lightboxLoading, setLightboxLoading] = useState(false);
+  const [websiteVisible, setWebsiteVisible] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+  const [websiteThumbnail, setWebsiteThumbnail] = useState<string | null>(null);
+  const [savingWebsite, setSavingWebsite] = useState(false);
+  const [websiteMessage, setWebsiteMessage] = useState<string | null>(null);
 
   const formatCurrency = (value?: number) => {
     if (value == null) return '—';
@@ -94,9 +102,16 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   useEffect(() => {
     if (isOpen && product) {
       loadPictures();
+      setWebsiteVisible(Boolean(product.website_visible));
+      setSelectedImages(new Set(product.website_images || []));
+      setWebsiteThumbnail(product.website_thumbnail || null);
+      setWebsiteMessage(null);
     } else {
       setPictures([]);
       setPictureError(null);
+      setSelectedImages(new Set());
+      setWebsiteThumbnail(null);
+      setWebsiteMessage(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, product?.product_id]);
@@ -135,6 +150,43 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
       setPictureError('Löschen fehlgeschlagen. Bitte erneut versuchen.');
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const toggleWebsiteImage = (fileName: string) => {
+    setSelectedImages(prev => {
+      const next = new Set(prev);
+      if (next.has(fileName)) {
+        next.delete(fileName);
+        if (websiteThumbnail === fileName) {
+          setWebsiteThumbnail(null);
+        }
+      } else {
+        next.add(fileName);
+      }
+      return next;
+    });
+    setWebsiteMessage(null);
+  };
+
+  const handleSaveWebsite = async () => {
+    if (!product) return;
+    setSavingWebsite(true);
+    setWebsiteMessage(null);
+    setPictureError(null);
+    const images = Array.from(selectedImages);
+    try {
+      await productWebsiteApi.update(product.product_id, {
+        website_visible: websiteVisible,
+        website_images: images,
+        website_thumbnail: websiteThumbnail ?? undefined,
+      });
+      setWebsiteMessage('Website-Einstellungen gespeichert');
+    } catch (error) {
+      console.error('Failed to save website settings', error);
+      setPictureError('Website-Einstellungen konnten nicht gespeichert werden.');
+    } finally {
+      setSavingWebsite(false);
     }
   };
 
@@ -259,6 +311,76 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* Website Settings */}
+            <div className="glass rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-accent-red" />
+                  <h3 className="text-lg font-semibold text-white">Website</h3>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-600 text-accent-red focus:ring-accent-red"
+                    checked={websiteVisible}
+                    onChange={e => setWebsiteVisible(e.target.checked)}
+                  />
+                  Auf Website anzeigen
+                </label>
+              </div>
+              {pictures.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-400">Bilder auswählen und Thumbnail festlegen:</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {pictures.map(pic => (
+                      <div key={pic.file_name} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-2">
+                        <img src={pic.download_url} alt="" className="h-16 w-16 rounded object-cover" />
+                        <div className="flex-1">
+                          <p className="text-sm text-white font-semibold truncate">{pic.file_name}</p>
+                          <div className="flex items-center gap-3 mt-1">
+                            <label className="flex items-center gap-1 text-xs text-gray-200">
+                              <input
+                                type="checkbox"
+                                checked={selectedImages.has(pic.file_name)}
+                                onChange={() => toggleWebsiteImage(pic.file_name)}
+                              />
+                              Auf Website
+                            </label>
+                            <label className="flex items-center gap-1 text-xs text-gray-200">
+                              <input
+                                type="radio"
+                                name="website-thumb"
+                                disabled={!selectedImages.has(pic.file_name)}
+                                checked={websiteThumbnail === pic.file_name}
+                                onChange={() => {
+                                  if (!selectedImages.has(pic.file_name)) toggleWebsiteImage(pic.file_name);
+                                  setWebsiteThumbnail(pic.file_name);
+                                  setWebsiteMessage(null);
+                                }}
+                              />
+                              Thumbnail
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-end gap-3">
+                    {websiteMessage && <span className="text-xs text-green-400">{websiteMessage}</span>}
+                    <button
+                      onClick={handleSaveWebsite}
+                      disabled={savingWebsite}
+                      className="px-4 py-2 rounded-lg bg-accent-red text-white text-sm font-semibold hover:bg-accent-red/90 transition disabled:opacity-60"
+                    >
+                      {savingWebsite ? 'Speichert...' : 'Website speichern'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">Keine Bilder vorhanden. Bitte zuerst Bilder hochladen.</p>
               )}
             </div>
 

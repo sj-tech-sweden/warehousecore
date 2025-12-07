@@ -20,6 +20,7 @@ WarehouseCore is the digital twin of the Weidelbach warehouse, providing real-ti
 - [Deployment](#deployment)
 - [Development](#development)
 - [Docker Hub](#docker-hub)
+- [Website Feed](#website-feed)
 
 ---
 
@@ -137,6 +138,7 @@ Cross-Links Navbar:
 - Speicherung im gemeinsamen Nextcloud-Dateipool von RentalCore (`NEXTCLOUD_WEBDAV_*` in `.env` setzen)
 - Pfadstruktur wird automatisch erstellt: `<BASE_PATH>/warehousecore/pictures/<Productname>/<Datei>`
 - Unterstützte Typen: JPG, PNG, GIF, WEBP, HEIC bis 10 MB je Datei
+- Website-Feed: Produkte lassen sich mit „Auf Website anzeigen“ markieren; Bildauswahl + Thumbnail im Produkt-Detailmodal. Öffentlicher Feed liefert nur freigegebene Produkte/Bilder.
 
 Screens (Beschreibung):
 - Admin > Zonentypen: Tabelle mit CRUD für Key/Label/Beschreibung; LED-Defaults werden auf der LED-Seite gepflegt.
@@ -155,6 +157,7 @@ Migrations
   - `007_rbac_system.sql` (+ down) – Zone Types, App Settings, User Profiles, WH-RBAC Seeds
   - `008_assign_auto_admin.sql` – initialer Auto-Admin (Thielmann)
   - `009_update_led_defaults.sql` (+ down) – LED-Default Orange/Breathe/180
+  - `022_add_website_fields.sql` – Website-Flags/Thumbnail/Imagelist für Produkte, Website-Flag für Packages
 
 4. **Job Integration**
    - Real-time job assignment
@@ -1052,6 +1055,9 @@ docker build -t nobentie/warehousecore:1.56 .
 docker tag nobentie/warehousecore:1.56 nobentie/warehousecore:latest
 ```
 
+**Migrations**
+- Führe neue Migrationen aus, z. B. `mysql ... < migrations/022_add_website_fields.sql` (Website-Flags/Thumbnail/Bildauswahl für Produkte & Packages).
+
 **Push to Docker Hub:**
 ```bash
 # Push version tag
@@ -1182,6 +1188,7 @@ mysql -h db.example.com -u warehouse_user -p rentalcore < migrations/XXX_new_fea
 
 - **Tags:**
 - `latest` - Latest stable build
+- `3.28` - Website-Feed: sichtbare Produkte/Packages + Bildauswahl/Thumbnail, öffentliche Feeds, Admin-UI für Website-Flags
 - `3.07` - Modal scroll behavior fix: prevent background scrolling when modals open
 - `3.06` - Product dependencies system
 - `1.62` - LED-Befehle aufcontroller-spezifische Topics geroutet (Zonentyp-Zuordnung)
@@ -1206,6 +1213,20 @@ mysql -h db.example.com -u warehouse_user -p rentalcore < migrations/XXX_new_fea
 - `1.42` - Device tree database schema fix
 - `1.41` - Device tree selector in zone details
 - `1.40` - Cross-navigation hostname fix
+
+---
+
+## Website Feed
+
+- Öffentliche Endpoints:
+  - `GET /api/v1/public/products` – alle Produkte mit `website_visible = true` inkl. ausgewählter Bilder/Thumbnail
+  - `GET /api/v1/public/packages` – alle Packages mit `website_visible = true` inkl. Items und Package-Bildern (vom verknüpften Produkt)
+  - `GET /api/v1/public/products/{id}/pictures/{filename}` – Bild-Download für Website
+- Admin:
+  - Im Produkt-Detailmodal: Toggle „Auf Website anzeigen“, Bilder auswählen, Thumbnail setzen
+  - Bei Packages: Flag `website_visible` setzen (Bilder/Thumb aus dem verknüpften Produkt)
+
+---
 - `1.35` - Frontend with LED control button
 - `1.34` - Red/green bin highlighting + MQTT topic fix
 - `1.33` - Solid green LED pattern for job bins

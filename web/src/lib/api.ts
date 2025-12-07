@@ -658,3 +658,8 @@ export const productPicturesApi = {
   delete: (productId: number, fileName: string) =>
     api.delete(`/admin/products/${productId}/pictures/${encodeURIComponent(fileName)}`),
 };
+
+export const productWebsiteApi = {
+  update: (productId: number, payload: { website_visible: boolean; website_images: string[]; website_thumbnail?: string | null }) =>
+    api.put(`/admin/products/${productId}/website`, payload),
+};

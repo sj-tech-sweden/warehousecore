@@ -10,6 +10,7 @@ type ProductPackage struct {
 	Name        string      `json:"name" db:"name"`
 	Description JSONString  `json:"description" db:"description"`
 	Price       JSONFloat64 `json:"price" db:"price"`
+	WebsiteVisible bool     `json:"website_visible" db:"website_visible"`
 	CreatedAt   time.Time   `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at" db:"updated_at"`
 }

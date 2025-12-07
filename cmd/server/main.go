@@ -145,6 +145,10 @@ func main() {
 
 	// Health check (public)
 	api.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
+	// Public website feeds
+	api.HandleFunc("/public/products", handlers.GetWebsiteProducts).Methods("GET")
+	api.HandleFunc("/public/packages", handlers.GetWebsitePackages).Methods("GET")
+	api.HandleFunc("/public/products/{id}/pictures/{filename}", handlers.DownloadProductPicture).Methods("GET")
 
 	// Protected routes - apply auth middleware
 	protected := api.PathPrefix("").Subrouter()
@@ -301,6 +305,7 @@ func main() {
 	admin.HandleFunc("/products", handlers.CreateProduct).Methods("POST")
 	admin.HandleFunc("/products/{id}", handlers.UpdateProduct).Methods("PUT")
 	admin.HandleFunc("/products/{id}", handlers.DeleteProduct).Methods("DELETE")
+	admin.HandleFunc("/products/{id}/website", handlers.UpdateProductWebsite).Methods("PUT")
 	admin.HandleFunc("/products/{id}/pictures", handlers.UploadProductPictures).Methods("POST")
 	admin.HandleFunc("/products/{id}/pictures/{filename}", handlers.DeleteProductPicture).Methods("DELETE")
 	admin.HandleFunc("/products/{id}/devices", handlers.GetProductDevices).Methods("GET")

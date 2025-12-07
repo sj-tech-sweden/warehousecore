@@ -37,6 +37,7 @@ func GetProductPackages(w http.ResponseWriter, r *http.Request) {
 			pp.name,
 			pp.description,
 			pp.price,
+			pp.website_visible,
 			pp.created_at,
 			pp.updated_at,
 			COALESCE(SUM(ppi.quantity), 0) as total_items,
@@ -78,6 +79,7 @@ func GetProductPackages(w http.ResponseWriter, r *http.Request) {
 			&pkg.Name,
 			&pkg.Description,
 			&pkg.Price,
+			&pkg.WebsiteVisible,
 			&pkg.CreatedAt,
 			&pkg.UpdatedAt,
 			&pkg.TotalItems,
@@ -121,6 +123,7 @@ func GetProductPackage(w http.ResponseWriter, r *http.Request) {
 			pp.name,
 			pp.description,
 			pp.price,
+			pp.website_visible,
 			pp.created_at,
 			pp.updated_at,
 			p.categoryID,
@@ -137,6 +140,7 @@ func GetProductPackage(w http.ResponseWriter, r *http.Request) {
 		&pkg.Name,
 		&pkg.Description,
 		&pkg.Price,
+		&pkg.WebsiteVisible,
 		&pkg.CreatedAt,
 		&pkg.UpdatedAt,
 		&pkg.CategoryID,
@@ -211,14 +215,15 @@ func GetProductPackage(w http.ResponseWriter, r *http.Request) {
 // CreateProductPackage creates a new product package
 func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name            string                      `json:"name"`
-		Description     *string                     `json:"description"`
-		Price           *float64                    `json:"price"`
-		Items           []models.ProductPackageItem `json:"items"`
-		Aliases         []string                    `json:"aliases"`
-		CategoryID      *int                        `json:"category_id"`      // NEW: Product category
-		SubcategoryID   *string                     `json:"subcategory_id"`   // NEW: Product subcategory
-		SubbiercategoryID *string                   `json:"subbiercategory_id"` // NEW: Product sub-subcategory
+		Name              string                      `json:"name"`
+		Description       *string                     `json:"description"`
+		Price             *float64                    `json:"price"`
+		Items             []models.ProductPackageItem `json:"items"`
+		Aliases           []string                    `json:"aliases"`
+		CategoryID        *int                        `json:"category_id"`        // NEW: Product category
+		SubcategoryID     *string                     `json:"subcategory_id"`     // NEW: Product subcategory
+		SubbiercategoryID *string                     `json:"subbiercategory_id"` // NEW: Product sub-subcategory
+		WebsiteVisible    bool                        `json:"website_visible"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -258,9 +263,9 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 
 	// Step 1: Create a Product entry for this package
 	productResult, err := tx.Exec(`
-		INSERT INTO products (name, categoryID, subcategoryID, subbiercategoryID, itemcostperday, description)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID, req.Price, req.Description)
+		INSERT INTO products (name, categoryID, subcategoryID, subbiercategoryID, itemcostperday, description, website_visible)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID, req.Price, req.Description, req.WebsiteVisible)
 
 	if err != nil {
 		log.Printf("Failed to create package product: %v", err)
@@ -273,9 +278,9 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 
 	// Step 2: Create package linked to the product
 	result, err := tx.Exec(`
-		INSERT INTO product_packages (package_code, product_id, name, description, price)
-		VALUES (?, ?, ?, ?, ?)
-	`, packageCode, productID, req.Name, req.Description, req.Price)
+		INSERT INTO product_packages (package_code, product_id, name, description, price, website_visible)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, packageCode, productID, req.Name, req.Description, req.Price, req.WebsiteVisible)
 
 	if err != nil {
 		log.Printf("Failed to create product package: %v", err)
@@ -335,14 +340,15 @@ func UpdateProductPackage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name            string                      `json:"name"`
-		Description     *string                     `json:"description"`
-		Price           *float64                    `json:"price"`
-		Items           []models.ProductPackageItem `json:"items"`
-		Aliases         []string                    `json:"aliases"`
-		CategoryID      *int                        `json:"category_id"`      // NEW: Product category
-		SubcategoryID   *string                     `json:"subcategory_id"`   // NEW: Product subcategory
-		SubbiercategoryID *string                   `json:"subbiercategory_id"` // NEW: Product sub-subcategory
+		Name              string                      `json:"name"`
+		Description       *string                     `json:"description"`
+		Price             *float64                    `json:"price"`
+		Items             []models.ProductPackageItem `json:"items"`
+		Aliases           []string                    `json:"aliases"`
+		CategoryID        *int                        `json:"category_id"`        // NEW: Product category
+		SubcategoryID     *string                     `json:"subcategory_id"`     // NEW: Product subcategory
+		SubbiercategoryID *string                     `json:"subbiercategory_id"` // NEW: Product sub-subcategory
+		WebsiteVisible    bool                        `json:"website_visible"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -385,9 +391,9 @@ func UpdateProductPackage(w http.ResponseWriter, r *http.Request) {
 	// Update the linked product
 	_, err = tx.Exec(`
 		UPDATE products
-		SET name = ?, categoryID = ?, subcategoryID = ?, subbiercategoryID = ?, itemcostperday = ?, description = ?
+		SET name = ?, categoryID = ?, subcategoryID = ?, subbiercategoryID = ?, itemcostperday = ?, description = ?, website_visible = ?
 		WHERE productID = ?
-	`, req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID, req.Price, req.Description, productID)
+	`, req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID, req.Price, req.Description, req.WebsiteVisible, productID)
 
 	if err != nil {
 		log.Printf("Failed to update package product: %v", err)
@@ -398,9 +404,9 @@ func UpdateProductPackage(w http.ResponseWriter, r *http.Request) {
 	// Update package
 	result, err := tx.Exec(`
 		UPDATE product_packages
-		SET name = ?, description = ?, price = ?
+		SET name = ?, description = ?, price = ?, website_visible = ?
 		WHERE package_id = ?
-	`, req.Name, req.Description, req.Price, id)
+	`, req.Name, req.Description, req.Price, req.WebsiteVisible, id)
 
 	if err != nil {
 		log.Printf("Failed to update product package: %v", err)

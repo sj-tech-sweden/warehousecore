@@ -50,6 +50,9 @@ interface Product {
   price_per_unit?: number | null;
   count_type_name?: string | null;
   count_type_abbr?: string | null;
+  website_visible?: boolean;
+  website_thumbnail?: string | null;
+  website_images?: string[];
 }
 
 interface Category {

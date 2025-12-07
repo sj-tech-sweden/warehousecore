@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
@@ -21,6 +22,7 @@ import (
 )
 
 var productPictureService = services.NewProductPictureServiceFromEnv()
+var errPicturesUnavailable = errors.New("product pictures not available")
 
 // Product represents a product (item type)
 type Product struct {
@@ -49,6 +51,10 @@ type Product struct {
 	PricePerUnit        *float64 `json:"price_per_unit"`
 
 	// Joined fields for display
+	WebsiteVisible   bool     `json:"website_visible"`
+	WebsiteImages    []string `json:"website_images,omitempty"`
+	WebsiteThumbnail *string  `json:"website_thumbnail,omitempty"`
+
 	CategoryName        *string `json:"category_name,omitempty"`
 	SubcategoryName     *string `json:"subcategory_name,omitempty"`
 	SubbiercategoryName *string `json:"subbiercategory_name,omitempty"`
@@ -105,6 +111,9 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 			p.min_stock_level,
 			p.generic_barcode,
 			p.price_per_unit,
+			p.website_visible,
+			p.website_thumbnail,
+			p.website_images_json,
 			c.name as category_name,
 			sc.name as subcategory_name,
 			sbc.name as subbiercategory_name,
@@ -153,6 +162,7 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 	var products []Product
 	for rows.Next() {
 		var p Product
+		var rawImages json.RawMessage
 		err := rows.Scan(
 			&p.ProductID,
 			&p.Name,
@@ -177,6 +187,9 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 			&p.MinStockLevel,
 			&p.GenericBarcode,
 			&p.PricePerUnit,
+			&p.WebsiteVisible,
+			&p.WebsiteThumbnail,
+			(*json.RawMessage)(&rawImages),
 			&p.CategoryName,
 			&p.SubcategoryName,
 			&p.SubbiercategoryName,
@@ -188,6 +201,9 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("Failed to scan product: %v", err)
 			continue
+		}
+		if len(rawImages) > 0 {
+			_ = json.Unmarshal(rawImages, &p.WebsiteImages)
 		}
 		products = append(products, p)
 	}
@@ -230,6 +246,9 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 			p.min_stock_level,
 			p.generic_barcode,
 			p.price_per_unit,
+			p.website_visible,
+			p.website_thumbnail,
+			p.website_images_json,
 			c.name as category_name,
 			sc.name as subcategory_name,
 			sbc.name as subbiercategory_name,
@@ -248,6 +267,7 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 	`
 
 	var p Product
+	var rawImages json.RawMessage
 	err = db.QueryRow(query, id).Scan(
 		&p.ProductID,
 		&p.Name,
@@ -272,6 +292,9 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 		&p.MinStockLevel,
 		&p.GenericBarcode,
 		&p.PricePerUnit,
+		&p.WebsiteVisible,
+		&p.WebsiteThumbnail,
+		(*json.RawMessage)(&rawImages),
 		&p.CategoryName,
 		&p.SubcategoryName,
 		&p.SubbiercategoryName,
@@ -288,6 +311,9 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to query product: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product"})
 		return
+	}
+	if len(rawImages) > 0 {
+		_ = json.Unmarshal(rawImages, &p.WebsiteImages)
 	}
 
 	respondJSON(w, http.StatusOK, p)
@@ -542,19 +568,22 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
+	imagesJSON := nullJSONFromSlice(req.WebsiteImages)
 	result, err := db.Exec(`
 		INSERT INTO products (
 			name, categoryID, subcategoryID, subbiercategoryID, manufacturerID, brandID,
 			description, maintenanceInterval, itemcostperday, weight, height, width, depth,
 			powerconsumption, pos_in_category, is_accessory, is_consumable, count_type_id,
-			stock_quantity, min_stock_level, generic_barcode, price_per_unit
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			stock_quantity, min_stock_level, generic_barcode, price_per_unit,
+			website_visible, website_thumbnail, website_images_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID,
 		req.ManufacturerID, req.BrandID, req.Description, req.MaintenanceInterval,
 		req.ItemCostPerDay, req.Weight, req.Height, req.Width, req.Depth,
 		req.PowerConsumption, req.PosInCategory, req.IsAccessory, req.IsConsumable,
 		req.CountTypeID, req.StockQuantity, req.MinStockLevel, req.GenericBarcode, req.PricePerUnit,
+		req.WebsiteVisible, req.WebsiteThumbnail, imagesJSON,
 	)
 
 	if err != nil {
@@ -593,6 +622,19 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 		return
 	}
+	req.WebsiteImages = sanitizeWebsiteImages(req.WebsiteImages)
+	if req.WebsiteThumbnail != nil && strings.TrimSpace(*req.WebsiteThumbnail) == "" {
+		req.WebsiteThumbnail = nil
+	}
+	if filteredImages, filteredThumb, err := filterAllowedImages(id, req.WebsiteImages, req.WebsiteThumbnail); err == nil {
+		req.WebsiteImages = filteredImages
+		req.WebsiteThumbnail = filteredThumb
+	} else if !errors.Is(err, errPicturesUnavailable) {
+		log.Printf("[WEBSITE] Failed to validate images for product %d: %v", id, err)
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to validate product images"})
+		return
+	}
+	imagesJSON := nullJSONFromSlice(req.WebsiteImages)
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -609,7 +651,8 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 			itemcostperday = ?, weight = ?, height = ?, width = ?, depth = ?,
 			powerconsumption = ?, pos_in_category = ?,
 			is_accessory = ?, is_consumable = ?, count_type_id = ?,
-			stock_quantity = ?, min_stock_level = ?, generic_barcode = ?, price_per_unit = ?
+			stock_quantity = ?, min_stock_level = ?, generic_barcode = ?, price_per_unit = ?,
+			website_visible = ?, website_thumbnail = ?, website_images_json = ?
 		WHERE productID = ?
 	`,
 		req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID,
@@ -618,6 +661,7 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		req.PowerConsumption, req.PosInCategory,
 		req.IsAccessory, req.IsConsumable, req.CountTypeID,
 		req.StockQuantity, req.MinStockLevel, req.GenericBarcode, req.PricePerUnit,
+		req.WebsiteVisible, req.WebsiteThumbnail, imagesJSON,
 		id,
 	)
 
@@ -1147,4 +1191,312 @@ func GetLowStockAlerts(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"alerts": alerts,
 	})
+}
+
+// UpdateProductWebsite updates website visibility and selected pictures without touching other product fields.
+func UpdateProductWebsite(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	var payload struct {
+		WebsiteVisible   *bool    `json:"website_visible"`
+		WebsiteImages    []string `json:"website_images"`
+		WebsiteThumbnail *string  `json:"website_thumbnail"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	images := sanitizeWebsiteImages(payload.WebsiteImages)
+	if payload.WebsiteThumbnail != nil && strings.TrimSpace(*payload.WebsiteThumbnail) == "" {
+		payload.WebsiteThumbnail = nil
+	}
+
+	filteredImages, filteredThumb, err := filterAllowedImages(id, images, payload.WebsiteThumbnail)
+	if err != nil && !errors.Is(err, errPicturesUnavailable) {
+		log.Printf("[WEBSITE] Failed to validate images for product %d: %v", id, err)
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to validate product images"})
+		return
+	}
+
+	websiteVisible := false
+	if payload.WebsiteVisible != nil {
+		websiteVisible = *payload.WebsiteVisible
+	} else {
+		if err := repository.GetSQLDB().QueryRow("SELECT website_visible FROM products WHERE productID = ?", id).Scan(&websiteVisible); err != nil {
+			log.Printf("[WEBSITE] Failed to load current website visibility for product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
+			return
+		}
+	}
+
+	db := repository.GetSQLDB()
+	result, err := db.Exec(`
+		UPDATE products
+		SET website_visible = ?, website_thumbnail = ?, website_images_json = ?
+		WHERE productID = ?
+	`, websiteVisible, filteredThumb, nullJSONFromSlice(filteredImages), id)
+	if err != nil {
+		log.Printf("[WEBSITE] Failed to update product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
+		return
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":           "Website settings updated",
+		"website_visible":   websiteVisible,
+		"website_thumbnail": filteredThumb,
+		"website_images":    filteredImages,
+	})
+}
+
+type WebsiteProduct struct {
+	ProductID    int      `json:"product_id"`
+	Name         string   `json:"name"`
+	Description  *string  `json:"description,omitempty"`
+	PricePerUnit *float64 `json:"price_per_unit,omitempty"`
+	Thumbnail    *string  `json:"thumbnail,omitempty"`
+	Images       []string `json:"images"`
+}
+
+// GetWebsiteProducts exposes products for the public website (visible flag + selected pictures).
+func GetWebsiteProducts(w http.ResponseWriter, r *http.Request) {
+	db := repository.GetSQLDB()
+	rows, err := db.Query(`
+		SELECT productID, name, description, price_per_unit, website_thumbnail, website_images_json
+		FROM products
+		WHERE website_visible = 1
+		ORDER BY COALESCE(pos_in_category, 0), name
+	`)
+	if err != nil {
+		log.Printf("[WEBSITE] Failed to load website products: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch products"})
+		return
+	}
+	defer rows.Close()
+
+	var result []WebsiteProduct
+	for rows.Next() {
+		var (
+			p       WebsiteProduct
+			rawImgs json.RawMessage
+		)
+		if err := rows.Scan(&p.ProductID, &p.Name, &p.Description, &p.PricePerUnit, &p.Thumbnail, &rawImgs); err != nil {
+			log.Printf("[WEBSITE] Failed to scan product: %v", err)
+			continue
+		}
+		if len(rawImgs) > 0 {
+			_ = json.Unmarshal(rawImgs, &p.Images)
+		}
+		p.Images = sanitizeWebsiteImages(p.Images)
+		if len(p.Images) == 0 && p.Thumbnail != nil {
+			p.Images = []string{*p.Thumbnail}
+		}
+		p.Images = buildPublicImageURLs(p.ProductID, p.Images)
+		if p.Thumbnail != nil {
+			thumb := buildPublicImageURLs(p.ProductID, []string{*p.Thumbnail})
+			if len(thumb) > 0 {
+				p.Thumbnail = &thumb[0]
+			} else {
+				p.Thumbnail = nil
+			}
+		}
+		result = append(result, p)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"products": result})
+}
+
+// GetWebsitePackages exposes product packages for the public website.
+func GetWebsitePackages(w http.ResponseWriter, r *http.Request) {
+	db := repository.GetSQLDB()
+
+	rows, err := db.Query(`
+		SELECT
+			pp.package_id,
+			pp.package_code,
+			pp.name,
+			pp.description,
+			pp.price,
+			pp.website_visible,
+			p.productID,
+			p.website_thumbnail,
+			p.website_images_json
+		FROM product_packages pp
+		LEFT JOIN products p ON pp.product_id = p.productID
+		WHERE pp.website_visible = 1
+		ORDER BY pp.name
+	`)
+	if err != nil {
+		log.Printf("[WEBSITE] Failed to load website packages: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch packages"})
+		return
+	}
+	defer rows.Close()
+
+	type PackageItem struct {
+		ProductID int    `json:"product_id"`
+		Name      string `json:"name"`
+		Quantity  int    `json:"quantity"`
+	}
+	type WebsitePackage struct {
+		PackageID   int           `json:"package_id"`
+		PackageCode string        `json:"package_code"`
+		Name        string        `json:"name"`
+		Description *string       `json:"description,omitempty"`
+		Price       *float64      `json:"price,omitempty"`
+		Thumbnail   *string       `json:"thumbnail,omitempty"`
+		Images      []string      `json:"images"`
+		Items       []PackageItem `json:"items"`
+	}
+
+	var result []WebsitePackage
+
+	for rows.Next() {
+		var (
+			pkg     WebsitePackage
+			prodID  sql.NullInt64
+			rawImgs json.RawMessage
+		)
+		var websiteVisible bool
+		if err := rows.Scan(&pkg.PackageID, &pkg.PackageCode, &pkg.Name, &pkg.Description, &pkg.Price, &websiteVisible, &prodID, &pkg.Thumbnail, &rawImgs); err != nil {
+			log.Printf("[WEBSITE] Failed to scan package: %v", err)
+			continue
+		}
+		if len(rawImgs) > 0 {
+			_ = json.Unmarshal(rawImgs, &pkg.Images)
+		}
+		pkg.Images = sanitizeWebsiteImages(pkg.Images)
+		if prodID.Valid {
+			if len(pkg.Images) > 0 {
+				pkg.Images = buildPublicImageURLs(int(prodID.Int64), pkg.Images)
+			}
+			if pkg.Thumbnail != nil {
+				thumb := buildPublicImageURLs(int(prodID.Int64), []string{*pkg.Thumbnail})
+				if len(thumb) > 0 {
+					pkg.Thumbnail = &thumb[0]
+				} else {
+					pkg.Thumbnail = nil
+				}
+			}
+		}
+
+		items, err := loadPackageItems(db, pkg.PackageID)
+		if err != nil {
+			log.Printf("[WEBSITE] Failed to load items for package %d: %v", pkg.PackageID, err)
+		} else {
+			for _, it := range items {
+				pkg.Items = append(pkg.Items, PackageItem{
+					ProductID: it.ProductID,
+					Name:      it.Name,
+					Quantity:  it.Quantity,
+				})
+			}
+		}
+		result = append(result, pkg)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"packages": result})
+}
+
+type packageItemRow struct {
+	ProductID int
+	Quantity  int
+	Name      string
+}
+
+func loadPackageItems(db *sql.DB, packageID int) ([]packageItemRow, error) {
+	rows, err := db.Query(`
+		SELECT ppi.product_id, ppi.quantity, p.name
+		FROM product_package_items ppi
+		JOIN products p ON p.productID = ppi.product_id
+		WHERE ppi.package_id = ?
+	`, packageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []packageItemRow
+	for rows.Next() {
+		var row packageItemRow
+		if err := rows.Scan(&row.ProductID, &row.Quantity, &row.Name); err != nil {
+			continue
+		}
+		items = append(items, row)
+	}
+	return items, nil
+}
+
+func sanitizeWebsiteImages(images []string) []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(images))
+	for _, img := range images {
+		img = strings.TrimSpace(img)
+		if img == "" || seen[img] {
+			continue
+		}
+		seen[img] = true
+		out = append(out, img)
+	}
+	return out
+}
+
+func nullJSONFromSlice(slice []string) interface{} {
+	if len(slice) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(slice)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+func filterAllowedImages(productID int, images []string, thumb *string) ([]string, *string, error) {
+	if !productPictureService.Enabled() {
+		return images, thumb, errPicturesUnavailable
+	}
+
+	name, err := getProductName(productID)
+	if err != nil {
+		return nil, thumb, err
+	}
+
+	pics, err := productPictureService.ListPictures(name)
+	if err != nil {
+		return nil, thumb, err
+	}
+	allowed := make(map[string]bool, len(pics))
+	for _, p := range pics {
+		allowed[p.FileName] = true
+	}
+
+	filtered := make([]string, 0, len(images))
+	for _, img := range images {
+		if allowed[img] {
+			filtered = append(filtered, img)
+		}
+	}
+	if thumb != nil && !allowed[*thumb] {
+		thumb = nil
+	}
+	return filtered, thumb, nil
+}
+
+func buildPublicImageURLs(productID int, files []string) []string {
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		out = append(out, fmt.Sprintf("/api/v1/public/products/%d/pictures/%s", productID, url.PathEscape(f)))
+	}
+	return out
 }
