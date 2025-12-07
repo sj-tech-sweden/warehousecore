@@ -23,6 +23,7 @@ import (
 
 var productPictureService = services.NewProductPictureServiceFromEnv()
 var errPicturesUnavailable = errors.New("product pictures not available")
+var websiteRevalidator = services.NewRevalidatorFromEnv()
 
 // Product represents a product (item type)
 type Product struct {
@@ -770,6 +771,8 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	if packageID.Valid {
 		message = "Package product updated successfully"
 	}
+
+	websiteRevalidator.Revalidate("/products")
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": message})
 }
