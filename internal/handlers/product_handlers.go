@@ -1258,8 +1258,17 @@ func UpdateProductWebsite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
-		return
+		var exists bool
+		if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE productID = ?)", id).Scan(&exists); err != nil {
+			log.Printf("[WEBSITE] Failed to verify product %d after website update: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
+			return
+		}
+		if !exists {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+			return
+		}
+		// Values unchanged, treat as success.
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
