@@ -192,7 +192,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     setWebsiteMessage(null);
   };
 
-  const handleSaveWebsite = async () => {
+  const persistWebsiteSettings = async (overrideVisible?: boolean) => {
     if (!product) return;
     setSavingWebsite(true);
     setWebsiteMessage(null);
@@ -200,7 +200,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     const images = Array.from(selectedImages);
     try {
       await productWebsiteApi.update(product.product_id, {
-        website_visible: websiteVisible,
+        website_visible: overrideVisible ?? websiteVisible,
         website_images: images,
         website_thumbnail: websiteThumbnail ?? undefined,
       });
@@ -211,6 +211,10 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     } finally {
       setSavingWebsite(false);
     }
+  };
+
+  const handleSaveWebsite = async () => {
+    await persistWebsiteSettings();
   };
 
   useEffect(() => {
@@ -342,7 +346,11 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     type="checkbox"
                     className="h-4 w-4 rounded border-gray-600 text-accent-red focus:ring-accent-red"
                     checked={websiteVisible}
-                    onChange={e => setWebsiteVisible(e.target.checked)}
+                    onChange={e => {
+                      const next = e.target.checked;
+                      setWebsiteVisible(next);
+                      void persistWebsiteSettings(next);
+                    }}
                   />
                   Auf Website anzeigen
                 </label>
