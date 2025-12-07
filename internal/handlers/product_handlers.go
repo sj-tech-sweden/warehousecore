@@ -530,8 +530,9 @@ func DownloadProductPicture(w http.ResponseWriter, r *http.Request) {
 	}
 
 	variant := strings.TrimSpace(r.URL.Query().Get("variant"))
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
 
-	reader, contentType, err := productPictureService.DownloadPictureWithVariant(productName, filename, variant)
+	reader, contentType, err := productPictureService.DownloadPictureWithVariant(productName, filename, variant, format)
 	if err != nil {
 		log.Printf("[PICTURES] Download failed for product %d (%s): %v", id, filename, err)
 		status := http.StatusNotFound
@@ -1280,6 +1281,17 @@ func UpdateProductWebsite(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger ISR revalidation for product listing
 	websiteRevalidator.Revalidate("/products")
+
+	// If this product is a package-product, keep package visibility in sync
+	var pkgID sql.NullInt64
+	if err := db.QueryRow("SELECT package_id FROM product_packages WHERE product_id = ?", id).Scan(&pkgID); err == nil && pkgID.Valid {
+		if _, err := db.Exec("UPDATE product_packages SET website_visible = ? WHERE package_id = ?", websiteVisible, pkgID.Int64); err != nil {
+			log.Printf("[WEBSITE] Failed to sync package visibility for product %d (package %d): %v", id, pkgID.Int64, err)
+		} else {
+			// Also revalidate packages page
+			websiteRevalidator.Revalidate("/products")
+		}
+	}
 }
 
 type WebsiteProduct struct {
@@ -1298,6 +1310,7 @@ func GetWebsiteProducts(w http.ResponseWriter, r *http.Request) {
 		SELECT productID, name, description, price_per_unit, website_thumbnail, website_images_json
 		FROM products
 		WHERE website_visible = 1
+		  AND productID NOT IN (SELECT COALESCE(product_id, 0) FROM product_packages)
 		ORDER BY COALESCE(pos_in_category, 0), name
 	`)
 	if err != nil {
@@ -1356,7 +1369,7 @@ func GetWebsitePackages(w http.ResponseWriter, r *http.Request) {
 			p.website_images_json
 		FROM product_packages pp
 		LEFT JOIN products p ON pp.product_id = p.productID
-		WHERE pp.website_visible = 1
+		WHERE COALESCE(pp.website_visible, 0) = 1 OR COALESCE(p.website_visible, 0) = 1
 		ORDER BY pp.name
 	`)
 	if err != nil {
@@ -1520,7 +1533,8 @@ func filterAllowedImages(productID int, images []string, thumb *string) ([]strin
 func buildPublicImageURLs(productID int, files []string) []string {
 	out := make([]string, 0, len(files))
 	for _, f := range files {
-		out = append(out, fmt.Sprintf("/api/v1/public/products/%d/pictures/%s", productID, url.PathEscape(f)))
+		// Use preview variant with WebP format for optimal web performance (25-35% smaller than JPEG)
+		out = append(out, fmt.Sprintf("/api/v1/public/products/%d/pictures/%s?variant=preview&format=webp", productID, url.PathEscape(f)))
 	}
 	return out
 }

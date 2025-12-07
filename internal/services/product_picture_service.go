@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chai2010/webp"
 	"github.com/disintegration/imaging"
 
 	"warehousecore/internal/services/storage"
@@ -186,8 +187,9 @@ func (s *ProductPictureService) DownloadPicture(productName, fileName string) (i
 }
 
 // DownloadPictureWithVariant returns the requested variant (thumb/preview) or the original image.
-// Variants are cached as compressed JPEGs on disk for faster subsequent loads.
-func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName, variant string) (io.ReadCloser, string, error) {
+// Variants are cached as compressed WebP or JPEG on disk for faster subsequent loads.
+// format can be "webp", "jpeg", or "" (defaults to webp for better compression).
+func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName, variant, format string) (io.ReadCloser, string, error) {
 	if variant == "" {
 		return s.DownloadPicture(productName, fileName)
 	}
@@ -205,13 +207,32 @@ func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName
 		return s.DownloadPicture(productName, fileName)
 	}
 
-	safeFile := sanitizeFileName(fileName)
-	cachePath := filepath.Join(s.cacheDir, variant, sanitizeFolderName(productName), safeFile+".jpg")
-	if cached, err := os.Open(cachePath); err == nil {
-		return cached, "image/jpeg", nil
+	// Default format is webp for better compression
+	if format == "" {
+		format = "webp"
+	}
+	format = strings.ToLower(format)
+
+	var fileExt, contentType string
+	switch format {
+	case "webp":
+		fileExt = ".webp"
+		contentType = "image/webp"
+	case "jpeg", "jpg":
+		fileExt = ".jpg"
+		contentType = "image/jpeg"
+	default:
+		fileExt = ".webp"
+		contentType = "image/webp"
 	}
 
-	orig, contentType, err := s.DownloadPicture(productName, safeFile)
+	safeFile := sanitizeFileName(fileName)
+	cachePath := filepath.Join(s.cacheDir, variant, sanitizeFolderName(productName), safeFile+fileExt)
+	if cached, err := os.Open(cachePath); err == nil {
+		return cached, contentType, nil
+	}
+
+	orig, origContentType, err := s.DownloadPicture(productName, safeFile)
 	if err != nil {
 		return nil, "", err
 	}
@@ -225,35 +246,64 @@ func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName
 	img, err := imaging.Decode(bytes.NewReader(origBytes), imaging.AutoOrientation(true))
 	if err != nil {
 		// If we cannot decode (e.g. HEIC unsupported), return original stream.
-		return io.NopCloser(bytes.NewReader(origBytes)), contentType, nil
+		return io.NopCloser(bytes.NewReader(origBytes)), origContentType, nil
 	}
 
 	resized := imaging.Fit(img, maxDim, maxDim, imaging.Lanczos)
 	buf := bytes.Buffer{}
-	if err := imaging.Encode(&buf, resized, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
-		return io.NopCloser(bytes.NewReader(origBytes)), contentType, nil
+
+	// Encode based on requested format
+	switch format {
+	case "webp":
+		// WebP encoding with quality 85 (25-35% smaller than JPEG)
+		if err := webp.Encode(&buf, resized, &webp.Options{Quality: 85}); err != nil {
+			// Fallback to JPEG if WebP encoding fails
+			if err := imaging.Encode(&buf, resized, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
+				return io.NopCloser(bytes.NewReader(origBytes)), origContentType, nil
+			}
+			fileExt = ".jpg"
+			contentType = "image/jpeg"
+		}
+	case "jpeg", "jpg":
+		if err := imaging.Encode(&buf, resized, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
+			return io.NopCloser(bytes.NewReader(origBytes)), origContentType, nil
+		}
 	}
 
+	cachePath = filepath.Join(s.cacheDir, variant, sanitizeFolderName(productName), safeFile+fileExt)
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err == nil {
 		_ = os.WriteFile(cachePath, buf.Bytes(), 0o644)
 	}
 
-	return io.NopCloser(bytes.NewReader(buf.Bytes())), "image/jpeg", nil
+	return io.NopCloser(bytes.NewReader(buf.Bytes())), contentType, nil
 }
 
 // WarmPictureVariants generates cached variants in the background to improve perceived speed.
+// Uses WebP format by default for optimal compression.
 func (s *ProductPictureService) WarmPictureVariants(productName, fileName string) {
 	if s == nil || !s.Enabled() {
 		return
 	}
 	go func() {
-		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "thumb"); err != nil {
-			log.Printf("[PICTURES] Warm thumb failed for %s: %v", fileName, err)
+		// Warm up WebP variants (default format)
+		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "thumb", "webp"); err != nil {
+			log.Printf("[PICTURES] Warm thumb (webp) failed for %s: %v", fileName, err)
 		} else if r != nil {
 			r.Close()
 		}
-		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "preview"); err != nil {
-			log.Printf("[PICTURES] Warm preview failed for %s: %v", fileName, err)
+		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "preview", "webp"); err != nil {
+			log.Printf("[PICTURES] Warm preview (webp) failed for %s: %v", fileName, err)
+		} else if r != nil {
+			r.Close()
+		}
+		// Also warm up JPEG variants as fallback for old browsers
+		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "thumb", "jpeg"); err != nil {
+			log.Printf("[PICTURES] Warm thumb (jpeg) failed for %s: %v", fileName, err)
+		} else if r != nil {
+			r.Close()
+		}
+		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "preview", "jpeg"); err != nil {
+			log.Printf("[PICTURES] Warm preview (jpeg) failed for %s: %v", fileName, err)
 		} else if r != nil {
 			r.Close()
 		}
