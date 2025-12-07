@@ -120,6 +120,24 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
+    const now = new Date().toISOString();
+    const tempPreviews: ProductPicture[] = Array.from(files as ArrayLike<File>).map(file => {
+      const url = URL.createObjectURL(file);
+      return {
+        file_name: file.name,
+        size: file.size,
+        content_type: file.type || 'image/*',
+        modified_at: now,
+        download_url: url,
+        thumbnail_url: url,
+        preview_url: url,
+        temporary: true,
+      };
+    });
+    if (tempPreviews.length > 0) {
+      setPictures(prev => [...tempPreviews, ...prev]);
+    }
+
     setUploadingPictures(true);
     setPictureError(null);
     try {
@@ -128,7 +146,13 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     } catch (error) {
       console.error('Failed to upload product pictures', error);
       setPictureError('Upload fehlgeschlagen. Bitte erneut versuchen.');
+      setPictures(prev => prev.filter(pic => !pic.temporary));
     } finally {
+      tempPreviews.forEach(pic => {
+        if (pic.download_url.startsWith('blob:')) {
+          URL.revokeObjectURL(pic.download_url);
+        }
+      });
       setUploadingPictures(false);
       event.target.value = '';
     }
@@ -273,12 +297,12 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                   {pictures.map((picture, index) => (
                     <div
-                      key={picture.download_url}
+                      key={picture.file_name}
                       className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/5 cursor-zoom-in"
                       onClick={() => setPreviewIndex(index)}
                     >
                       <img
-                        src={picture.download_url}
+                        src={picture.thumbnail_url || picture.preview_url || picture.download_url}
                         alt={`${product.name} Bild`}
                         className="h-36 w-full object-cover transition duration-300 group-hover:scale-105"
                         loading="lazy"
@@ -330,7 +354,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     {pictures.map(pic => (
                       <div key={pic.file_name} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-2 min-w-0">
                         <img
-                          src={pic.download_url}
+                          src={pic.thumbnail_url || pic.preview_url || pic.download_url}
                           alt=""
                           className="h-16 w-16 rounded object-cover flex-shrink-0"
                           loading="lazy"

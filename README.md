@@ -138,6 +138,7 @@ Cross-Links Navbar:
 - Speicherung im gemeinsamen Nextcloud-Dateipool von RentalCore (`NEXTCLOUD_WEBDAV_*` in `.env` setzen)
 - Pfadstruktur wird automatisch erstellt: `<BASE_PATH>/warehousecore/pictures/<Productname>/<Datei>`
 - Unterstützte Typen: JPG, PNG, GIF, WEBP, HEIC bis 10 MB je Datei
+- Optionaler JPEG-Thumbnail-Cache (`PICTURE_CACHE_DIR`, Default `/tmp/warehousecore/pictures_cache`) beschleunigt Admin-Ansicht; Lightbox nutzt weiter das Original.
 - Website-Feed: Produkte lassen sich mit „Auf Website anzeigen“ markieren; Bildauswahl + Thumbnail im Produkt-Detailmodal. Öffentlicher Feed liefert nur freigegebene Produkte/Bilder.
 
 Screens (Beschreibung):
@@ -1048,8 +1049,8 @@ This ensures that every Docker build includes the latest frontend changes.
 # Check latest version on Docker Hub first
 docker images nobentie/warehousecore
 
-# Build with incremented version (example: 1.56)
-docker build -t nobentie/warehousecore:1.56 .
+# Build with incremented version (example: 3.35)
+docker build -t nobentie/warehousecore:3.35 .
 
 # Tag as latest
 docker tag nobentie/warehousecore:1.56 nobentie/warehousecore:latest
@@ -1061,7 +1062,7 @@ docker tag nobentie/warehousecore:1.56 nobentie/warehousecore:latest
 **Push to Docker Hub:**
 ```bash
 # Push version tag
-docker push nobentie/warehousecore:2.62
+docker push nobentie/warehousecore:3.35
 
 # Push latest tag
 docker push nobentie/warehousecore:latest
@@ -1083,9 +1084,10 @@ docker pull nobentie/warehousecore:latest
 # (DO NOT use docker-compose restart manually)
 ```
 
-**Current Version:** 2.71
+**Current Version:** 3.35
 
 **Recent Changes:**
+- 3.35: Produktbilder laden deutlich schneller dank gecachter JPEG-Thumbnails + Admin-UI nutzt die kleinen Varianten
 - 2.71: Gerätebaum als zusätzliche Ansicht direkt in „Produkte“ (View-Toggle)
 - 2.70: Sidebar navigation order aligned with RentalCore (Dashboard, Scan, Produktmanagement, Cases, Lagerbereiche, Aufträge, Admin)
 - 2.69: Full device management in product edit modal - add/remove devices, view device list with status

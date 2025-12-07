@@ -366,6 +366,8 @@ func GetProductPictures(w http.ResponseWriter, r *http.Request) {
 		ContentType string    `json:"content_type"`
 		ModifiedAt  time.Time `json:"modified_at"`
 		DownloadURL string    `json:"download_url"`
+		Thumbnail   string    `json:"thumbnail_url"`
+		PreviewURL  string    `json:"preview_url"`
 	}
 
 	resp := make([]pictureResponse, 0, len(items))
@@ -376,6 +378,8 @@ func GetProductPictures(w http.ResponseWriter, r *http.Request) {
 			ContentType: pic.ContentType,
 			ModifiedAt:  pic.ModifiedAt,
 			DownloadURL: fmt.Sprintf("/api/v1/admin/products/%d/pictures/%s", id, url.PathEscape(pic.FileName)),
+			Thumbnail:   fmt.Sprintf("/api/v1/admin/products/%d/pictures/%s?variant=thumb", id, url.PathEscape(pic.FileName)),
+			PreviewURL:  fmt.Sprintf("/api/v1/admin/products/%d/pictures/%s?variant=preview", id, url.PathEscape(pic.FileName)),
 		})
 	}
 
@@ -419,6 +423,7 @@ func DeleteProductPicture(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete picture"})
 		return
 	}
+	productPictureService.ClearCachedVariants(productName, filename)
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Picture deleted"})
 }
@@ -482,6 +487,7 @@ func UploadProductPictures(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		uploaded = append(uploaded, stored)
+		productPictureService.WarmPictureVariants(productName, stored)
 	}
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
@@ -523,7 +529,9 @@ func DownloadProductPicture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reader, contentType, err := productPictureService.DownloadPicture(productName, filename)
+	variant := strings.TrimSpace(r.URL.Query().Get("variant"))
+
+	reader, contentType, err := productPictureService.DownloadPictureWithVariant(productName, filename, variant)
 	if err != nil {
 		log.Printf("[PICTURES] Download failed for product %d (%s): %v", id, filename, err)
 		status := http.StatusNotFound

@@ -660,6 +660,9 @@ export interface ProductPicture {
   content_type: string;
   modified_at: string;
   download_url: string;
+  thumbnail_url?: string;
+  preview_url?: string;
+  temporary?: boolean;
 }
 
 export const productPicturesApi = {

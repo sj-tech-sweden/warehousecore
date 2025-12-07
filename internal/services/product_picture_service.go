@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/disintegration/imaging"
+
 	"warehousecore/internal/services/storage"
 )
 
@@ -23,6 +25,7 @@ type ProductPictureService struct {
 	maxFileSize  int64
 	allowedTypes map[string]bool
 	rootFolder   string
+	cacheDir     string
 }
 
 type ProductPictureInfo struct {
@@ -38,6 +41,10 @@ func NewProductPictureServiceFromEnv() *ProductPictureService {
 	ncUser := trimAndUnquote(os.Getenv("NEXTCLOUD_WEBDAV_USER"))
 	ncPass := trimAndUnquote(os.Getenv("NEXTCLOUD_WEBDAV_PASSWORD"))
 	ncBase := trimAndUnquote(os.Getenv("NEXTCLOUD_WEBDAV_BASE_PATH"))
+	cacheDir := trimAndUnquote(os.Getenv("PICTURE_CACHE_DIR"))
+	if cacheDir == "" {
+		cacheDir = filepath.Join(os.TempDir(), "warehousecore", "pictures_cache")
+	}
 
 	service := &ProductPictureService{
 		enabled:     false,
@@ -51,6 +58,7 @@ func NewProductPictureServiceFromEnv() *ProductPictureService {
 			"image/heic": true,
 		},
 		rootFolder: path.Join("warehousecore", "pictures"),
+		cacheDir:   cacheDir,
 	}
 
 	if ncURL == "" || ncUser == "" || ncPass == "" {
@@ -175,6 +183,93 @@ func (s *ProductPictureService) DownloadPicture(productName, fileName string) (i
 		return nil, "", err
 	}
 	return body, ct, nil
+}
+
+// DownloadPictureWithVariant returns the requested variant (thumb/preview) or the original image.
+// Variants are cached as compressed JPEGs on disk for faster subsequent loads.
+func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName, variant string) (io.ReadCloser, string, error) {
+	if variant == "" {
+		return s.DownloadPicture(productName, fileName)
+	}
+	maxDim := 0
+	switch strings.ToLower(variant) {
+	case "thumb", "thumbnail":
+		maxDim = 480
+	case "preview", "medium":
+		maxDim = 1200
+	default:
+		return s.DownloadPicture(productName, fileName)
+	}
+
+	if maxDim == 0 {
+		return s.DownloadPicture(productName, fileName)
+	}
+
+	safeFile := sanitizeFileName(fileName)
+	cachePath := filepath.Join(s.cacheDir, variant, sanitizeFolderName(productName), safeFile+".jpg")
+	if cached, err := os.Open(cachePath); err == nil {
+		return cached, "image/jpeg", nil
+	}
+
+	orig, contentType, err := s.DownloadPicture(productName, safeFile)
+	if err != nil {
+		return nil, "", err
+	}
+	defer orig.Close()
+
+	origBytes, err := io.ReadAll(orig)
+	if err != nil {
+		return nil, "", err
+	}
+
+	img, err := imaging.Decode(bytes.NewReader(origBytes), imaging.AutoOrientation(true))
+	if err != nil {
+		// If we cannot decode (e.g. HEIC unsupported), return original stream.
+		return io.NopCloser(bytes.NewReader(origBytes)), contentType, nil
+	}
+
+	resized := imaging.Fit(img, maxDim, maxDim, imaging.Lanczos)
+	buf := bytes.Buffer{}
+	if err := imaging.Encode(&buf, resized, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
+		return io.NopCloser(bytes.NewReader(origBytes)), contentType, nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err == nil {
+		_ = os.WriteFile(cachePath, buf.Bytes(), 0o644)
+	}
+
+	return io.NopCloser(bytes.NewReader(buf.Bytes())), "image/jpeg", nil
+}
+
+// WarmPictureVariants generates cached variants in the background to improve perceived speed.
+func (s *ProductPictureService) WarmPictureVariants(productName, fileName string) {
+	if s == nil || !s.Enabled() {
+		return
+	}
+	go func() {
+		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "thumb"); err != nil {
+			log.Printf("[PICTURES] Warm thumb failed for %s: %v", fileName, err)
+		} else if r != nil {
+			r.Close()
+		}
+		if r, _, err := s.DownloadPictureWithVariant(productName, fileName, "preview"); err != nil {
+			log.Printf("[PICTURES] Warm preview failed for %s: %v", fileName, err)
+		} else if r != nil {
+			r.Close()
+		}
+	}()
+}
+
+// ClearCachedVariants removes cached thumbnails/previews for a given file.
+func (s *ProductPictureService) ClearCachedVariants(productName, fileName string) {
+	if s == nil || s.cacheDir == "" {
+		return
+	}
+	variants := []string{"thumb", "preview"}
+	for _, variant := range variants {
+		cachePath := filepath.Join(s.cacheDir, variant, sanitizeFolderName(productName), sanitizeFileName(fileName)+".jpg")
+		_ = os.Remove(cachePath)
+	}
 }
 
 // DeletePicture removes a specific picture from Nextcloud.
