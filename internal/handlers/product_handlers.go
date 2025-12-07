@@ -1277,6 +1277,9 @@ func UpdateProductWebsite(w http.ResponseWriter, r *http.Request) {
 		"website_thumbnail": filteredThumb,
 		"website_images":    filteredImages,
 	})
+
+	// Trigger ISR revalidation for product listing
+	websiteRevalidator.Revalidate("/products")
 }
 
 type WebsiteProduct struct {
