@@ -163,7 +163,7 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 	var products []Product
 	for rows.Next() {
 		var p Product
-		var rawImages json.RawMessage
+		var rawImages sql.NullString
 		err := rows.Scan(
 			&p.ProductID,
 			&p.Name,
@@ -190,7 +190,7 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 			&p.PricePerUnit,
 			&p.WebsiteVisible,
 			&p.WebsiteThumbnail,
-			(*json.RawMessage)(&rawImages),
+			&rawImages,
 			&p.CategoryName,
 			&p.SubcategoryName,
 			&p.SubbiercategoryName,
@@ -203,8 +203,8 @@ func GetProducts(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to scan product: %v", err)
 			continue
 		}
-		if len(rawImages) > 0 {
-			_ = json.Unmarshal(rawImages, &p.WebsiteImages)
+		if rawImages.Valid && rawImages.String != "" {
+			_ = json.Unmarshal([]byte(rawImages.String), &p.WebsiteImages)
 		}
 		products = append(products, p)
 	}
@@ -268,7 +268,7 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 	`
 
 	var p Product
-	var rawImages json.RawMessage
+	var rawImages sql.NullString
 	err = db.QueryRow(query, id).Scan(
 		&p.ProductID,
 		&p.Name,
@@ -295,7 +295,7 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 		&p.PricePerUnit,
 		&p.WebsiteVisible,
 		&p.WebsiteThumbnail,
-		(*json.RawMessage)(&rawImages),
+		&rawImages,
 		&p.CategoryName,
 		&p.SubcategoryName,
 		&p.SubbiercategoryName,
@@ -313,8 +313,8 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product"})
 		return
 	}
-	if len(rawImages) > 0 {
-		_ = json.Unmarshal(rawImages, &p.WebsiteImages)
+	if rawImages.Valid && rawImages.String != "" {
+		_ = json.Unmarshal([]byte(rawImages.String), &p.WebsiteImages)
 	}
 
 	respondJSON(w, http.StatusOK, p)
