@@ -1297,6 +1297,7 @@ func UpdateProductWebsite(w http.ResponseWriter, r *http.Request) {
 type WebsiteProduct struct {
 	ProductID    int      `json:"product_id"`
 	Name         string   `json:"name"`
+	Brand        *string  `json:"brand,omitempty"`
 	Description  *string  `json:"description,omitempty"`
 	PricePerUnit *float64 `json:"price_per_unit,omitempty"`
 	Thumbnail    *string  `json:"thumbnail,omitempty"`
@@ -1307,11 +1308,12 @@ type WebsiteProduct struct {
 func GetWebsiteProducts(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 	rows, err := db.Query(`
-		SELECT productID, name, description, price_per_unit, website_thumbnail, website_images_json
-		FROM products
-		WHERE website_visible = 1
-		  AND productID NOT IN (SELECT COALESCE(product_id, 0) FROM product_packages)
-		ORDER BY COALESCE(pos_in_category, 0), name
+		SELECT p.productID, p.name, b.name as brand_name, p.description, p.price_per_unit, p.website_thumbnail, p.website_images_json
+		FROM products p
+		LEFT JOIN brands b ON p.brandID = b.brandID
+		WHERE p.website_visible = 1
+		  AND p.productID NOT IN (SELECT COALESCE(product_id, 0) FROM product_packages)
+		ORDER BY COALESCE(p.pos_in_category, 0), p.name
 	`)
 	if err != nil {
 		log.Printf("[WEBSITE] Failed to load website products: %v", err)
@@ -1326,7 +1328,7 @@ func GetWebsiteProducts(w http.ResponseWriter, r *http.Request) {
 			p       WebsiteProduct
 			rawImgs json.RawMessage
 		)
-		if err := rows.Scan(&p.ProductID, &p.Name, &p.Description, &p.PricePerUnit, &p.Thumbnail, &rawImgs); err != nil {
+		if err := rows.Scan(&p.ProductID, &p.Name, &p.Brand, &p.Description, &p.PricePerUnit, &p.Thumbnail, &rawImgs); err != nil {
 			log.Printf("[WEBSITE] Failed to scan product: %v", err)
 			continue
 		}
