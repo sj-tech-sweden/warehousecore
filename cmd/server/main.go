@@ -147,7 +147,7 @@ func main() {
 	api.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
 
 	// Public product pictures (must be accessible without headers for IMG tags)
-	api.HandleFunc("/public/products/{id}/pictures/{filename}", handlers.DownloadProductPicture).Methods("GET")
+	api.HandleFunc("/public/products/{id}/pictures/{filename}", handlers.DownloadProductPicture).Methods("GET", "HEAD")
 
 	// Public website feeds (protected by API key)
 	public := api.PathPrefix("/public").Subrouter()
@@ -263,7 +263,7 @@ func main() {
 	adminRead.HandleFunc("/products", handlers.GetProducts).Methods("GET")
 	adminRead.HandleFunc("/products/{id}", handlers.GetProduct).Methods("GET")
 	adminRead.HandleFunc("/products/{id}/pictures", handlers.GetProductPictures).Methods("GET")
-	adminRead.HandleFunc("/products/{id}/pictures/{filename}", handlers.DownloadProductPicture).Methods("GET")
+	adminRead.HandleFunc("/products/{id}/pictures/{filename}", handlers.DownloadProductPicture).Methods("GET", "HEAD")
 	adminRead.HandleFunc("/product-packages", handlers.GetProductPackages).Methods("GET")
 	adminRead.HandleFunc("/product-packages/{id}", handlers.GetProductPackage).Methods("GET")
 	adminRead.HandleFunc("/rental-equipment", handlers.GetRentalEquipment).Methods("GET")

@@ -25,6 +25,7 @@ interface ProductPackage {
   category_id?: number | null;
   category_name?: string | null;
   subcategory_id?: string | null;
+  website_visible?: boolean;
 }
 
 interface PackageItemDetail {
@@ -61,6 +62,7 @@ interface PackageFormData {
   subbiercategory_id: string;
   device_quantity?: number;
   device_prefix?: string;
+  website_visible: boolean;
 }
 
 interface Device {
@@ -82,6 +84,7 @@ const initialFormData: PackageFormData = {
   subbiercategory_id: '',
   device_quantity: undefined,
   device_prefix: '',
+  website_visible: false,
 };
 
 const ensureArray = <T,>(value: T[] | undefined | null): T[] => (Array.isArray(value) ? value : []);
@@ -280,6 +283,7 @@ export function ProductPackagesTab() {
           subbiercategory_id: '',
           device_quantity: undefined,
           device_prefix: '',
+          website_visible: Boolean(data.website_visible),
         });
         // Load devices for the package's product
         if (data.product_id) {
@@ -338,6 +342,7 @@ export function ProductPackagesTab() {
         category_id: formData.category_id || null,
         subcategory_id: formData.subcategory_id || null,
         subbiercategory_id: formData.subbiercategory_id || null,
+        website_visible: formData.website_visible,
       };
 
       let productId: number | undefined;
@@ -631,6 +636,19 @@ export function ProductPackagesTab() {
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent-red"
                 />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  id="pkg-website-visible"
+                  type="checkbox"
+                  checked={formData.website_visible}
+                  onChange={(e) => setFormData({ ...formData, website_visible: e.target.checked })}
+                  className="h-4 w-4 rounded border-gray-600 text-accent-red focus:ring-accent-red"
+                />
+                <label htmlFor="pkg-website-visible" className="text-sm text-gray-200 select-none">
+                  Paket auf Website anzeigen
+                </label>
               </div>
 
               <div>

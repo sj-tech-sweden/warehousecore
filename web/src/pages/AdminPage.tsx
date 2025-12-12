@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler, KeyRound } from 'lucide-react';
+import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler, KeyRound, Tag } from 'lucide-react';
 import { ZoneTypesTab } from '../components/admin/ZoneTypesTab';
 import { LEDSettingsTab } from '../components/admin/LEDSettingsTab';
 import { RolesTab } from '../components/admin/RolesTab';
@@ -8,8 +8,9 @@ import { CategoriesTab } from '../components/admin/CategoriesTab';
 import { APISettingsTab } from '../components/admin/APISettingsTab';
 import { CountTypesTab } from '../components/admin/CountTypesTab';
 import { APIKeysTab } from '../components/admin/APIKeysTab';
+import { BrandsManufacturersTab } from '../components/admin/BrandsManufacturersTab';
 
-type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'counttypes' | 'roles' | 'apisettings' | 'apikeys';
+type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'brands' | 'counttypes' | 'roles' | 'apisettings' | 'apikeys';
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('zonetypes');
@@ -19,6 +20,7 @@ export function AdminPage() {
     { id: 'led' as TabType, label: 'LED-Verhalten', icon: Lightbulb },
     { id: 'controllers' as TabType, label: 'ESP-Controller', icon: Cpu },
     { id: 'categories' as TabType, label: 'Kategorien', icon: FolderTree },
+    { id: 'brands' as TabType, label: 'Marken & Hersteller', icon: Tag },
     { id: 'counttypes' as TabType, label: 'Mess-Einheiten', icon: Ruler },
     { id: 'roles' as TabType, label: 'Rollen & Benutzer', icon: Users },
     { id: 'apisettings' as TabType, label: 'API-Einstellungen', icon: Database },
@@ -66,6 +68,7 @@ export function AdminPage() {
         {activeTab === 'led' && <LEDSettingsTab />}
         {activeTab === 'controllers' && <LEDControllersTab />}
         {activeTab === 'categories' && <CategoriesTab />}
+        {activeTab === 'brands' && <BrandsManufacturersTab />}
         {activeTab === 'counttypes' && <CountTypesTab />}
         {activeTab === 'roles' && <RolesTab />}
         {activeTab === 'apisettings' && <APISettingsTab />}
