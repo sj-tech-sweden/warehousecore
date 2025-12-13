@@ -26,8 +26,8 @@ func NewRBACService() *RBACService {
 func (s *RBACService) GetUserRoles(userID uint) ([]models.Role, error) {
 	var roles []models.Role
 	err := s.db.Table("roles").
-		Joins("JOIN user_roles ON user_roles.roleID = roles.roleID").
-		Where("user_roles.userID = ?", userID).
+		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
+		Where("user_roles.user_id = ?", userID).
 		Find(&roles).Error
 
 	return roles, err
@@ -37,8 +37,8 @@ func (s *RBACService) GetUserRoles(userID uint) ([]models.Role, error) {
 func (s *RBACService) HasRole(userID uint, roleName string) (bool, error) {
 	var count int64
 	err := s.db.Table("user_roles").
-		Joins("JOIN roles ON roles.roleID = user_roles.roleID").
-		Where("user_roles.userID = ? AND roles.name = ?", userID, roleName).
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ? AND roles.name = ?", userID, roleName).
 		Count(&count).Error
 
 	return count > 0, err
@@ -48,8 +48,8 @@ func (s *RBACService) HasRole(userID uint, roleName string) (bool, error) {
 func (s *RBACService) HasAnyRole(userID uint, roleNames []string) (bool, error) {
 	var count int64
 	err := s.db.Table("user_roles").
-		Joins("JOIN roles ON roles.roleID = user_roles.roleID").
-		Where("user_roles.userID = ? AND roles.name IN ?", userID, roleNames).
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ? AND roles.name IN ?", userID, roleNames).
 		Count(&count).Error
 
 	return count > 0, err
@@ -57,13 +57,13 @@ func (s *RBACService) HasAnyRole(userID uint, roleNames []string) (bool, error) 
 
 // AssignRole assigns a role to a user
 func (s *RBACService) AssignRole(userID uint, roleID int) error {
-	userRole := models.UserRole{UserID: userID, RoleID: roleID, AssignedAt: time.Now().UTC(), IsActive: true}
+	userRole := models.UserRole{UserID: userID, RoleID: roleID, AssignedAt: time.Now().UTC()}
 	return s.db.Create(&userRole).Error
 }
 
 // RemoveRole removes a role from a user
 func (s *RBACService) RemoveRole(userID uint, roleID int) error {
-	return s.db.Where("userID = ? AND roleID = ?", userID, roleID).
+	return s.db.Where("user_id = ? AND role_id = ?", userID, roleID).
 		Delete(&models.UserRole{}).Error
 }
 
@@ -71,13 +71,13 @@ func (s *RBACService) RemoveRole(userID uint, roleID int) error {
 func (s *RBACService) SetUserRoles(userID uint, roleIDs []int) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		// Delete existing roles
-		if err := tx.Where("userID = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
+		if err := tx.Where("user_id = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
 			return err
 		}
 
 		// Insert new roles
 		for _, roleID := range roleIDs {
-			userRole := models.UserRole{UserID: userID, RoleID: roleID, IsActive: true}
+			userRole := models.UserRole{UserID: userID, RoleID: roleID}
 			if err := tx.Create(&userRole).Error; err != nil {
 				return err
 			}

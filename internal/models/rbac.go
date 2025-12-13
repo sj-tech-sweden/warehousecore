@@ -8,10 +8,12 @@ import (
 
 // Role represents a system role for RBAC (uses RentalCore schema)
 type Role struct {
-	ID          int       `json:"id" gorm:"column:roleID;primaryKey"`
+	ID          int       `json:"id" gorm:"column:id;primaryKey"`
 	Name        string    `json:"name" gorm:"column:name;not null"`
 	DisplayName string    `json:"display_name" gorm:"column:display_name"`
 	Description string    `json:"description" gorm:"column:description"`
+	IsSystem    bool      `json:"is_system" gorm:"column:is_system;default:false"`
+	Permissions string    `json:"permissions" gorm:"column:permissions"`
 	CreatedAt   time.Time `json:"created_at" gorm:"column:created_at"`
 	UpdatedAt   time.Time `json:"updated_at" gorm:"column:updated_at"`
 }
@@ -23,10 +25,11 @@ func (Role) TableName() string {
 
 // UserRole represents a user-to-role assignment (RentalCore schema)
 type UserRole struct {
-	UserID     uint      `json:"user_id" gorm:"column:userID;primaryKey"`
-	RoleID     int       `json:"role_id" gorm:"column:roleID;primaryKey"`
+	ID         int       `json:"id" gorm:"column:id;primaryKey;autoIncrement"`
+	UserID     uint      `json:"user_id" gorm:"column:user_id"`
+	RoleID     int       `json:"role_id" gorm:"column:role_id"`
+	AssignedBy *int      `json:"assigned_by" gorm:"column:assigned_by"`
 	AssignedAt time.Time `json:"assigned_at" gorm:"column:assigned_at;autoCreateTime"`
-	IsActive   bool      `json:"is_active" gorm:"column:is_active"`
 
 	// Relationships
 	User User `json:"user,omitempty" gorm:"foreignKey:UserID;references:UserID"`
