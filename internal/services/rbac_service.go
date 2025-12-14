@@ -26,8 +26,8 @@ func NewRBACService() *RBACService {
 func (s *RBACService) GetUserRoles(userID uint) ([]models.Role, error) {
 	var roles []models.Role
 	err := s.db.Table("roles").
-		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = ?", userID).
+		Joins("JOIN user_roles ON user_roles.roleid = roles.roleid").
+		Where("user_roles.userid = ?", userID).
 		Find(&roles).Error
 
 	return roles, err
@@ -37,8 +37,8 @@ func (s *RBACService) GetUserRoles(userID uint) ([]models.Role, error) {
 func (s *RBACService) HasRole(userID uint, roleName string) (bool, error) {
 	var count int64
 	err := s.db.Table("user_roles").
-		Joins("JOIN roles ON roles.id = user_roles.role_id").
-		Where("user_roles.user_id = ? AND roles.name = ?", userID, roleName).
+		Joins("JOIN roles ON roles.roleid = user_roles.roleid").
+		Where("user_roles.userid = ? AND roles.name = ?", userID, roleName).
 		Count(&count).Error
 
 	return count > 0, err
@@ -48,8 +48,8 @@ func (s *RBACService) HasRole(userID uint, roleName string) (bool, error) {
 func (s *RBACService) HasAnyRole(userID uint, roleNames []string) (bool, error) {
 	var count int64
 	err := s.db.Table("user_roles").
-		Joins("JOIN roles ON roles.id = user_roles.role_id").
-		Where("user_roles.user_id = ? AND roles.name IN ?", userID, roleNames).
+		Joins("JOIN roles ON roles.roleid = user_roles.roleid").
+		Where("user_roles.userid = ? AND roles.name IN ?", userID, roleNames).
 		Count(&count).Error
 
 	return count > 0, err
@@ -63,7 +63,7 @@ func (s *RBACService) AssignRole(userID uint, roleID int) error {
 
 // RemoveRole removes a role from a user
 func (s *RBACService) RemoveRole(userID uint, roleID int) error {
-	return s.db.Where("user_id = ? AND role_id = ?", userID, roleID).
+	return s.db.Where("userid = ? AND roleid = ?", userID, roleID).
 		Delete(&models.UserRole{}).Error
 }
 
@@ -71,7 +71,7 @@ func (s *RBACService) RemoveRole(userID uint, roleID int) error {
 func (s *RBACService) SetUserRoles(userID uint, roleIDs []int) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		// Delete existing roles
-		if err := tx.Where("user_id = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
+		if err := tx.Where("userid = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
 			return err
 		}
 

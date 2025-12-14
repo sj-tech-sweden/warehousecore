@@ -4,7 +4,7 @@ import "time"
 
 // User represents a user in the system (shared with RentalCore)
 type User struct {
-	UserID       uint       `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	UserID       uint       `gorm:"column:userid;primaryKey;autoIncrement" json:"id"`
 	Username     string     `gorm:"column:username;unique;not null" json:"username"`
 	Email        string     `gorm:"column:email;unique;not null" json:"email"`
 	PasswordHash string     `gorm:"column:password_hash;not null" json:"-"`
@@ -25,7 +25,7 @@ func (User) TableName() string {
 
 // Session represents a user session (shared with RentalCore)
 type Session struct {
-	SessionID string    `gorm:"column:id;primaryKey" json:"session_id"`
+	SessionID string    `gorm:"column:session_id;primaryKey" json:"session_id"`
 	UserID    uint      `gorm:"column:user_id;not null" json:"user_id"`
 	ExpiresAt time.Time `gorm:"column:expires_at;not null" json:"expires_at"`
 	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
