@@ -255,15 +255,14 @@ func CreateCable(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 
-	query := `INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES (?, ?, ?, ?, ?, ?)`
-	result, err := db.Exec(query, input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, input.Name)
+	var id int64
+	query := `INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING cable_id`
+	err = db.QueryRow(query, input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, input.Name).Scan(&id)
 	if err != nil {
 		log.Printf("Error creating cable: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to create cable: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	id, _ := result.LastInsertId()
 
 	log.Printf("[CABLE CREATE] Created cable ID %d", id)
 

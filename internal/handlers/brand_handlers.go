@@ -90,17 +90,16 @@ func CreateBrand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
-	result, err := db.Exec(
-		"INSERT INTO brands (name, manufacturerID) VALUES (?, ?)",
+	var id int64
+	err = db.QueryRow(
+		"INSERT INTO brands (name, manufacturerID) VALUES ($1, $2) RETURNING brandID",
 		payload.Name,
 		payload.ManufacturerID,
-	)
+	).Scan(&id)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create brand"})
 		return
 	}
-
-	id, _ := result.LastInsertId()
 	brand := Brand{
 		BrandID: int(id),
 		Name:    payload.Name,
@@ -262,17 +261,16 @@ func CreateManufacturer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
-	result, err := db.Exec(
-		"INSERT INTO manufacturer (name, website) VALUES (?, ?)",
+	var id int64
+	err = db.QueryRow(
+		"INSERT INTO manufacturer (name, website) VALUES ($1, $2) RETURNING manufacturerID",
 		payload.Name,
 		payload.Website,
-	)
+	).Scan(&id)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create manufacturer"})
 		return
 	}
-
-	id, _ := result.LastInsertId()
 	manufacturer := Manufacturer{
 		ManufacturerID: int(id),
 		Name:           payload.Name,

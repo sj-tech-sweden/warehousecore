@@ -155,14 +155,14 @@ func (s *ScanService) processIntake(tx *sql.Tx, device *models.Device, zoneID *i
 		Timestamp:  time.Now(),
 	}
 
-	result, err := tx.Exec(`
+	err = tx.QueryRow(`
 		INSERT INTO device_movements (device_id, action, from_job_id, to_zone_id, timestamp)
 		VALUES ($1, $2, $3, $4, $5)
-	`, movement.DeviceID, movement.Action, movement.FromJobID, movement.ToZoneID, movement.Timestamp)
+		RETURNING movement_id
+	`, movement.DeviceID, movement.Action, movement.FromJobID, movement.ToZoneID, movement.Timestamp).Scan(&movement.MovementID)
 	if err != nil {
 		return nil, nil, err
 	}
-	movement.MovementID, _ = result.LastInsertId()
 
 	return &models.ScanResponse{
 		Success:        true,
@@ -214,14 +214,14 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 		Timestamp:  time.Now(),
 	}
 
-	result, err := tx.Exec(`
+	err = tx.QueryRow(`
 		INSERT INTO device_movements (device_id, action, from_zone_id, to_job_id, timestamp)
 		VALUES ($1, $2, $3, $4, $5)
-	`, movement.DeviceID, movement.Action, movement.FromZoneID, movement.ToJobID, movement.Timestamp)
+		RETURNING movement_id
+	`, movement.DeviceID, movement.Action, movement.FromZoneID, movement.ToJobID, movement.Timestamp).Scan(&movement.MovementID)
 	if err != nil {
 		return nil, nil, err
 	}
-	movement.MovementID, _ = result.LastInsertId()
 
 	// Load suggested dependencies for this product
 	var suggestedDeps []models.ProductDependencyWithDetails
@@ -324,14 +324,14 @@ func (s *ScanService) processTransfer(tx *sql.Tx, device *models.Device, toZoneI
 		Timestamp:  time.Now(),
 	}
 
-	result, err := tx.Exec(`
+	err = tx.QueryRow(`
 		INSERT INTO device_movements (device_id, action, from_zone_id, to_zone_id, timestamp)
 		VALUES ($1, $2, $3, $4, $5)
-	`, movement.DeviceID, movement.Action, movement.FromZoneID, movement.ToZoneID, movement.Timestamp)
+		RETURNING movement_id
+	`, movement.DeviceID, movement.Action, movement.FromZoneID, movement.ToZoneID, movement.Timestamp).Scan(&movement.MovementID)
 	if err != nil {
 		return nil, nil, err
 	}
-	movement.MovementID, _ = result.LastInsertId()
 
 	return &models.ScanResponse{
 		Success: true,

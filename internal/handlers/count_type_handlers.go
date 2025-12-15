@@ -72,16 +72,15 @@ func CreateCountType(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
-	result, err := db.Exec(
-		"INSERT INTO count_types (name, abbreviation, is_active) VALUES (?, ?, ?)",
+	var id int64
+	err = db.QueryRow(
+		"INSERT INTO count_types (name, abbreviation, is_active) VALUES ($1, $2, $3) RETURNING count_type_id",
 		req.Name, req.Abbreviation, isActive,
-	)
+	).Scan(&id)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create measurement unit"})
 		return
 	}
-
-	id, _ := result.LastInsertId()
 	respondJSON(w, http.StatusCreated, CountType{
 		CountTypeID:  int(id),
 		Name:         req.Name,

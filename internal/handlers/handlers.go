@@ -1061,17 +1061,17 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 		barcode = nil
 	}
 
-	result, err := db.Exec(`
+	var id int64
+	err = db.QueryRow(`
 		INSERT INTO storage_zones (code, barcode, name, type, description, parent_zone_id, capacity, is_active)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, zoneCode, barcode, zoneName, input.Type, description, parentZoneID, capacity, input.IsActive)
+		RETURNING zone_id
+	`, zoneCode, barcode, zoneName, input.Type, description, parentZoneID, capacity, input.IsActive).Scan(&id)
 	if err != nil {
 		log.Printf("Zone creation error - SQL insert: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	id, _ := result.LastInsertId()
 
 	// Generate and update barcode for shelves
 	var generatedBarcode *string
@@ -1935,21 +1935,16 @@ func CreateCase(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
-	result, err := db.Exec(`
+	var caseID int64
+	err = db.QueryRow(`
 		INSERT INTO cases (name, description, width, height, depth, weight, status, zone_id, barcode, rfid_tag)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, req.Name, req.Description, req.Width, req.Height, req.Depth, req.Weight, req.Status, req.ZoneID, req.Barcode, req.RFIDTag)
+		RETURNING caseID
+	`, req.Name, req.Description, req.Width, req.Height, req.Depth, req.Weight, req.Status, req.ZoneID, req.Barcode, req.RFIDTag).Scan(&caseID)
 
 	if err != nil {
 		log.Printf("CreateCase error: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create case"})
-		return
-	}
-
-	caseID, err := result.LastInsertId()
-	if err != nil {
-		log.Printf("CreateCase LastInsertId error: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to retrieve case ID"})
 		return
 	}
 
@@ -2328,18 +2323,18 @@ func CreateDefect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create defect report
-	result, err := db.Exec(`
+	var defectID int64
+	err = db.QueryRow(`
 		INSERT INTO defect_reports (device_id, severity, title, description, assigned_to, status)
 		VALUES ($1, $2, $3, $4, $5, 'open')
-	`, input.DeviceID, input.Severity, input.Title, input.Description, input.AssignedTo)
+		RETURNING defect_id
+	`, input.DeviceID, input.Severity, input.Title, input.Description, input.AssignedTo).Scan(&defectID)
 
 	if err != nil {
 		log.Printf("Error creating defect: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	defectID, _ := result.LastInsertId()
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
 		"defect_id": defectID,

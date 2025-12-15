@@ -67,14 +67,13 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	hash := repository.HashAPIKey(rawKey)
 
 	db := repository.GetSQLDB()
-	res, err := db.Exec(`INSERT INTO api_keys (name, api_key_hash, is_active) VALUES ($1, $2, TRUE)`, body.Name, hash)
+	var id int64
+	err = db.QueryRow(`INSERT INTO api_keys (name, api_key_hash, is_active) VALUES ($1, $2, TRUE) RETURNING id`, body.Name, hash).Scan(&id)
 	if err != nil {
 		log.Printf("[APIKEY] failed to create key: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create API key"})
 		return
 	}
-
-	id, _ := res.LastInsertId()
 	respondJSON(w, http.StatusCreated, CreateAPIKeyResponse{
 		APIKey: APIKey{
 			ID:        int(id),

@@ -206,7 +206,8 @@ func CreateRentalEquipment(w http.ResponseWriter, r *http.Request) {
 		isActive = *req.IsActive
 	}
 
-	result, err := db.Exec(`
+	var id int64
+	err = db.QueryRow(`
 		INSERT INTO rental_equipment (
 			product_name,
 			supplier_name,
@@ -219,6 +220,7 @@ func CreateRentalEquipment(w http.ResponseWriter, r *http.Request) {
 			created_at,
 			updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+		RETURNING equipment_id
 	`,
 		req.ProductName,
 		req.SupplierName,
@@ -228,15 +230,13 @@ func CreateRentalEquipment(w http.ResponseWriter, r *http.Request) {
 		req.Description,
 		req.Notes,
 		isActive,
-	)
+	).Scan(&id)
 
 	if err != nil {
 		log.Printf("Failed to create rental equipment: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create rental equipment"})
 		return
 	}
-
-	id, _ := result.LastInsertId()
 
 	// Fetch the created equipment
 	var e RentalEquipment

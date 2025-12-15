@@ -70,16 +70,16 @@ func CreateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
-	result, err := db.Exec(
-		"INSERT INTO categories (name, abbreviation) VALUES (?, ?)",
+	var id int64
+	err = db.QueryRow(
+		"INSERT INTO categories (name, abbreviation) VALUES ($1, $2) RETURNING categoryID",
 		req.Name, req.Abbreviation,
-	)
+	).Scan(&id)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create category"})
 		return
 	}
 
-	id, _ := result.LastInsertId()
 	req.CategoryID = int(id)
 
 	respondJSON(w, http.StatusCreated, req)

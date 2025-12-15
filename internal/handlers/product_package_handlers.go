@@ -278,18 +278,18 @@ func CreateProductPackage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[PACKAGE CREATE] Created product ID %d for package '%s'", productID, req.Name)
 
 	// Step 2: Create package linked to the product
-	result, err := tx.Exec(`
+	var packageID int64
+	err = tx.QueryRow(`
 		INSERT INTO product_packages (package_code, product_id, name, description, price, website_visible)
 		VALUES ($1, $2, $3, $4, $5, $6)
-	`, packageCode, productID, req.Name, req.Description, req.Price, req.WebsiteVisible)
+		RETURNING package_id
+	`, packageCode, productID, req.Name, req.Description, req.Price, req.WebsiteVisible).Scan(&packageID)
 
 	if err != nil {
 		log.Printf("Failed to create product package: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create package"})
 		return
 	}
-
-	packageID, _ := result.LastInsertId()
 
 	// Add items to package
 	if len(req.Items) > 0 {

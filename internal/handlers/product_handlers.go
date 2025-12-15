@@ -583,7 +583,8 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 	imagesJSON := nullJSONFromSlice(req.WebsiteImages)
-	result, err := db.Exec(`
+	var id int64
+	err = db.QueryRow(`
 		INSERT INTO products (
 			name, categoryID, subcategoryID, subbiercategoryID, manufacturerID, brandID,
 			description, maintenanceInterval, itemcostperday, weight, height, width, depth,
@@ -591,6 +592,7 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 			stock_quantity, min_stock_level, generic_barcode, price_per_unit,
 			website_visible, website_thumbnail, website_images_json
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+		RETURNING productID
 	`,
 		req.Name, req.CategoryID, req.SubcategoryID, req.SubbiercategoryID,
 		req.ManufacturerID, req.BrandID, req.Description, req.MaintenanceInterval,
@@ -598,7 +600,7 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 		req.PowerConsumption, req.PosInCategory, req.IsAccessory, req.IsConsumable,
 		req.CountTypeID, req.StockQuantity, req.MinStockLevel, req.GenericBarcode, req.PricePerUnit,
 		req.WebsiteVisible, req.WebsiteThumbnail, imagesJSON,
-	)
+	).Scan(&id)
 
 	if err != nil {
 		log.Printf("Failed to create product: %v", err)
@@ -606,7 +608,6 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := result.LastInsertId()
 	req.ProductID = int(id)
 
 	respondJSON(w, http.StatusCreated, req)
