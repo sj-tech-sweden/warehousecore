@@ -584,7 +584,7 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 	imagesJSON := nullJSONFromSlice(req.WebsiteImages)
 	var id int64
-	err = db.QueryRow(`
+	err := db.QueryRow(`
 		INSERT INTO products (
 			name, categoryID, subcategoryID, subbiercategoryID, manufacturerID, brandID,
 			description, maintenanceInterval, itemcostperday, weight, height, width, depth,

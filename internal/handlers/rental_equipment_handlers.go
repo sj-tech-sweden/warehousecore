@@ -207,7 +207,7 @@ func CreateRentalEquipment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var id int64
-	err = db.QueryRow(`
+	err := db.QueryRow(`
 		INSERT INTO rental_equipment (
 			product_name,
 			supplier_name,
