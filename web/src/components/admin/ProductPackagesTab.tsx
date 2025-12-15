@@ -134,7 +134,7 @@ export function ProductPackagesTab() {
   const [formError, setFormError] = useState<string | null>(null);
   const scrollPosition = useRef(0);
   const viewPackagePriceDisplay = viewPackage ? formatPrice(viewPackage.price, '') : '';
-  const [categories, setCategories] = useState<Array<{ categoryID: number; name: string }>>([]);
+  const [categories, setCategories] = useState<Array<{ category_id: number; name: string }>>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [subbiercategories, setSubbiercategories] = useState<Subbiercategory[]>([]);
   const [packageDevices, setPackageDevices] = useState<Device[]>([]);
@@ -770,7 +770,7 @@ export function ProductPackagesTab() {
                 >
                   <option value="">Keine Kategorie</option>
                   {categories.map((cat) => (
-                    <option key={cat.categoryID} value={cat.categoryID}>
+                    <option key={cat.category_id} value={cat.category_id}>
                       {cat.name}
                     </option>
                   ))}
