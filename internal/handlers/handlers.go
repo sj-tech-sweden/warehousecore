@@ -1062,7 +1062,7 @@ func CreateZone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var id int64
-	err = db.QueryRow(`
+	err := db.QueryRow(`
 		INSERT INTO storage_zones (code, barcode, name, type, description, parent_zone_id, capacity, is_active)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING zone_id
@@ -1936,7 +1936,7 @@ func CreateCase(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 	var caseID int64
-	err = db.QueryRow(`
+	err := db.QueryRow(`
 		INSERT INTO cases (name, description, width, height, depth, weight, status, zone_id, barcode, rfid_tag)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING caseID

@@ -71,7 +71,7 @@ func CreateCategory(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 	var id int64
-	err = db.QueryRow(
+	err := db.QueryRow(
 		"INSERT INTO categories (name, abbreviation) VALUES ($1, $2) RETURNING categoryID",
 		req.Name, req.Abbreviation,
 	).Scan(&id)

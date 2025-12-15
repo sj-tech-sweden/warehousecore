@@ -73,7 +73,7 @@ func CreateCountType(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 	var id int64
-	err = db.QueryRow(
+	err := db.QueryRow(
 		"INSERT INTO count_types (name, abbreviation, is_active) VALUES ($1, $2, $3) RETURNING count_type_id",
 		req.Name, req.Abbreviation, isActive,
 	).Scan(&id)
