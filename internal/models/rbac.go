@@ -26,9 +26,8 @@ func (Role) TableName() string {
 
 // UserRole represents a user-to-role assignment (RentalCore schema)
 type UserRole struct {
-	ID         int       `json:"id" gorm:"column:id;primaryKey;autoIncrement"`
-	UserID     uint      `json:"user_id" gorm:"column:userid"`
-	RoleID     int       `json:"role_id" gorm:"column:roleid"`
+	UserID     uint      `json:"user_id" gorm:"column:userid;primaryKey"`
+	RoleID     int       `json:"role_id" gorm:"column:roleid;primaryKey"`
 	AssignedBy *int      `json:"assigned_by" gorm:"column:assigned_by"`
 	AssignedAt time.Time `json:"assigned_at" gorm:"column:assigned_at;autoCreateTime"`
 	IsActive   bool      `json:"is_active" gorm:"column:is_active;default:true"`

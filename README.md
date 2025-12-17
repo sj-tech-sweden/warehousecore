@@ -2,6 +2,8 @@
 
 **Physical Warehouse Management System for RentalCore Deployments**
 
+Version: 5.4
+
 WarehouseCore is the digital twin of the Weidelbach warehouse, providing real-time tracking of devices, cases, zones, and movements with barcode/QR scan-driven workflows.
 
 ---
