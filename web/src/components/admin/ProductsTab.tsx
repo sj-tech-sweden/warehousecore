@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Eye,
   GitBranch,
@@ -185,7 +185,7 @@ export function ProductsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('');
   const [refreshing, setRefreshing] = useState(false);
-  const scrollPosition = useRef(0);
+  // const scrollPosition = useRef(0);
   const [productDevices, setProductDevices] = useState<Device[]>([]);
   const [devicesToDelete, setDevicesToDelete] = useState<Set<string>>(new Set());
   const [loadingDevices, setLoadingDevices] = useState(false);
@@ -208,23 +208,24 @@ export function ProductsTab() {
     const body = document.body;
     const anyModalOpen = modalOpen || !!viewProduct;
     if (anyModalOpen) {
-      scrollPosition.current = window.scrollY || window.pageYOffset || 0;
+      // scrollPosition.current = window.scrollY || window.pageYOffset || 0; // Not needed if we don't fix body
       html.classList.add('modal-open');
       body.classList.add('modal-open');
-      body.style.position = 'fixed';
-      body.style.top = `-${scrollPosition.current}px`;
-      body.style.left = '0';
-      body.style.right = '0';
-      body.style.width = '100%';
+      // Fix: Don't set position:fixed on body as it breaks modal positioning relative to viewport
+      // body.style.position = 'fixed';
+      // body.style.top = `-${scrollPosition.current}px`;
+      // body.style.left = '0';
+      // body.style.right = '0';
+      // body.style.width = '100%';
       return () => {
         html.classList.remove('modal-open');
         body.classList.remove('modal-open');
-        body.style.position = '';
-        body.style.top = '';
-        body.style.left = '';
-        body.style.right = '';
-        body.style.width = '';
-        window.scrollTo(0, scrollPosition.current);
+        // body.style.position = '';
+        // body.style.top = '';
+        // body.style.left = '';
+        // body.style.right = '';
+        // body.style.width = '';
+        // window.scrollTo(0, scrollPosition.current);
       };
     }
 
@@ -568,7 +569,7 @@ export function ProductsTab() {
     sortedProducts.length === 0
       ? null
       : sortedProducts.reduce((sum, product) => sum + (product.item_cost_per_day ?? 0), 0) /
-        sortedProducts.length;
+      sortedProducts.length;
 
   return (
     <div className="space-y-4">
@@ -621,11 +622,10 @@ export function ProductsTab() {
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                viewMode === 'table'
-                  ? 'bg-white/15 text-white'
-                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-              }`}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${viewMode === 'table'
+                ? 'bg-white/15 text-white'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                }`}
             >
               <List className="h-4 w-4" />
               <span className="hidden sm:inline">Tabelle</span>
@@ -633,11 +633,10 @@ export function ProductsTab() {
             <button
               type="button"
               onClick={() => setViewMode('cards')}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                viewMode === 'cards'
-                  ? 'bg-white/15 text-white'
-                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-              }`}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${viewMode === 'cards'
+                ? 'bg-white/15 text-white'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                }`}
             >
               <LayoutGrid className="h-4 w-4" />
               <span className="hidden sm:inline">Karten</span>
@@ -645,11 +644,10 @@ export function ProductsTab() {
             <button
               type="button"
               onClick={() => setViewMode('tree')}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                viewMode === 'tree'
-                  ? 'bg-white/15 text-white'
-                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-              }`}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${viewMode === 'tree'
+                ? 'bg-white/15 text-white'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                }`}
             >
               <GitBranch className="h-4 w-4" />
               <span className="hidden sm:inline">Gerätebaum</span>
@@ -878,521 +876,519 @@ export function ProductsTab() {
                 </button>
               </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-white">
-                  Name <span className="text-accent-red">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={event => setFormData({ ...formData, name: event.target.value })}
-                  className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-white">Beschreibung</label>
-                <textarea
-                  value={formData.description}
-                  onChange={event => setFormData({ ...formData, description: event.target.value })}
-                  rows={3}
-                  className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">Kategorie</label>
-                  <select
-                    value={formData.category_id ?? ''}
-                    onChange={event => {
-                      const value = event.target.value ? Number(event.target.value) : undefined;
-                      setFormData({
-                        ...formData,
-                        category_id: value,
-                        subcategory_id: undefined,
-                        subbiercategory_id: undefined,
-                      });
-                    }}
-                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
-                  >
-                    <option value="">Keine</option>
-                    {categories.map(category => (
-                      <option key={category.category_id} value={category.category_id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">Unterkategorie</label>
-                  <select
-                    value={formData.subcategory_id ?? ''}
-                    onChange={event => {
-                      const value = event.target.value || undefined;
-                      setFormData({
-                        ...formData,
-                        subcategory_id: value,
-                        subbiercategory_id: undefined,
-                      });
-                    }}
-                    disabled={!formData.category_id}
-                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red disabled:opacity-50"
-                  >
-                    <option value="">Keine</option>
-                    {filteredSubcategories.map(sub => (
-                      <option key={sub.subcategory_id} value={sub.subcategory_id}>
-                        {sub.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-white">
-                    Sub-Unterkategorie
-                  </label>
-                  <select
-                    value={formData.subbiercategory_id ?? ''}
-                    onChange={event => {
-                      const value = event.target.value || undefined;
-                      setFormData({
-                        ...formData,
-                        subbiercategory_id: value,
-                      });
-                    }}
-                    disabled={!formData.subcategory_id}
-                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red disabled:opacity-50"
-                  >
-                    <option value="">Keine</option>
-                    {filteredSubbiercategories.map(subbier => (
-                      <option key={subbier.subbiercategory_id} value={subbier.subbiercategory_id}>
-                        {subbier.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">Brand</label>
-                  <select
-                    value={formData.brand_id ?? ''}
-                    onChange={event => {
-                      const value = event.target.value ? Number(event.target.value) : undefined;
-                      let manufacturerId = formData.manufacturer_id;
-                      if (value) {
-                        const brand = brandsByName.find(b => b.brand_id === value);
-                        if (brand?.manufacturer_id) {
-                          manufacturerId = brand.manufacturer_id;
-                        }
-                      }
-                      setFormData({
-                        ...formData,
-                        brand_id: value,
-                        manufacturer_id: manufacturerId ?? formData.manufacturer_id,
-                      });
-                    }}
-                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
-                  >
-                    <option value="">Keine</option>
-                    {brandsByName.map(brand => (
-                      <option key={brand.brand_id} value={brand.brand_id}>
-                        {brand.name}
-                        {brand.manufacturer_name ? ` • ${brand.manufacturer_name}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">Manufacturer</label>
-                  <select
-                    value={formData.manufacturer_id ?? ''}
-                    onChange={event => {
-                      const value = event.target.value ? Number(event.target.value) : undefined;
-                      setFormData({
-                        ...formData,
-                        manufacturer_id: value,
-                      });
-                    }}
-                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
-                  >
-                    <option value="">Keine</option>
-                    {manufacturerOptions.map(manufacturer => (
-                      <option key={manufacturer.manufacturer_id} value={manufacturer.manufacturer_id}>
-                        {manufacturer.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">
-                    Preis pro Tag (€)
+                    Name <span className="text-accent-red">*</span>
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.item_cost_per_day ?? ''}
-                    onChange={event =>
-                      setFormData({
-                        ...formData,
-                        item_cost_per_day: parseNumber(event.target.value),
-                      })
-                    }
+                    type="text"
+                    value={formData.name}
+                    onChange={event => setFormData({ ...formData, name: event.target.value })}
+                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white">Beschreibung</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={event => setFormData({ ...formData, description: event.target.value })}
+                    rows={3}
                     className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
                   />
                 </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">
-                    Position in Kategorie
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.pos_in_category ?? ''}
-                    onChange={event =>
-                      setFormData({
-                        ...formData,
-                        pos_in_category: parseInteger(event.target.value),
-                      })
-                    }
-                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                  />
-                </div>
-              </div>
 
-              <div className="space-y-4 rounded-xl border border-white/10 p-4">
-                <h3 className="text-sm font-semibold text-white">Physische Eigenschaften</h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  {[
-                    { label: 'Gewicht (kg)', key: 'weight' as const },
-                    { label: 'Höhe (cm)', key: 'height' as const },
-                    { label: 'Breite (cm)', key: 'width' as const },
-                    { label: 'Tiefe (cm)', key: 'depth' as const },
-                  ].map(field => (
-                    <div key={field.key}>
-                      <label className="mb-2 block text-sm font-semibold text-white">
-                        {field.label}
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData[field.key] ?? ''}
-                        onChange={event =>
-                          setFormData({
-                            ...formData,
-                            [field.key]: parseNumber(event.target.value),
-                          })
-                        }
-                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4 rounded-xl border border-white/10 p-4">
-                <h3 className="text-sm font-semibold text-white">Technische Angaben</h3>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-white">
-                      Wartungsintervall (Tage)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.maintenance_interval ?? ''}
-                      onChange={event =>
+                    <label className="mb-2 block text-sm font-semibold text-white">Kategorie</label>
+                    <select
+                      value={formData.category_id ?? ''}
+                      onChange={event => {
+                        const value = event.target.value ? Number(event.target.value) : undefined;
                         setFormData({
                           ...formData,
-                          maintenance_interval: parseInteger(event.target.value),
-                        })
-                      }
-                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                    />
+                          category_id: value,
+                          subcategory_id: undefined,
+                          subbiercategory_id: undefined,
+                        });
+                      }}
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
+                    >
+                      <option value="">Keine</option>
+                      {categories.map(category => (
+                        <option key={category.category_id} value={category.category_id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">Unterkategorie</label>
+                    <select
+                      value={formData.subcategory_id ?? ''}
+                      onChange={event => {
+                        const value = event.target.value || undefined;
+                        setFormData({
+                          ...formData,
+                          subcategory_id: value,
+                          subbiercategory_id: undefined,
+                        });
+                      }}
+                      disabled={!formData.category_id}
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red disabled:opacity-50"
+                    >
+                      <option value="">Keine</option>
+                      {filteredSubcategories.map(sub => (
+                        <option key={sub.subcategory_id} value={sub.subcategory_id}>
+                          {sub.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-white">
-                      Leistungsaufnahme (W)
+                      Sub-Unterkategorie
+                    </label>
+                    <select
+                      value={formData.subbiercategory_id ?? ''}
+                      onChange={event => {
+                        const value = event.target.value || undefined;
+                        setFormData({
+                          ...formData,
+                          subbiercategory_id: value,
+                        });
+                      }}
+                      disabled={!formData.subcategory_id}
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red disabled:opacity-50"
+                    >
+                      <option value="">Keine</option>
+                      {filteredSubbiercategories.map(subbier => (
+                        <option key={subbier.subbiercategory_id} value={subbier.subbiercategory_id}>
+                          {subbier.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">Brand</label>
+                    <select
+                      value={formData.brand_id ?? ''}
+                      onChange={event => {
+                        const value = event.target.value ? Number(event.target.value) : undefined;
+                        let manufacturerId = formData.manufacturer_id;
+                        if (value) {
+                          const brand = brandsByName.find(b => b.brand_id === value);
+                          if (brand?.manufacturer_id) {
+                            manufacturerId = brand.manufacturer_id;
+                          }
+                        }
+                        setFormData({
+                          ...formData,
+                          brand_id: value,
+                          manufacturer_id: manufacturerId ?? formData.manufacturer_id,
+                        });
+                      }}
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
+                    >
+                      <option value="">Keine</option>
+                      {brandsByName.map(brand => (
+                        <option key={brand.brand_id} value={brand.brand_id}>
+                          {brand.name}
+                          {brand.manufacturer_name ? ` • ${brand.manufacturer_name}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">Manufacturer</label>
+                    <select
+                      value={formData.manufacturer_id ?? ''}
+                      onChange={event => {
+                        const value = event.target.value ? Number(event.target.value) : undefined;
+                        setFormData({
+                          ...formData,
+                          manufacturer_id: value,
+                        });
+                      }}
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
+                    >
+                      <option value="">Keine</option>
+                      {manufacturerOptions.map(manufacturer => (
+                        <option key={manufacturer.manufacturer_id} value={manufacturer.manufacturer_id}>
+                          {manufacturer.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      Preis pro Tag (€)
                     </label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
-                      value={formData.power_consumption ?? ''}
+                      value={formData.item_cost_per_day ?? ''}
                       onChange={event =>
                         setFormData({
                           ...formData,
-                          power_consumption: parseNumber(event.target.value),
+                          item_cost_per_day: parseNumber(event.target.value),
+                        })
+                      }
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      Position in Kategorie
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.pos_in_category ?? ''}
+                      onChange={event =>
+                        setFormData({
+                          ...formData,
+                          pos_in_category: parseInteger(event.target.value),
                         })
                       }
                       className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-4 rounded-xl border border-white/10 p-4">
-                <h3 className="text-sm font-semibold text-white">Product Type & Inventory</h3>
-
-                <div className="flex gap-4 mb-4">
-                  <label className="flex items-center gap-2 text-white cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_accessory || false}
-                      onChange={e => setFormData({ ...formData, is_accessory: e.target.checked })}
-                      className="w-5 h-5 rounded border-white/20 bg-white/10 text-accent-red focus:ring-accent-red"
-                    />
-                    <span>This is an Accessory</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-white cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_consumable || false}
-                      onChange={e => setFormData({ ...formData, is_consumable: e.target.checked })}
-                      className="w-5 h-5 rounded border-white/20 bg-white/10 text-accent-red focus:ring-accent-red"
-                    />
-                    <span>This is a Consumable</span>
-                  </label>
+                <div className="space-y-4 rounded-xl border border-white/10 p-4">
+                  <h3 className="text-sm font-semibold text-white">Physische Eigenschaften</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                    {[
+                      { label: 'Gewicht (kg)', key: 'weight' as const },
+                      { label: 'Höhe (cm)', key: 'height' as const },
+                      { label: 'Breite (cm)', key: 'width' as const },
+                      { label: 'Tiefe (cm)', key: 'depth' as const },
+                    ].map(field => (
+                      <div key={field.key}>
+                        <label className="mb-2 block text-sm font-semibold text-white">
+                          {field.label}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formData[field.key] ?? ''}
+                          onChange={event =>
+                            setFormData({
+                              ...formData,
+                              [field.key]: parseNumber(event.target.value),
+                            })
+                          }
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <p className="text-xs text-gray-400 mb-4">
-                  Accessories are optional items (cables, clamps). Consumables are used items (fog fluid, tape).
-                </p>
-
-                {(formData.is_accessory || formData.is_consumable) && (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-4 rounded-xl border border-white/10 p-4">
+                  <h3 className="text-sm font-semibold text-white">Technische Angaben</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-white">
-                        Measurement Unit <span className="text-accent-red">*</span>
-                      </label>
-                      <select
-                        value={formData.count_type_id || ''}
-                        onChange={e => setFormData({
-                          ...formData,
-                          count_type_id: e.target.value ? Number(e.target.value) : undefined
-                        })}
-                        required={formData.is_accessory || formData.is_consumable}
-                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
-                      >
-                        <option value="">Select unit...</option>
-                        {countTypes.map(ct => (
-                          <option key={ct.count_type_id} value={ct.count_type_id}>
-                            {ct.name} ({ct.abbreviation})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-white">
-                        Generic Barcode
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.generic_barcode || ''}
-                        onChange={e => setFormData({ ...formData, generic_barcode: e.target.value })}
-                        placeholder="e.g., ACC-SAFE40, CONS-FOG"
-                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Single barcode for all units of this type</p>
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-white">
-                        Current Stock Quantity
+                        Wartungsintervall (Tage)
                       </label>
                       <input
                         type="number"
-                        step="0.001"
                         min="0"
-                        value={formData.stock_quantity ?? ''}
-                        onChange={e => setFormData({
-                          ...formData,
-                          stock_quantity: parseNumber(e.target.value)
-                        })}
-                        placeholder="0"
+                        value={formData.maintenance_interval ?? ''}
+                        onChange={event =>
+                          setFormData({
+                            ...formData,
+                            maintenance_interval: parseInteger(event.target.value),
+                          })
+                        }
                         className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
                       />
                     </div>
-
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-white">
-                        Minimum Stock Level
-                      </label>
-                      <input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        value={formData.min_stock_level ?? ''}
-                        onChange={e => setFormData({
-                          ...formData,
-                          min_stock_level: parseNumber(e.target.value)
-                        })}
-                        placeholder="Low stock alert threshold"
-                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-white">
-                        Price per Unit (€)
+                        Leistungsaufnahme (W)
                       </label>
                       <input
                         type="number"
                         step="0.01"
                         min="0"
-                        value={formData.price_per_unit ?? ''}
-                        onChange={e => setFormData({
-                          ...formData,
-                          price_per_unit: parseNumber(e.target.value)
-                        })}
-                        placeholder="0.00"
+                        value={formData.power_consumption ?? ''}
+                        onChange={event =>
+                          setFormData({
+                            ...formData,
+                            power_consumption: parseNumber(event.target.value),
+                          })
+                        }
                         className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
                       />
                     </div>
                   </div>
-                )}
-              </div>
-
-              <div className="space-y-4 rounded-xl border border-white/10 p-4">
-                <h3 className="text-sm font-semibold text-white">
-                  {editingProduct ? 'Geräte verwalten' : 'Geräte erstellen (optional)'}
-                </h3>
-
-                {editingProduct && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-300">
-                        {productDevices.length} Gerät(e) zugeordnet
-                      </span>
-                      {loadingDevices && (
-                        <span className="text-xs text-gray-400">Lade...</span>
-                      )}
-                    </div>
-
-                    {productDevices.length > 0 && (
-                      <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg bg-white/5 p-3">
-                        {productDevices.map(device => (
-                          <div
-                            key={device.device_id}
-                            className={`flex items-center justify-between rounded-lg px-3 py-2 transition ${
-                              devicesToDelete.has(device.device_id)
-                                ? 'bg-red-500/20 border border-red-500/50'
-                                : 'bg-white/5 hover:bg-white/10'
-                            }`}
-                          >
-                            <div className="flex-1">
-                              <span className="text-sm font-medium text-white">
-                                {device.device_id}
-                              </span>
-                              <span className="ml-2 text-xs text-gray-400">
-                                {device.status}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveDevice(device.device_id)}
-                              className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                                devicesToDelete.has(device.device_id)
-                                  ? 'bg-gray-600 text-white hover:bg-gray-700'
-                                  : 'bg-red-600/80 text-white hover:bg-red-600'
-                              }`}
-                            >
-                              {devicesToDelete.has(device.device_id) ? 'Behalten' : 'Entfernen'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {devicesToDelete.size > 0 && (
-                      <p className="text-xs text-red-400">
-                        {devicesToDelete.size} Gerät(e) werden beim Speichern gelöscht
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-white">
-                      Anzahl Geräte {editingProduct && 'hinzufügen'}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.device_quantity ?? ''}
-                      onChange={event =>
-                        setFormData({
-                          ...formData,
-                          device_quantity: parseInteger(event.target.value),
-                        })
-                      }
-                      placeholder="z. B. 10"
-                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-white">
-                      Geräte-Präfix
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.device_prefix ?? ''}
-                      onChange={event =>
-                        setFormData({
-                          ...formData,
-                          device_prefix: event.target.value,
-                        })
-                      }
-                      placeholder="z. B. LED"
-                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
-                    />
-                  </div>
                 </div>
 
-                {editingProduct && (
+                <div className="space-y-4 rounded-xl border border-white/10 p-4">
+                  <h3 className="text-sm font-semibold text-white">Product Type & Inventory</h3>
+
+                  <div className="flex gap-4 mb-4">
+                    <label className="flex items-center gap-2 text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.is_accessory || false}
+                        onChange={e => setFormData({ ...formData, is_accessory: e.target.checked })}
+                        className="w-5 h-5 rounded border-white/20 bg-white/10 text-accent-red focus:ring-accent-red"
+                      />
+                      <span>This is an Accessory</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.is_consumable || false}
+                        onChange={e => setFormData({ ...formData, is_consumable: e.target.checked })}
+                        className="w-5 h-5 rounded border-white/20 bg-white/10 text-accent-red focus:ring-accent-red"
+                      />
+                      <span>This is a Consumable</span>
+                    </label>
+                  </div>
+
+                  <p className="text-xs text-gray-400 mb-4">
+                    Accessories are optional items (cables, clamps). Consumables are used items (fog fluid, tape).
+                  </p>
+
+                  {(formData.is_accessory || formData.is_consumable) && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-white">
+                          Measurement Unit <span className="text-accent-red">*</span>
+                        </label>
+                        <select
+                          value={formData.count_type_id || ''}
+                          onChange={e => setFormData({
+                            ...formData,
+                            count_type_id: e.target.value ? Number(e.target.value) : undefined
+                          })}
+                          required={formData.is_accessory || formData.is_consumable}
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white outline-none transition focus:border-accent-red"
+                        >
+                          <option value="">Select unit...</option>
+                          {countTypes.map(ct => (
+                            <option key={ct.count_type_id} value={ct.count_type_id}>
+                              {ct.name} ({ct.abbreviation})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-white">
+                          Generic Barcode
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.generic_barcode || ''}
+                          onChange={e => setFormData({ ...formData, generic_barcode: e.target.value })}
+                          placeholder="e.g., ACC-SAFE40, CONS-FOG"
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Single barcode for all units of this type</p>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-white">
+                          Current Stock Quantity
+                        </label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          value={formData.stock_quantity ?? ''}
+                          onChange={e => setFormData({
+                            ...formData,
+                            stock_quantity: parseNumber(e.target.value)
+                          })}
+                          placeholder="0"
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-white">
+                          Minimum Stock Level
+                        </label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          value={formData.min_stock_level ?? ''}
+                          onChange={e => setFormData({
+                            ...formData,
+                            min_stock_level: parseNumber(e.target.value)
+                          })}
+                          placeholder="Low stock alert threshold"
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-white">
+                          Price per Unit (€)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formData.price_per_unit ?? ''}
+                          onChange={e => setFormData({
+                            ...formData,
+                            price_per_unit: parseNumber(e.target.value)
+                          })}
+                          placeholder="0.00"
+                          className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-4 rounded-xl border border-white/10 p-4">
+                  <h3 className="text-sm font-semibold text-white">
+                    {editingProduct ? 'Geräte verwalten' : 'Geräte erstellen (optional)'}
+                  </h3>
+
+                  {editingProduct && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-300">
+                          {productDevices.length} Gerät(e) zugeordnet
+                        </span>
+                        {loadingDevices && (
+                          <span className="text-xs text-gray-400">Lade...</span>
+                        )}
+                      </div>
+
+                      {productDevices.length > 0 && (
+                        <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg bg-white/5 p-3">
+                          {productDevices.map(device => (
+                            <div
+                              key={device.device_id}
+                              className={`flex items-center justify-between rounded-lg px-3 py-2 transition ${devicesToDelete.has(device.device_id)
+                                ? 'bg-red-500/20 border border-red-500/50'
+                                : 'bg-white/5 hover:bg-white/10'
+                                }`}
+                            >
+                              <div className="flex-1">
+                                <span className="text-sm font-medium text-white">
+                                  {device.device_id}
+                                </span>
+                                <span className="ml-2 text-xs text-gray-400">
+                                  {device.status}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDevice(device.device_id)}
+                                className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${devicesToDelete.has(device.device_id)
+                                  ? 'bg-gray-600 text-white hover:bg-gray-700'
+                                  : 'bg-red-600/80 text-white hover:bg-red-600'
+                                  }`}
+                              >
+                                {devicesToDelete.has(device.device_id) ? 'Behalten' : 'Entfernen'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {devicesToDelete.size > 0 && (
+                        <p className="text-xs text-red-400">
+                          {devicesToDelete.size} Gerät(e) werden beim Speichern gelöscht
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-white">
+                        Anzahl Geräte {editingProduct && 'hinzufügen'}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.device_quantity ?? ''}
+                        onChange={event =>
+                          setFormData({
+                            ...formData,
+                            device_quantity: parseInteger(event.target.value),
+                          })
+                        }
+                        placeholder="z. B. 10"
+                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-white">
+                        Geräte-Präfix
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.device_prefix ?? ''}
+                        onChange={event =>
+                          setFormData({
+                            ...formData,
+                            device_prefix: event.target.value,
+                          })
+                        }
+                        placeholder="z. B. LED"
+                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      />
+                    </div>
+                  </div>
+
+                  {editingProduct && (
+                    <button
+                      type="button"
+                      onClick={handleAddDevices}
+                      disabled={!formData.device_quantity || formData.device_quantity <= 0}
+                      className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Geräte jetzt hinzufügen
+                    </button>
+                  )}
+
+                  <p className="text-xs text-gray-400">
+                    Geräte werden automatisch mit aufsteigender Nummerierung erstellt (z. B. {formData.device_prefix || 'XXX'}0001).
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={handleAddDevices}
-                    disabled={!formData.device_quantity || formData.device_quantity <= 0}
-                    className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={closeModal}
+                    className="flex-1 btn-secondary"
+                    disabled={submitting}
                   >
-                    Geräte jetzt hinzufügen
+                    Abbrechen
                   </button>
-                )}
-
-                <p className="text-xs text-gray-400">
-                  Geräte werden automatisch mit aufsteigender Nummerierung erstellt (z. B. {formData.device_prefix || 'XXX'}0001).
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="flex-1 btn-secondary"
-                  disabled={submitting}
-                >
-                  Abbrechen
-                </button>
-                <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
-                  {submitting ? 'Speichert...' : editingProduct ? 'Speichern' : 'Erstellen'}
-                </button>
-              </div>
-            </form>
-          </div>
+                  <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
+                    {submitting ? 'Speichert...' : editingProduct ? 'Speichern' : 'Erstellen'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </ModalPortal>
       )}
