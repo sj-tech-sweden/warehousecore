@@ -159,6 +159,7 @@ func main() {
 
 	// Auth status endpoint (requires authentication)
 	protected.HandleFunc("/auth/me", handlers.GetCurrentUser).Methods("GET")
+	protected.HandleFunc("/auth/change-password", handlers.ChangePassword).Methods("POST")
 
 	// Scan endpoints (CRITICAL - core functionality)
 	protected.HandleFunc("/scans", handlers.HandleScan).Methods("POST")

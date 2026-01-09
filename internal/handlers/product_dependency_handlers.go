@@ -38,7 +38,7 @@ func GetProductDependencies(w http.ResponseWriter, r *http.Request) {
 			pd.is_optional,
 			pd.default_quantity,
 			pd.notes,
-			DATE_FORMAT(pd.created_at, '%Y-%m-%d %H:%i:%s') as created_at
+			TO_CHAR(pd.created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at
 		FROM product_dependencies pd
 		JOIN products p ON pd.dependency_product_id = p.productID
 		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
@@ -116,11 +116,11 @@ func CreateProductDependency(w http.ResponseWriter, r *http.Request) {
 	result := db.Exec(`
 		INSERT INTO product_dependencies (product_id, dependency_product_id, is_optional, default_quantity, notes)
 		VALUES ($1, $2, $3, $4, $5)
-		ON DUPLICATE KEY UPDATE
-			is_optional = VALUES(is_optional),
-			default_quantity = VALUES(default_quantity),
-			notes = VALUES(notes),
-			updated_at = CURRENT_TIMESTAMP
+		ON CONFLICT (product_id, dependency_product_id) DO UPDATE SET
+			is_optional = EXCLUDED.is_optional,
+			default_quantity = EXCLUDED.default_quantity,
+			notes = EXCLUDED.notes,
+			updated_at = NOW()
 	`, productID, req.DependencyProductID, req.IsOptional, req.DefaultQuantity, req.Notes)
 
 	if result.Error != nil {
@@ -145,7 +145,7 @@ func CreateProductDependency(w http.ResponseWriter, r *http.Request) {
 			pd.is_optional,
 			pd.default_quantity,
 			pd.notes,
-			DATE_FORMAT(pd.created_at, '%Y-%m-%d %H:%i:%s') as created_at
+			TO_CHAR(pd.created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at
 		FROM product_dependencies pd
 		JOIN products p ON pd.dependency_product_id = p.productID
 		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id

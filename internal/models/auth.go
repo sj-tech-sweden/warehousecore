@@ -4,18 +4,19 @@ import "time"
 
 // User represents a user in the system (shared with RentalCore)
 type User struct {
-	UserID       uint       `gorm:"column:userid;primaryKey;autoIncrement" json:"id"`
-	Username     string     `gorm:"column:username;unique;not null" json:"username"`
-	Email        string     `gorm:"column:email;unique;not null" json:"email"`
-	PasswordHash string     `gorm:"column:password_hash;not null" json:"-"`
-	FirstName    string     `gorm:"column:first_name" json:"first_name"`
-	LastName     string     `gorm:"column:last_name" json:"last_name"`
-	IsAdmin      bool       `gorm:"column:is_admin;default:false" json:"is_admin"`
-	IsActive     bool       `gorm:"column:is_active;default:true" json:"is_active"`
-	CreatedAt    time.Time  `gorm:"column:created_at" json:"created_at"`
-	UpdatedAt    time.Time  `gorm:"column:updated_at" json:"updated_at"`
-	LastLogin    *time.Time `gorm:"column:last_login" json:"last_login"`
-	Roles        []Role     `json:"roles,omitempty" gorm:"-"`
+	UserID              uint       `gorm:"column:userid;primaryKey;autoIncrement" json:"id"`
+	Username            string     `gorm:"column:username;unique;not null" json:"username"`
+	Email               string     `gorm:"column:email;unique;not null" json:"email"`
+	PasswordHash        string     `gorm:"column:password_hash;not null" json:"-"`
+	FirstName           string     `gorm:"column:first_name" json:"first_name"`
+	LastName            string     `gorm:"column:last_name" json:"last_name"`
+	IsAdmin             bool       `gorm:"column:is_admin;default:false" json:"is_admin"`
+	IsActive            bool       `gorm:"column:is_active;default:true" json:"is_active"`
+	ForcePasswordChange bool       `gorm:"column:force_password_change;default:false" json:"force_password_change"`
+	CreatedAt           time.Time  `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt           time.Time  `gorm:"column:updated_at" json:"updated_at"`
+	LastLogin           *time.Time `gorm:"column:last_login" json:"last_login"`
+	Roles               []Role     `json:"roles,omitempty" gorm:"-"`
 }
 
 // TableName specifies the table name for User model

@@ -25,9 +25,10 @@ type LoginRequest struct {
 
 // LoginResponse represents login response
 type LoginResponse struct {
-	Success bool         `json:"success"`
-	Message string       `json:"message"`
-	User    *models.User `json:"user,omitempty"`
+	Success             bool         `json:"success"`
+	Message             string       `json:"message"`
+	User                *models.User `json:"user,omitempty"`
+	ForcePasswordChange bool         `json:"force_password_change,omitempty"`
 }
 
 // Login handles user authentication
@@ -110,9 +111,10 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{
-		Success: true,
-		Message: "Login successful",
-		User:    &user,
+		Success:             true,
+		Message:             "Login successful",
+		User:                &user,
+		ForcePasswordChange: user.ForcePasswordChange,
 	})
 }
 
@@ -195,4 +197,88 @@ func getCookieDomain(r *http.Request) string {
 	}
 
 	return host
+}
+
+// ChangePasswordRequest represents password change request
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// ChangePassword handles password change requests
+func ChangePassword(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetUserFromContext(r)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Not authenticated",
+		})
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Invalid request format",
+		})
+		return
+	}
+
+	// Validate new password
+	if len(req.NewPassword) < 6 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Password must be at least 6 characters",
+		})
+		return
+	}
+
+	// Verify current password
+	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword))
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Current password is incorrect",
+		})
+		return
+	}
+
+	// Hash new password
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to process new password",
+		})
+		return
+	}
+
+	// Update password and clear force_password_change flag
+	db := repository.GetDB()
+	err = db.Model(&models.User{}).Where("userid = ?", user.UserID).Updates(map[string]interface{}{
+		"password_hash":         string(newHash),
+		"force_password_change": false,
+		"updated_at":            time.Now(),
+	}).Error
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to update password",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Password changed successfully",
+	})
 }

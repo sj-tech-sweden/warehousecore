@@ -148,11 +148,11 @@ func (s *ScanService) processIntake(tx *sql.Tx, device *models.Device, zoneID *i
 
 	// Create movement record
 	movement := &models.DeviceMovement{
-		DeviceID:   device.DeviceID,
-		Action:     "intake",
-		FromJobID:  models.IntToNullInt64(fromJobID),
-		ToZoneID:   models.IntToNullInt64(zoneID),
-		Timestamp:  time.Now(),
+		DeviceID:  device.DeviceID,
+		Action:    "intake",
+		FromJobID: models.IntToNullInt64(fromJobID),
+		ToZoneID:  models.IntToNullInt64(zoneID),
+		Timestamp: time.Now(),
 	}
 
 	err = tx.QueryRow(`
@@ -199,7 +199,7 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 	_, err = tx.Exec(`
 		INSERT INTO job_devices (deviceID, jobID, pack_status)
 		VALUES ($1, $2, 'issued')
-		ON DUPLICATE KEY UPDATE pack_status = 'issued'
+		ON CONFLICT (deviceID, jobID) DO UPDATE SET pack_status = 'issued'
 	`, device.DeviceID, *jobID)
 	if err != nil {
 		return nil, nil, err
@@ -239,7 +239,7 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 			pd.is_optional,
 			pd.default_quantity,
 			pd.notes,
-			DATE_FORMAT(pd.created_at, '%Y-%m-%d %H:%i:%s') as created_at
+			TO_CHAR(pd.created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at
 		FROM product_dependencies pd
 		JOIN products p ON pd.dependency_product_id = p.productID
 		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
@@ -534,7 +534,7 @@ func (s *ScanService) processConsumableIntake(tx *sql.Tx, product *ConsumablePro
 	_, err := tx.Exec(`
 		INSERT INTO product_locations (product_id, zone_id, quantity)
 		VALUES ($1, $2, $3)
-		ON DUPLICATE KEY UPDATE quantity = quantity + $4
+		ON CONFLICT (product_id, zone_id) DO UPDATE SET quantity = product_locations.quantity + $4
 	`, product.ProductID, *zoneID, quantity, quantity)
 	if err != nil {
 		s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, false, err.Error(), ipAddr, userAgent)
@@ -645,7 +645,7 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 	// Decrease stock in product_locations (single source of truth)
 	result, err := tx.Exec(`
 		UPDATE product_locations SET quantity = quantity - $1
-		WHERE product_id = $2 AND zone_id <=> $3
+		WHERE product_id = $2 AND zone_id IS NOT DISTINCT FROM $3
 	`, quantity, product.ProductID, zoneID)
 	if err != nil {
 		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)

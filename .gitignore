@@ -57,3 +57,10 @@ mosquitto/certs/
 # Claude Code files
 CLAUDE.md
 AGENTS.md
+
+# AI Agent Files - NEVER COMMIT
+GEMINI.md
+CLAUDE.md
+AGENTS.md
+.claude/
+.gemini/
