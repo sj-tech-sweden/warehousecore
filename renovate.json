@@ -23,28 +23,43 @@
       "labels": ["patch"]
     },
     {
-      "description": "Minor and major Go module updates need explicit approval",
+      "description": "Minor Go module updates need explicit approval",
       "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["minor", "major"],
+      "matchUpdateTypes": ["minor"],
       "labels": ["minor"],
       "automerge": false
     },
     {
-      "description": "Minor and major npm updates need explicit approval",
+      "description": "Major Go module updates need explicit approval",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "Minor npm updates need explicit approval",
       "matchManagers": ["npm"],
-      "matchUpdateTypes": ["minor", "major"],
+      "matchUpdateTypes": ["minor"],
       "labels": ["minor"],
+      "automerge": false
+    },
+    {
+      "description": "Major npm updates need explicit approval",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["major"],
       "automerge": false
     },
     {
       "description": "Auto-merge patch-level updates for Go, npm, and Actions",
+      "matchManagers": ["gomod", "npm", "github-actions"],
       "matchUpdateTypes": ["patch", "digest"],
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash"
     },
     {
-      "description": "Separate PR per Docker base image update, labelled minor",
+      "description": "Group all Docker base image updates into one PR, labelled minor",
       "matchManagers": ["dockerfile"],
       "groupName": "Docker base images",
       "labels": ["minor"]
