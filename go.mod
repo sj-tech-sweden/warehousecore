@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/boombuler/barcode v1.1.0
-	github.com/chai2010/webp v1.1.1
+	github.com/chai2010/webp v1.4.0
 	github.com/chromedp/chromedp v0.14.2
 	github.com/disintegration/imaging v1.6.2
 	github.com/eclipse/paho.mqtt.golang v1.5.1
