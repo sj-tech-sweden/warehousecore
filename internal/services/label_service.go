@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skip2/go-qrcode"
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/code128"
 	"github.com/chromedp/chromedp"
+	"github.com/skip2/go-qrcode"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
@@ -328,17 +328,17 @@ func (s *LabelService) GenerateLabelForCase(caseID int, templateID int) (map[str
 	// Get case data
 	db := repository.GetDB()
 	var caseData struct {
-		CaseID      int     `json:"case_id"`
-		Name        string  `json:"name"`
-		Description *string `json:"description"`
-		Barcode     *string `json:"barcode"`
-		RFIDTag     *string `json:"rfid_tag"`
+		CaseID      int      `json:"case_id"`
+		Name        string   `json:"name"`
+		Description *string  `json:"description"`
+		Barcode     *string  `json:"barcode"`
+		RFIDTag     *string  `json:"rfid_tag"`
 		Width       *float64 `json:"width"`
 		Height      *float64 `json:"height"`
 		Depth       *float64 `json:"depth"`
 		Weight      *float64 `json:"weight"`
-		Status      string  `json:"status"`
-		ZoneName    *string `json:"zone_name"`
+		Status      string   `json:"status"`
+		ZoneName    *string  `json:"zone_name"`
 	}
 
 	query := `
