@@ -41,7 +41,7 @@ web/dist/
 web/build/
 
 # Dependencies
-go.sum
+#go.sum
 
 # Temporary files
 tmp/
