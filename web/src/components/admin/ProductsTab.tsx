@@ -1493,6 +1493,8 @@ export function ProductsTab() {
       )}
 
       {/* Product Devices Modal */}
+      {/* onLocate, onOpenZone, and onOpenDevice are intentional no-ops here: */}
+      {/* LED/zone navigation is not applicable in the product admin context. */}
       <ProductDevicesModal
         isOpen={!!devicesModal}
         onClose={closeDevicesModal}
