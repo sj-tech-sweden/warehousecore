@@ -1029,6 +1029,18 @@
       "description": "The LED light is currently off. Do you want to enable it to mark the job devices?",
       "cancel": "No, go directly to job",
       "confirm": "Yes, enable LED"
+    },
+    "serviceActions": {
+      "reportIssue": "Report Issue",
+      "markProblematic": "Mark Problematic"
+    },
+    "serviceModal": {
+      "title": "Create Service Report",
+      "subtitle": "Log the issue so it can be tracked and resolved",
+      "titlePlaceholder": "e.g. Screen cracked, power failure...",
+      "descriptionPlaceholder": "Describe the problem in detail...",
+      "successTitle": "Report Created",
+      "successDescription": "The issue has been logged and the device marked accordingly."
     }
   },
   "auth": {

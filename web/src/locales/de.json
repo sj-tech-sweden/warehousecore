@@ -1029,6 +1029,18 @@
       "description": "Das LED-Licht ist aktuell ausgeschaltet. Möchtest du es aktivieren, um die Job-Geräte zu markieren?",
       "cancel": "Nein, direkt zum Job",
       "confirm": "Ja, LED aktivieren"
+    },
+    "serviceActions": {
+      "reportIssue": "Problem melden",
+      "markProblematic": "Als problematisch markieren"
+    },
+    "serviceModal": {
+      "title": "Servicebericht erstellen",
+      "subtitle": "Problem erfassen, damit es verfolgt und behoben werden kann",
+      "titlePlaceholder": "z. B. Display gebrochen, Stromausfall...",
+      "descriptionPlaceholder": "Beschreibe das Problem ausführlich...",
+      "successTitle": "Bericht erstellt",
+      "successDescription": "Das Problem wurde protokolliert und das Gerät entsprechend markiert."
     }
   },
   "auth": {

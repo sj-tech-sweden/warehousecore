@@ -370,6 +370,10 @@ func main() {
 	// Apply middleware
 	api.Use(middleware.Logger)
 	api.Use(middleware.RecoveryMiddleware)
+	// Docs endpoints - always available but require authentication
+	docsRouter := router.PathPrefix("").Subrouter()
+	docsRouter.Use(middleware.AuthMiddleware)
+	registerDynamicDocs(docsRouter)
 
 	// Serve static frontend files with SPA fallback
 	router.PathPrefix("/").HandlerFunc(spaHandler)
