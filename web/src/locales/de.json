@@ -327,7 +327,8 @@
       "brands": "Marken & Hersteller",
       "countTypes": "Mess-Einheiten",
       "apiKeys": "API-Keys",
-      "export": "CSV-Export"
+      "export": "CSV-Export",
+      "devices": "Geräte"
     },
     "apiSettings": {
       "title": "API-Limits",

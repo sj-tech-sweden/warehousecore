@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Box,
   Eye,
   GitBranch,
   LayoutGrid,
@@ -18,6 +19,7 @@ import { ModalPortal } from '../ModalPortal';
 import { DeviceTreeTab } from './DeviceTreeTab';
 import { ProductDependenciesModal } from '../ProductDependenciesModal';
 import { ProductDetailModal } from '../ProductDetailModal';
+import { ProductDevicesModal } from '../ProductDevicesModal';
 
 interface Product {
   product_id: number;
@@ -191,6 +193,9 @@ export function ProductsTab() {
   const [productDevices, setProductDevices] = useState<Device[]>([]);
   const [devicesToDelete, setDevicesToDelete] = useState<Set<string>>(new Set());
   const [loadingDevices, setLoadingDevices] = useState(false);
+  const [devicesModal, setDevicesModal] = useState<{ productId: number; productName: string } | null>(null);
+  const [devicesModalDevices, setDevicesModalDevices] = useState<Device[]>([]);
+  const [loadingDevicesModal, setLoadingDevicesModal] = useState(false);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
@@ -384,6 +389,25 @@ export function ProductsTab() {
   const closeDetailModal = () => {
     setViewProduct(null);
   };
+
+  const handleOpenDevicesModal = useCallback(async (productId: number, productName: string) => {
+    setDevicesModal({ productId, productName });
+    setLoadingDevicesModal(true);
+    try {
+      const { data } = await api.get<Device[]>(`/admin/products/${productId}/devices`);
+      setDevicesModalDevices(data || []);
+    } catch (error) {
+      console.error('Failed to load devices for modal:', error);
+      setDevicesModalDevices([]);
+    } finally {
+      setLoadingDevicesModal(false);
+    }
+  }, []);
+
+  const closeDevicesModal = useCallback(() => {
+    setDevicesModal(null);
+    setDevicesModalDevices([]);
+  }, []);
 
   const handleOpenCreateModal = async () => {
     await ensureMetadataLoaded();
@@ -780,6 +804,13 @@ export function ProductsTab() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
+                          onClick={() => handleOpenDevicesModal(product.product_id, product.name)}
+                          className="rounded-lg bg-cyan-600/80 p-2 text-white transition hover:bg-cyan-600"
+                          title={t('admin.products.manageDevices')}
+                        >
+                          <Box className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => setDependenciesModal({ productId: product.product_id, productName: product.name })}
                           className="rounded-lg bg-purple-600/80 p-2 text-white transition hover:bg-purple-600"
                           title={t('admin.products.manageDependencies')}
@@ -838,6 +869,13 @@ export function ProductsTab() {
                     title={t('common.edit')}
                   >
                     <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleOpenDevicesModal(product.product_id, product.name)}
+                    className="rounded-lg bg-cyan-600/80 p-2 text-white transition hover:bg-cyan-600"
+                    title={t('admin.products.manageDevices')}
+                  >
+                    <Box className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setDependenciesModal({ productId: product.product_id, productName: product.name })}
@@ -1453,6 +1491,18 @@ export function ProductsTab() {
           onClose={() => setDependenciesModal(null)}
         />
       )}
+
+      {/* Product Devices Modal */}
+      <ProductDevicesModal
+        isOpen={!!devicesModal}
+        onClose={closeDevicesModal}
+        productName={devicesModal?.productName ?? ''}
+        devices={devicesModalDevices}
+        loading={loadingDevicesModal}
+        onLocate={() => {}}
+        onOpenZone={() => {}}
+        onOpenDevice={() => {}}
+      />
     </div>
   );
 }
