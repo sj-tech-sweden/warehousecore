@@ -1,4 +1,4 @@
-import { X, Package, MapPin, Barcode, Hash, Activity, Wrench, Lightbulb, LightbulbOff, Tag, Download } from 'lucide-react';
+import { X, Package, MapPin, Barcode, Hash, Activity, Wrench, Lightbulb, LightbulbOff, Tag, Download, CalendarDays, FileText, Wifi } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ledApi } from '../lib/api';
 import type { Device } from '../lib/api';
@@ -250,7 +250,72 @@ export function DeviceDetailModal({ device, isOpen, onClose }: DeviceDetailModal
                 </div>
               </div>
             </div>
+
+            {/* RFID */}
+            {device.rfid && (
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <Wifi className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">{t('devices.rfid')}</p>
+                    <p className="text-white font-mono font-semibold">{device.rfid}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Purchase Date */}
+            {device.purchase_date && (
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <CalendarDays className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">{t('admin.devices.purchaseDate')}</p>
+                    <p className="text-white font-semibold">{device.purchase_date}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Warranty End Date */}
+            {device.warranty_end_date && (
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <CalendarDays className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">{t('admin.devices.warrantyEndDate')}</p>
+                    <p className="text-white font-semibold">{device.warranty_end_date}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Retire Date */}
+            {device.retire_date && (
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <CalendarDays className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">{t('admin.devices.retireDate')}</p>
+                    <p className="text-white font-semibold">{device.retire_date}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Notes */}
+          {device.notes && (
+            <div className="glass rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <FileText className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">{t('modals.productDependencies.notes')}</p>
+                  <p className="text-white text-sm whitespace-pre-wrap">{device.notes}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* LED Control Buttons */}
           {device.zone_code && (
