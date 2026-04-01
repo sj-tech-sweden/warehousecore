@@ -42,7 +42,13 @@ func (s *ZoneService) GenerateZoneCode(zoneName, zoneType string, parentZoneID *
 
 		var maxNum int
 		err = s.db.QueryRow(`
-			SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(code, '-', -1) AS UNSIGNED)), 0)
+			SELECT COALESCE(MAX(
+				CASE
+					WHEN split_part(code, '-', array_length(string_to_array(code, '-'), 1)) ~ '^[0-9]+$'
+					THEN split_part(code, '-', array_length(string_to_array(code, '-'), 1))::INT
+					ELSE 0
+				END
+			), 0)
 			FROM storage_zones
 			WHERE code LIKE $1 AND parent_zone_id = $2
 		`, pattern, *parentZoneID).Scan(&maxNum)
