@@ -425,7 +425,6 @@ export function MaintenancePage() {
                     </div>
                     <p className="text-gray-400 text-xs sm:text-sm mb-2 sm:mb-3 line-clamp-2">{defect.description}</p>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-4 text-xs sm:text-sm text-gray-500">
-                      <span className="truncate">Gerät: {defect.device_id}</span>
                       <span className="truncate">{t('maintenance.deviceLabel', { id: defect.device_id })}</span>
                       {defect.product_name && <span className="hidden sm:inline">•</span>}
                       {defect.product_name && <span className="truncate">{defect.product_name}</span>}

@@ -365,7 +365,7 @@ export function Layout({ children }: LayoutProps) {
             <button
               onClick={() => { closeSidebar(); navigate('/profile'); }}
               className="mb-3 px-4 py-2 rounded-lg bg-white/5 text-left w-full hover:bg-white/10"
-              title="Profil öffnen"
+              title={t('profilePage.openProfile')}
             >
               <div className="flex items-center gap-2 text-sm">
                 <User className="w-4 h-4 text-accent-red" />
@@ -383,10 +383,10 @@ export function Layout({ children }: LayoutProps) {
             className={`flex items-center rounded-lg transition-all text-gray-400 hover:bg-red-500/10 hover:text-red-400 ${
               sidebarOpen || isMobile ? 'gap-3 px-4 py-3 w-full' : 'justify-center p-3'
             }`}
-            title={!sidebarOpen && !isMobile ? 'Abmelden' : ''}
+            title={!sidebarOpen && !isMobile ? t('nav.logout') : ''}
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
-            {(sidebarOpen || isMobile) && <span className="font-medium">Abmelden</span>}
+            {(sidebarOpen || isMobile) && <span className="font-medium">{t('nav.logout')}</span>}
           </button>
         </div>
       </aside>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
 interface RoleGuardProps {
@@ -8,11 +9,12 @@ interface RoleGuardProps {
 
 export function RoleGuard({ requiredRoles, children }: RoleGuardProps) {
   const { user, loading } = useAuth();
+  const { t } = useTranslation();
 
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-gray-400">
-        Lade Berechtigungen...
+        {t('roleGuard.loading')}
       </div>
     );
   }
@@ -27,10 +29,9 @@ export function RoleGuard({ requiredRoles, children }: RoleGuardProps) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center text-center space-y-3">
         <div className="text-5xl font-bold text-accent-red">403</div>
-        <p className="text-lg text-gray-300 font-semibold">Zugriff verweigert</p>
+        <p className="text-lg text-gray-300 font-semibold">{t('roleGuard.accessDenied')}</p>
         <p className="text-sm text-gray-500 max-w-md">
-          Für diesen Bereich werden erweiterte Rechte benötigt. Bitte wende dich an einen Administrator,
-          falls du Zugriff auf die Admin-Einstellungen benötigst.
+          {t('roleGuard.accessDeniedDescription')}
         </p>
       </div>
     );

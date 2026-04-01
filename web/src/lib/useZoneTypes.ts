@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { zoneTypesApi, type ZoneTypeDefinition } from './api';
 
 export function useZoneTypes() {
+  const { t } = useTranslation();
   const [zoneTypes, setZoneTypes] = useState<ZoneTypeDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,11 +17,11 @@ export function useZoneTypes() {
       setZoneTypes(data);
     } catch (err) {
       console.error('Failed to load zone types:', err);
-      setError('Lagertypen konnten nicht geladen werden.');
+      setError(t('zonesPage.loadError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadZoneTypes();
