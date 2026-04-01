@@ -375,7 +375,41 @@ func HandleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	// Convert to a clean response with properly serialized device fields.
+	// DeviceWithDetails embeds sql.NullString/NullTime which encode as {"String":…,"Valid":…}
+	// objects in JSON; toDeviceAdminResponse maps them to plain *string / *string (date).
+	type cleanScanResponse struct {
+		Success        bool                           `json:"success"`
+		Message        string                         `json:"message"`
+		Device         *DeviceAdminResponse           `json:"device,omitempty"`
+		Product        *models.ProductInfo            `json:"product,omitempty"`
+		Movement       *models.DeviceMovement         `json:"movement,omitempty"`
+		Action         string                         `json:"action"`
+		PreviousStatus string                         `json:"previous_status,omitempty"`
+		NewStatus      string                         `json:"new_status,omitempty"`
+		Duplicate      bool                           `json:"duplicate"`
+		JobInfo        *models.JobInfo                `json:"job_info,omitempty"`
+		SuggestedDeps  []models.ProductDependencyWithDetails `json:"suggested_dependencies,omitempty"`
+	}
+
+	clean := cleanScanResponse{
+		Success:        response.Success,
+		Message:        response.Message,
+		Product:        response.Product,
+		Movement:       response.Movement,
+		Action:         response.Action,
+		PreviousStatus: response.PreviousStatus,
+		NewStatus:      response.NewStatus,
+		Duplicate:      response.Duplicate,
+		JobInfo:        response.JobInfo,
+		SuggestedDeps:  response.SuggestedDeps,
+	}
+	if response.Device != nil {
+		d := toDeviceAdminResponse(response.Device)
+		clean.Device = &d
+	}
+
+	respondJSON(w, http.StatusOK, clean)
 }
 
 // handleAccessoryConsumableScan processes accessory/consumable scans directly in WarehouseCore
