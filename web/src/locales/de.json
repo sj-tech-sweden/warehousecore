@@ -1478,7 +1478,8 @@
     "productsTitle": "Produktkatalog",
     "productsSubtitle": "Produktstammdaten verwalten.",
     "cablesTitle": "Kabelverwaltung",
-    "cablesSubtitle": "Kabeltypen und Zuordnungen pflegen."
+    "cablesSubtitle": "Kabeltypen und Zuordnungen pflegen.",
+    "devicesTabLabel": "Geräte"
   },
   "roleGuard": {
     "loading": "Lade Berechtigungen...",

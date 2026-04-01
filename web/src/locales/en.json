@@ -1478,7 +1478,8 @@
     "productsTitle": "Product Catalog",
     "productsSubtitle": "Manage product definitions and rental metadata.",
     "cablesTitle": "Cable Catalog",
-    "cablesSubtitle": "Maintain cable types and assignments."
+    "cablesSubtitle": "Maintain cable types and assignments.",
+    "devicesTabLabel": "Devices"
   },
   "roleGuard": {
     "loading": "Loading permissions...",

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Package, Box, Building2 } from 'lucide-react';
+import { Package, Box, Building2, Cpu } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ProductsTab } from '../components/admin/ProductsTab';
 import { ProductPackagesTab } from '../components/admin/ProductPackagesTab';
 import { RentedProductsTab } from '../components/admin/RentedProductsTab';
+import { DevicesTab } from '../components/admin/DevicesTab';
 
-type TabType = 'products' | 'packages' | 'rented';
+type TabType = 'products' | 'packages' | 'rented' | 'devices';
 
 export function ProductsPage() {
   const { t } = useTranslation();
@@ -15,6 +16,7 @@ export function ProductsPage() {
     { id: 'products' as TabType, label: t('products.title'), icon: Package },
     { id: 'packages' as TabType, label: t('admin.productPackages.title'), icon: Box },
     { id: 'rented' as TabType, label: t('admin.rentedProducts.items'), icon: Building2 },
+    { id: 'devices' as TabType, label: t('productManagement.devicesTabLabel'), icon: Cpu },
   ];
 
   return (
@@ -55,6 +57,7 @@ export function ProductsPage() {
         {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'packages' && <ProductPackagesTab />}
         {activeTab === 'rented' && <RentedProductsTab />}
+        {activeTab === 'devices' && <DevicesTab />}
       </div>
     </div>
   );
