@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { api, devicesAdminApi, labelsApi } from '../../lib/api';
 import type { Device, DeviceCreateInput, DeviceUpdateInput, LabelTemplate } from '../../lib/api';
 import { useBlockBodyScroll } from '../../hooks/useBlockBodyScroll';
+import { ModalPortal } from '../ModalPortal';
 
 interface Product {
   product_id: number;
@@ -667,6 +668,7 @@ export function DevicesTab({ initialProductFilter }: DevicesTabProps) {
 
       {/* Create/Edit Modal */}
       {modalOpen && (
+        <ModalPortal>
         <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
           <div className="glass-dark rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
@@ -1099,10 +1101,12 @@ export function DevicesTab({ initialProductFilter }: DevicesTabProps) {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* View Device Modal */}
       {viewDevice && (
+        <ModalPortal>
         <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
           <div className="glass-dark rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
@@ -1274,6 +1278,7 @@ export function DevicesTab({ initialProductFilter }: DevicesTabProps) {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );
