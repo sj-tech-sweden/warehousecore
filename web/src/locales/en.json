@@ -30,8 +30,8 @@
     "stop": "Stop",
     "settings": "Settings",
     "language": "Language",
-    "changeLanguage": "Change language"
-    ,"name": "Name"
+    "changeLanguage": "Change language",
+    "name": "Name"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -991,14 +991,45 @@
     "scanCode": "Scan Code",
     "manualEntry": "Manual Entry",
     "action": "Action",
+    "zoneTitle": "Scan Storage Location",
+    "scannerTitle": "Barcode Scanner",
+    "zoneSubtitle": "Scan the storage location barcode",
+    "scannerSubtitle": "Scan a device or enter a code",
+    "steps": {
+      "device": "Device",
+      "zone": "Storage Location"
+    },
+    "placeholders": {
+      "zone": "Storage barcode / code",
+      "device": "Barcode / QR code / device ID"
+    },
     "actions": {
       "intake": "Intake",
       "outtake": "Outtake",
       "transfer": "Transfer",
       "check": "Check"
     },
+    "scanning": "Scanning...",
+    "scanZone": "Scan Storage Location",
+    "scanDevice": "Scan Device",
+    "prompts": {
+      "intakeQuantity": "Quantity for intake ({{unit}}):",
+      "outtakeQuantity": "Quantity for outtake ({{unit}}):"
+    },
+    "invalidQuantity": "Invalid quantity entered",
     "scanSuccess": "Successfully scanned",
-    "scanError": "Scan error"
+    "scanError": "Scan failed",
+    "result": {
+      "device": "Device:",
+      "id": "ID:",
+      "status": "Status:"
+    },
+    "ledModal": {
+      "title": "Enable LED light?",
+      "description": "The LED light is currently off. Do you want to enable it to mark the job devices?",
+      "cancel": "No, go directly to job",
+      "confirm": "Yes, enable LED"
+    }
   },
   "auth": {
     "login": "Sign In",
@@ -1010,7 +1041,6 @@
     "loginError": "Login failed",
     "loginSuccess": "Successfully signed in"
   },
-
   "login": {
     "tagline": "The future of rental management",
     "secure_footer": "Secure login with encrypted passwords & passkeys",
@@ -1144,7 +1174,8 @@
     "avatarUrl": "Avatar URL (optional)",
     "avatarUrlPlaceholder": "https://example.com/avatar.jpg",
     "saveSuccess": "Profile saved successfully",
-    "saveError": "Failed to save: {{error}}"
+    "saveError": "Failed to save: {{error}}",
+    "openProfile": "Open Profile"
   },
   "zonesPage": {
     "title": "Storage",
@@ -1163,7 +1194,8 @@
     "deleteZone": "Delete zone",
     "capacityLabel": "Capacity: {{capacity}}",
     "empty": "No storage locations yet",
-    "firstZone": "Create first zone"
+    "firstZone": "Create first zone",
+    "loadError": "Failed to load zone types."
   },
   "zoneDetail": {
     "backToZones": "Back to storage",
@@ -1209,52 +1241,6 @@
       "type": "Type",
       "quantity": "Quantity",
       "unit": "Unit"
-    }
-  },
-  "scan": {
-    "title": "Scan Device",
-    "subtitle": "Scan barcodes or QR codes",
-    "scanCode": "Scan Code",
-    "manualEntry": "Manual Entry",
-    "action": "Action",
-    "zoneTitle": "Scan Storage Location",
-    "scannerTitle": "Barcode Scanner",
-    "zoneSubtitle": "Scan the storage location barcode",
-    "scannerSubtitle": "Scan a device or enter a code",
-    "steps": {
-      "device": "Device",
-      "zone": "Storage Location"
-    },
-    "placeholders": {
-      "zone": "Storage barcode / code",
-      "device": "Barcode / QR code / device ID"
-    },
-    "actions": {
-      "intake": "Intake",
-      "outtake": "Outtake",
-      "transfer": "Transfer",
-      "check": "Check"
-    },
-    "scanning": "Scanning...",
-    "scanZone": "Scan Storage Location",
-    "scanDevice": "Scan Device",
-    "prompts": {
-      "intakeQuantity": "Quantity for intake ({{unit}}):",
-      "outtakeQuantity": "Quantity for outtake ({{unit}}):"
-    },
-    "invalidQuantity": "Invalid quantity entered",
-    "scanSuccess": "Successfully scanned",
-    "scanError": "Scan failed",
-    "result": {
-      "device": "Device:",
-      "id": "ID:",
-      "status": "Status:"
-    },
-    "ledModal": {
-      "title": "Enable LED light?",
-      "description": "The LED light is currently off. Do you want to enable it to mark the job devices?",
-      "cancel": "No, go directly to job",
-      "confirm": "Yes, enable LED"
     }
   },
   "jobsPage": {
@@ -1476,5 +1462,10 @@
     "productsSubtitle": "Manage product definitions and rental metadata.",
     "cablesTitle": "Cable Catalog",
     "cablesSubtitle": "Maintain cable types and assignments."
+  },
+  "roleGuard": {
+    "loading": "Loading permissions...",
+    "accessDenied": "Access Denied",
+    "accessDeniedDescription": "Extended permissions are required for this area. Please contact an administrator if you need access to the admin settings."
   }
 }
