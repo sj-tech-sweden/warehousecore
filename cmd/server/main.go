@@ -370,6 +370,7 @@ func main() {
 	// Apply middleware
 	api.Use(middleware.Logger)
 	api.Use(middleware.RecoveryMiddleware)
+	registerDynamicDocs(router)
 
 	// Serve static frontend files with SPA fallback
 	router.PathPrefix("/").HandlerFunc(spaHandler)
