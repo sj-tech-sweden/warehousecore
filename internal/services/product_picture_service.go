@@ -194,11 +194,14 @@ func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName
 		return s.DownloadPicture(productName, fileName)
 	}
 	maxDim := 0
+	var variantDir string
 	switch strings.ToLower(variant) {
 	case "thumb", "thumbnail":
 		maxDim = 480
+		variantDir = "thumb"
 	case "preview", "medium":
 		maxDim = 1200
+		variantDir = "preview"
 	default:
 		return s.DownloadPicture(productName, fileName)
 	}
@@ -227,7 +230,7 @@ func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName
 	}
 
 	safeFile := sanitizeFileName(fileName)
-	cachePath := filepath.Join(s.cacheDir, variant, sanitizeFolderName(productName), safeFile+fileExt)
+	cachePath := filepath.Join(s.cacheDir, variantDir, sanitizeFolderName(productName), safeFile+fileExt)
 	if cached, err := os.Open(cachePath); err == nil {
 		return cached, contentType, nil
 	}
@@ -270,7 +273,7 @@ func (s *ProductPictureService) DownloadPictureWithVariant(productName, fileName
 		}
 	}
 
-	cachePath = filepath.Join(s.cacheDir, variant, sanitizeFolderName(productName), safeFile+fileExt)
+	cachePath = filepath.Join(s.cacheDir, variantDir, sanitizeFolderName(productName), safeFile+fileExt)
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err == nil {
 		_ = os.WriteFile(cachePath, buf.Bytes(), 0o644)
 	}
