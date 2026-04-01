@@ -1175,9 +1175,10 @@ func GetProductDevices(w http.ResponseWriter, r *http.Request) {
 			FROM job_devices jd
 			GROUP BY jd.deviceID
 		)
-		SELECT d.deviceID, d.productID, d.serialnumber, d.barcode, d.qr_code, d.status,
+		SELECT d.deviceID, d.productID, d.serialnumber, d.barcode, d.qr_code, d.rfid, d.status,
 		       d.current_location, d.zone_id,
-		       d.condition_rating, d.usage_hours, d.purchaseDate, d.lastmaintenance, d.nextmaintenance,
+		       d.condition_rating, d.usage_hours, d.purchaseDate, d.retire_date, d.warranty_end_date,
+		       d.lastmaintenance, d.nextmaintenance,
 		       d.notes, d.label_path,
 		       COALESCE(p.name, '') AS product_name,
 		       COALESCE(cat.name, '') AS product_category,
@@ -1216,12 +1217,15 @@ func GetProductDevices(w http.ResponseWriter, r *http.Request) {
 			&device.SerialNumber,
 			&device.Barcode,
 			&device.QRCode,
+			&device.RFID,
 			&device.Status,
 			&device.CurrentLocation,
 			&device.ZoneID,
 			&device.ConditionRating,
 			&device.UsageHours,
 			&device.PurchaseDate,
+			&device.RetireDate,
+			&device.WarrantyEndDate,
 			&device.LastMaintenance,
 			&device.NextMaintenance,
 			&device.Notes,

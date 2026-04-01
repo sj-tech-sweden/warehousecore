@@ -14,9 +14,11 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { api } from '../../lib/api';
+import { api, ledApi } from '../../lib/api';
+import type { Device } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
 import { DeviceTreeTab } from './DeviceTreeTab';
+import { DeviceDetailModal } from '../DeviceDetailModal';
 import { ProductDependenciesModal } from '../ProductDependenciesModal';
 import { ProductDetailModal } from '../ProductDetailModal';
 import { ProductDevicesModal } from '../ProductDevicesModal';
@@ -116,13 +118,6 @@ interface ProductFormData {
   price_per_unit?: number;
 }
 
-interface Device {
-  device_id: string;
-  product_id?: number;
-  status: string;
-  serial_number?: string;
-  barcode?: string;
-}
 
 interface CountType {
   count_type_id: number;
@@ -196,6 +191,7 @@ export function ProductsTab() {
   const [devicesModal, setDevicesModal] = useState<{ productId: number; productName: string } | null>(null);
   const [devicesModalDevices, setDevicesModalDevices] = useState<Device[]>([]);
   const [loadingDevicesModal, setLoadingDevicesModal] = useState(false);
+  const [deviceDetail, setDeviceDetail] = useState<Device | null>(null);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
@@ -1493,17 +1489,26 @@ export function ProductsTab() {
       )}
 
       {/* Product Devices Modal */}
-      {/* onLocate, onOpenZone, and onOpenDevice are intentional no-ops here: */}
-      {/* LED/zone navigation is not applicable in the product admin context. */}
       <ProductDevicesModal
         isOpen={!!devicesModal}
         onClose={closeDevicesModal}
         productName={devicesModal?.productName ?? ''}
         devices={devicesModalDevices}
         loading={loadingDevicesModal}
-        onLocate={() => {}}
+        onLocate={(device) => {
+          if (device.zone_code) {
+            ledApi.locateBin(device.zone_code).catch(err => console.error('LED locate failed:', err));
+          }
+        }}
         onOpenZone={() => {}}
-        onOpenDevice={() => {}}
+        onOpenDevice={(device) => setDeviceDetail(device)}
+      />
+
+      {/* Device Detail Modal (opened from Product Devices list) */}
+      <DeviceDetailModal
+        device={deviceDetail}
+        isOpen={!!deviceDetail}
+        onClose={() => setDeviceDetail(null)}
       />
     </div>
   );
