@@ -12,8 +12,8 @@ ALTER TABLE defect_reports
     ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP NULL,
     ADD COLUMN IF NOT EXISTS reported_at TIMESTAMP NULL;
 
--- Step 2: Backfill reported_at from created_at for any existing rows
-UPDATE defect_reports SET reported_at = created_at WHERE reported_at IS NULL;
+-- Step 2: Backfill reported_at using the current timestamp for any existing rows
+UPDATE defect_reports SET reported_at = CURRENT_TIMESTAMP WHERE reported_at IS NULL;
 
 -- Step 3: Apply NOT NULL constraint and default for future rows
 ALTER TABLE defect_reports

@@ -37,7 +37,7 @@ func buildMuxOpenAPISpec(router *mux.Router) map[string]interface{} {
 
 		methods, err := route.GetMethods()
 		if err != nil || len(methods) == 0 {
-			methods = []string{"GET"}
+			return nil
 		}
 
 		for _, method := range methods {
@@ -96,11 +96,11 @@ func swaggerUIHTML(specURL string) string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WarehouseCore API Docs</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css" />
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
   <script>
     window.ui = SwaggerUIBundle({
       url: '%s',

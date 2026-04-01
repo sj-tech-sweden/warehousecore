@@ -35,6 +35,7 @@ export function ScanPage() {
   });
   const [serviceLoading, setServiceLoading] = useState(false);
   const [serviceSuccess, setServiceSuccess] = useState(false);
+  const [serviceError, setServiceError] = useState<string | null>(null);
 
   // Block body scroll when LED modal or service modal is open
   useBlockBodyScroll(showLEDModal || showServiceModal);
@@ -246,25 +247,30 @@ export function ScanPage() {
   const openServiceModal = (deviceId: string, severity: 'medium' | 'high') => {
     setServiceForm({ device_id: deviceId, severity, title: '', description: '' });
     setServiceSuccess(false);
+    setServiceError(null);
     setShowServiceModal(true);
   };
 
   const handleServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setServiceLoading(true);
+    setServiceError(null);
     try {
       await maintenanceApi.createDefect(serviceForm);
       setServiceSuccess(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create defect:', error);
+      setServiceError(error.response?.data?.error || t('maintenance.createDefectError'));
     } finally {
       setServiceLoading(false);
     }
   };
 
   const handleServiceModalClose = () => {
+    if (serviceLoading) return;
     setShowServiceModal(false);
     setServiceSuccess(false);
+    setServiceError(null);
   };
 
   return (
@@ -525,18 +531,22 @@ export function ScanPage() {
                       <button
                         type="button"
                         onClick={handleServiceModalClose}
-                        className="flex-1 px-4 py-2.5 sm:py-3 rounded-lg font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors text-sm sm:text-base"
+                        disabled={serviceLoading}
+                        className="flex-1 px-4 py-2.5 sm:py-3 rounded-lg font-semibold bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
                       >
                         {t('common.cancel')}
                       </button>
                       <button
                         type="submit"
                         disabled={serviceLoading}
-                        className="flex-1 px-4 py-2.5 sm:py-3 rounded-lg font-semibold bg-gradient-to-r from-accent-red to-red-700 text-white hover:shadow-lg hover:shadow-accent-red/50 disabled:opacity-50 transition-all text-sm sm:text-base"
+                        className="flex-1 px-4 py-2.5 sm:py-3 rounded-lg font-semibold bg-gradient-to-r from-accent-red to-red-700 text-white hover:shadow-lg hover:shadow-accent-red/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm sm:text-base"
                       >
                         {serviceLoading ? t('common.saving') : t('maintenance.form.submit')}
                       </button>
                     </div>
+                    {serviceError && (
+                      <p className="text-red-400 text-xs sm:text-sm text-center pt-1">{serviceError}</p>
+                    )}
                   </form>
                 </>
               )}
