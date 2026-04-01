@@ -331,7 +331,7 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
    - Multiple ESP32s can control different warehouse areas independently
 
 
-> Heartbeats run exclusively via MQTT – make sure that `TOPIC_PREFIX`, `WAREHOUSE_ID` and the broker credentials in `secrets.h` match the WarehouseCore setup. As soon as a controller publishes its status to `<prefix>/<controller>/status`, it is automatically recognized and displayed in the admin panel.
+> Heartbeats run exclusively via MQTT – make sure that `TOPIC_PREFIX`, `WAREHOUSE_ID` and the broker credentials in `secrets.h` match the WarehouseCore setup. As soon as a controller publishes its status to `<prefix>/<topic_suffix>/status` (with `topic_suffix` defaulting to `controller_id` unless overridden), it is automatically recognized and displayed in the admin panel.
 
 #### 4. Controller Registry & Heartbeat
 
@@ -3015,15 +3015,15 @@ For issues or questions:
   - Consistent shelf numbering without gaps
 
 ### Version 1.8 (2025-10-14)
-- **Automatic Shelf (Fach) Creation:**
+- **Automatic Bin (Fach) Creation:**
   - Added 📚 **Bin** (Fach) as a 4th zone type for racks
-  - Automatic name generation (Bin 01, Bin 02, etc.) based on existing shelves in parent rack
+  - Automatic name generation (Bin 01, Bin 02, etc.) based on existing bins in parent rack
   - Automatic barcode generation (FACH-%08d format) after creation
   - No manual name input required for bin creation
-- **Bulk Shelf Creation:**
+- **Bulk Bin Creation:**
   - "Create Bins" button in rack detail view
-  - Create multiple shelves at once with a single action
-  - Default capacity of 10 per shelf
+  - Create multiple bins at once with a single action
+  - Default capacity of 10 per bin
 - **Navigation Improvements:**
   - Fixed subzone creation to stay in parent zone context instead of redirecting to /zones
   - Maintains workflow continuity when creating hierarchical structures
@@ -3031,8 +3031,8 @@ For issues or questions:
   - Added barcode column to storage_zones table (006_add_zone_barcode.sql)
   - Index on barcode for efficient lookups
 - **Backend Enhancements:**
-  - GenerateShelfName function in ZoneService for automatic naming
-  - Updated CreateZone handler to support optional Name field for shelves
+  - `GenerateShelfName` function in ZoneService for automatic bin naming
+  - Updated CreateZone handler to support optional Name field for bins
   - Barcode generation logic after zone insertion
 - **Example Usage:**
   - Create storage zone Weidelbach (WDB)
@@ -3042,9 +3042,9 @@ For issues or questions:
 
 ### Version 1.7 (2025-10-14)
 - **Simplified Zone Types:** Reduced to 3 types only
-  - 🏭 **Lager** (storage/warehouse) - Main storage facility
-  - 🗄️ **Regal** (rack/shelf) - Shelving units
-  - 📦 **Gitterbox** (wire mesh box) - Wire mesh containers
+  - 🏭 **Warehouse** (Lager) - Main storage facility
+  - 🗄️ **Rack** (Regal) - Shelving units
+  - 📦 **Wire Mesh Box** (Gitterbox) - Wire mesh containers
 - **Delete Functionality:**
   - Delete button on zone cards (hover to reveal)
   - Delete button in zone detail view
@@ -3055,7 +3055,7 @@ For issues or questions:
   - Rack prefix: RG
   - Gitterbox prefix: GB
 - **Example Hierarchy:**
-  - Weidelbach (WDL) → Shelf A (WDL-RG-01) → Gitterbox 01 (WDL-RG-01-GB-01)
+  - Weidelbach (WDL) → Rack A (WDL-RG-01) → Gitterbox 01 (WDL-RG-01-GB-01)
 - **Database Migration:** Updated ENUM type to support gitterbox
 
 ### Version 1.6 (2025-10-14)

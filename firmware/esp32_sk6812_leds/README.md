@@ -192,8 +192,10 @@ Last Will Testament (offline):
 Each ESP32 publishes its status exclusively via MQTT to
 
 ```
-{TOPIC_PREFIX}/{CONTROLLER_ID}/status
+{TOPIC_PREFIX}/{TOPIC_SUFFIX}/status
 ```
+
+(where `TOPIC_SUFFIX` defaults to `controller_id` unless overridden in `secrets.h`)
 
 The JSON payload matches the example shown above (`status`, `wifi_rssi`, `uptime_seconds`, …). WarehouseCore listens on these topics, automatically creates missing controllers, and updates `last_seen`, `is_active`, IP, firmware version, etc.
 
