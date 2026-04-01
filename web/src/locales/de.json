@@ -1186,7 +1186,8 @@
     "avatarUrl": "Avatar URL (optional)",
     "avatarUrlPlaceholder": "https://example.com/avatar.jpg",
     "saveSuccess": "Profil erfolgreich gespeichert",
-    "saveError": "Fehler beim Speichern: {{error}}"
+    "saveError": "Fehler beim Speichern: {{error}}",
+    "openProfile": "Profil öffnen"
   },
   "zonesPage": {
     "title": "Lager",
@@ -1205,7 +1206,8 @@
     "deleteZone": "Zone löschen",
     "capacityLabel": "Kapazität: {{capacity}}",
     "empty": "Noch keine Lagerorte vorhanden",
-    "firstZone": "Erste Zone erstellen"
+    "firstZone": "Erste Zone erstellen",
+    "loadError": "Lagertypen konnten nicht geladen werden."
   },
   "zoneDetail": {
     "backToZones": "Zurück zu Lager",
@@ -1472,5 +1474,10 @@
     "productsSubtitle": "Produktstammdaten verwalten.",
     "cablesTitle": "Kabelverwaltung",
     "cablesSubtitle": "Kabeltypen und Zuordnungen pflegen."
+  },
+  "roleGuard": {
+    "loading": "Lade Berechtigungen...",
+    "accessDenied": "Zugriff verweigert",
+    "accessDeniedDescription": "Für diesen Bereich werden erweiterte Rechte benötigt. Bitte wende dich an einen Administrator, falls du Zugriff auf die Admin-Einstellungen benötigst."
   }
 }

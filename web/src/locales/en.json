@@ -1186,7 +1186,8 @@
     "avatarUrl": "Avatar URL (optional)",
     "avatarUrlPlaceholder": "https://example.com/avatar.jpg",
     "saveSuccess": "Profile saved successfully",
-    "saveError": "Failed to save: {{error}}"
+    "saveError": "Failed to save: {{error}}",
+    "openProfile": "Open Profile"
   },
   "zonesPage": {
     "title": "Storage",
@@ -1205,7 +1206,8 @@
     "deleteZone": "Delete zone",
     "capacityLabel": "Capacity: {{capacity}}",
     "empty": "No storage locations yet",
-    "firstZone": "Create first zone"
+    "firstZone": "Create first zone",
+    "loadError": "Failed to load zone types."
   },
   "zoneDetail": {
     "backToZones": "Back to storage",
@@ -1472,5 +1474,10 @@
     "productsSubtitle": "Manage product definitions and rental metadata.",
     "cablesTitle": "Cable Catalog",
     "cablesSubtitle": "Maintain cable types and assignments."
+  },
+  "roleGuard": {
+    "loading": "Loading permissions...",
+    "accessDenied": "Access Denied",
+    "accessDeniedDescription": "Extended permissions are required for this area. Please contact an administrator if you need access to the admin settings."
   }
 }
