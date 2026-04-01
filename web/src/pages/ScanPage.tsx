@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { scansApi, zonesApi, jobsApi, ledApi, maintenanceApi } from '../lib/api';
 import type { Device, ScanResponse } from '../lib/api';
 import { useBlockBodyScroll } from '../hooks/useBlockBodyScroll';
-import { DeviceDetailModal } from '../components/DeviceDetailModal';
+import { DeviceInfoModal } from '../components/DeviceInfoModal';
 
 type ScanStep = 'device' | 'zone';
 
@@ -601,8 +601,8 @@ export function ScanPage() {
         )}
       </div>
 
-      {/* Device Detail Modal */}
-      <DeviceDetailModal
+      {/* Device Info Modal */}
+      <DeviceInfoModal
         device={viewDevice}
         isOpen={viewDevice !== null}
         onClose={() => setViewDevice(null)}
