@@ -69,9 +69,12 @@ export function ScanFieldModal({ isOpen, fieldLabel, onConfirm, onClose }: ScanF
     setInputMethod(method);
   }, []);
 
+  const selectedValue = inputMethod === 'keyboard' ? manualValue : scannedValue;
+  const trimmedSelectedValue = selectedValue.trim();
+
   const handleConfirm = () => {
-    const value = inputMethod === 'keyboard' ? manualValue : scannedValue;
-    onConfirm(value);
+    if (!trimmedSelectedValue) return;
+    onConfirm(trimmedSelectedValue);
     onClose();
   };
 
@@ -87,7 +90,7 @@ export function ScanFieldModal({ isOpen, fieldLabel, onConfirm, onClose }: ScanF
             <h2 className="text-lg font-semibold text-white">
               {t('scanField.title', { field: fieldLabel })}
             </h2>
-            <button type="button" onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+            <button type="button" onClick={onClose} aria-label={t('common.close')} title={t('common.close')} className="text-gray-400 hover:text-white transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -221,7 +224,7 @@ export function ScanFieldModal({ isOpen, fieldLabel, onConfirm, onClose }: ScanF
               <button
                 type="button"
                 onClick={handleConfirm}
-                disabled={!(inputMethod === 'keyboard' ? manualValue : scannedValue)}
+                disabled={trimmedSelectedValue.length === 0}
                 className="flex-1 px-4 py-2 rounded-xl bg-accent-red text-white font-semibold text-sm hover:bg-accent-red/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('scanField.apply')}

@@ -868,6 +868,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                       onClick={() => setScanFieldTarget('serial_number')}
                       className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
                       title={t('scanField.scan')}
+                      aria-label={t('scanField.scan')}
                     >
                       <ScanLine className="w-4 h-4" />
                     </button>
@@ -890,6 +891,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                       onClick={() => setScanFieldTarget('barcode')}
                       className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
                       title={t('scanField.scan')}
+                      aria-label={t('scanField.scan')}
                     >
                       <ScanLine className="w-4 h-4" />
                     </button>
@@ -912,6 +914,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                       onClick={() => setScanFieldTarget('qr_code')}
                       className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
                       title={t('scanField.scan')}
+                      aria-label={t('scanField.scan')}
                     >
                       <ScanLine className="w-4 h-4" />
                     </button>
@@ -937,6 +940,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                     onClick={() => setScanFieldTarget('rfid')}
                     className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
                     title={t('scanField.scan')}
+                    aria-label={t('scanField.scan')}
                   >
                     <ScanLine className="w-4 h-4" />
                   </button>
@@ -1182,26 +1186,26 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
       />
 
       {/* Scan Field Modal */}
-      <ScanFieldModal
-        isOpen={scanFieldTarget !== null}
-        fieldLabel={
-          scanFieldTarget === 'rfid'
-            ? t('devices.rfid')
-            : scanFieldTarget === 'serial_number'
-              ? t('devices.serialNumber')
-              : scanFieldTarget === 'barcode'
-                ? t('devices.barcode')
-                : scanFieldTarget === 'qr_code'
-                  ? t('labels.qrCode')
-                  : ''
-        }
-        onConfirm={(value) => {
-          if (scanFieldTarget) {
-            setFormData((prev) => ({ ...prev, [scanFieldTarget]: value }));
-          }
-        }}
-        onClose={() => setScanFieldTarget(null)}
-      />
+      {(() => {
+        const scanFieldLabels: Record<NonNullable<typeof scanFieldTarget>, string> = {
+          rfid: t('devices.rfid'),
+          serial_number: t('devices.serialNumber'),
+          barcode: t('devices.barcode'),
+          qr_code: t('labels.qrCode'),
+        };
+        return (
+          <ScanFieldModal
+            isOpen={scanFieldTarget !== null}
+            fieldLabel={scanFieldTarget ? scanFieldLabels[scanFieldTarget] : ''}
+            onConfirm={(value) => {
+              if (scanFieldTarget) {
+                setFormData((prev) => ({ ...prev, [scanFieldTarget]: value }));
+              }
+            }}
+            onClose={() => setScanFieldTarget(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
