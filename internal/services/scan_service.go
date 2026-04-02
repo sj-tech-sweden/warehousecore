@@ -135,7 +135,7 @@ func (s *ScanService) processIntake(tx *sql.Tx, device *models.Device, zoneID *i
 	// This makes it appear as "not scanned" again in the job
 	if fromJobID != nil {
 		_, err = tx.Exec(`
-			UPDATE job_devices
+			UPDATE jobdevices
 			SET pack_status = 'pending', pack_ts = NULL
 			WHERE deviceID = $1 AND jobID = $2
 		`, device.DeviceID, *fromJobID)
@@ -197,7 +197,7 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 
 	// Assign to job and update pack_status to issued
 	_, err = tx.Exec(`
-		INSERT INTO job_devices (deviceID, jobID, pack_status)
+		INSERT INTO jobdevices (deviceID, jobID, pack_status)
 		VALUES ($1, $2, 'issued')
 		ON CONFLICT (deviceID, jobID) DO UPDATE SET pack_status = 'issued'
 	`, device.DeviceID, *jobID)
@@ -362,7 +362,7 @@ func (s *ScanService) findDeviceByScan(scanCode string) (*models.Device, error) 
 	// Get current job if on_job
 	if device.Status == "on_job" || device.Status == "rented" {
 		s.db.QueryRow(`
-			SELECT jobID FROM job_devices WHERE deviceID = $1 LIMIT 1
+			SELECT jobID FROM jobdevices WHERE deviceID = $1 LIMIT 1
 		`, device.DeviceID).Scan(&device.CurrentJobID)
 	}
 
@@ -387,7 +387,7 @@ func (s *ScanService) getDeviceWithDetails(deviceID string) *models.DeviceWithDe
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
-		LEFT JOIN job_devices jd ON d.deviceID = jd.deviceID
+		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID
 		LEFT JOIN jobs j ON jd.jobID = j.jobID
 		WHERE d.deviceID = $1
 		LIMIT 1

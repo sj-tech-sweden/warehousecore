@@ -706,7 +706,7 @@ func exportJobs() ([]byte, error) {
 			COUNT(DISTINCT jd.deviceID) as device_count,
 			SUM(jd.quantity) as total_quantity
 		FROM jobs j
-		LEFT JOIN job_devices jd ON j.jobID = jd.jobID
+		LEFT JOIN jobdevices jd ON j.jobID = jd.jobID
 		GROUP BY j.jobID, j.job_number, j.title, j.customer_name,
 		         j.start_date, j.end_date, j.status, j.location, j.notes
 		ORDER BY j.start_date DESC

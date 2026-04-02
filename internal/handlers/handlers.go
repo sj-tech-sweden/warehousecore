@@ -712,7 +712,7 @@ func GetDevices(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
-		LEFT JOIN job_devices jd ON d.deviceID = jd.deviceID AND jd.pack_status IN ('packed', 'issued')
+		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID AND jd.pack_status IN ('packed', 'issued')
 		WHERE 1=1`
 
 	args := []interface{}{}
@@ -848,7 +848,7 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
-		LEFT JOIN job_devices jd ON d.deviceID = jd.deviceID AND jd.pack_status IN ('packed', 'issued')
+		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID AND jd.pack_status IN ('packed', 'issued')
 		WHERE d.deviceID = $1
 	`, deviceID).Scan(&device.DeviceID, &device.ProductID, &device.SerialNumber, &device.Status,
 		&device.Barcode, &device.QRCode, &device.ZoneID, &device.ConditionRating, &device.UsageHours, &device.LabelPath,
@@ -1419,24 +1419,23 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 	qb := NewQueryBuilder()
 	query := `
 		SELECT j.jobID,
-		       COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.jobID AS TEXT), 6, '0'))) AS job_code,
-		       j.description, j.startDate, j.endDate, s.status,
+		       CONCAT('JOB', LPAD(CAST(j.jobID AS TEXT), 6, '0')) AS job_code,
+		       j.description, j.startDate, j.endDate, j.status,
 		       COALESCE(c.firstName, '') as customer_first_name,
 		       COALESCE(c.lastName, '') as customer_last_name,
 		       COUNT(DISTINCT jd.deviceID) as device_count
 		FROM jobs j
-		LEFT JOIN status s ON j.statusID = s.statusID
 		LEFT JOIN customers c ON j.customerID = c.customerID
-		LEFT JOIN job_devices jd ON j.jobID = jd.jobID
+		LEFT JOIN jobdevices jd ON j.jobID = jd.jobID
 		WHERE 1=1`
 
 	args := []interface{}{}
 	if status != "" {
-		query += " AND s.status = " + qb.NextPlaceholder()
+		query += " AND LOWER(j.status) = LOWER(" + qb.NextPlaceholder() + ")"
 		args = append(args, status)
 	}
 
-	query += " GROUP BY j.jobID, j.job_code, j.description, j.startDate, j.endDate, s.status, c.firstName, c.lastName ORDER BY j.startDate ASC"
+	query += " GROUP BY j.jobID, j.description, j.startDate, j.endDate, j.status, c.firstName, c.lastName ORDER BY j.startDate ASC"
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -1505,11 +1504,10 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 	)
 
 	err = db.QueryRow(`
-		SELECT j.job_code, j.description, j.startDate, j.endDate, s.status,
+		SELECT CONCAT('JOB', LPAD(CAST(j.jobID AS TEXT), 6, '0')), j.description, j.startDate, j.endDate, j.status,
 		       COALESCE(c.firstName, '') as customer_first_name,
 		       COALESCE(c.lastName, '') as customer_last_name
 		FROM jobs j
-		LEFT JOIN status s ON j.statusID = s.statusID
 		LEFT JOIN customers c ON j.customerID = c.customerID
 		WHERE j.jobID = $1
 	`, jobID).Scan(&jobCode, &description, &startDate, &endDate, &status, &customerFirstName, &customerLastName)
@@ -1529,8 +1527,8 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		SELECT jd.deviceID, d.status, d.barcode, d.qr_code,
 		       COALESCE(p.name, '') as product_name,
 		       COALESCE(z.name, '') as zone_name,
-		       jd.pack_status
-		FROM job_devices jd
+		       COALESCE(jd.pack_status, 'pending') as pack_status
+		FROM jobdevices jd
 		LEFT JOIN devices d ON jd.deviceID = d.deviceID
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
@@ -2820,10 +2818,10 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 	query := `
 		WITH latest_job AS (
 			SELECT jd.deviceID, jd.jobID
-			FROM job_devices jd
+			FROM jobdevices jd
 			INNER JOIN (
 				SELECT deviceID, MAX(jobID) AS jobID
-				FROM job_devices
+				FROM jobdevices
 				GROUP BY deviceID
 			) latest ON jd.deviceID = latest.deviceID AND jd.jobID = latest.jobID
 		)
@@ -2851,7 +2849,7 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 			dc.caseID as case_id,
 			COALESCE(cs.name, '') as case_name,
 			lj.jobID as current_job_id,
-			COALESCE(j.job_code, '') as job_number,
+			COALESCE(CAST(j.jobID AS TEXT), '') as job_number,
 			COALESCE(d.condition_rating, 0) as condition_rating,
 			COALESCE(d.usage_hours, 0) as usage_hours,
 			d.label_path,

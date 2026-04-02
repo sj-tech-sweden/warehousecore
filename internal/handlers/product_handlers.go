@@ -1172,7 +1172,7 @@ func GetProductDevices(w http.ResponseWriter, r *http.Request) {
 	query := `
 		WITH latest_job AS (
 			SELECT jd.deviceID, MAX(jd.jobID) AS jobID
-			FROM job_devices jd
+			FROM jobdevices jd
 			GROUP BY jd.deviceID
 		)
 		SELECT d.deviceID, d.productID, d.serialnumber, d.barcode, d.qr_code, d.rfid, d.status,
@@ -1187,7 +1187,7 @@ func GetProductDevices(w http.ResponseWriter, r *http.Request) {
 		       dc.caseID,
 		       COALESCE(c.name, '') AS case_name,
 		       lj.jobID,
-		       COALESCE(j.job_code, '') AS job_number
+		       CAST(lj.jobID AS TEXT) AS job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
