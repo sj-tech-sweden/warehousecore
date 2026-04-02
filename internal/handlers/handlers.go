@@ -2254,7 +2254,7 @@ func RemoveDeviceFromCase(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Device removed from case successfully"})
 }
 
-// GetCaseByScan finds a case by its barcode or name
+// GetCaseByScan finds a case by its barcode, RFID tag, or name
 // GET /api/v1/cases/scan?scan_code=...
 func GetCaseByScan(w http.ResponseWriter, r *http.Request) {
 	scanCode := strings.TrimSpace(r.URL.Query().Get("scan_code"))

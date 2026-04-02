@@ -59,6 +59,20 @@ export function ScanPage() {
   // callbacks (which are memoised) can always call the latest version.
   const submitCodeRef = useRef<(code: string) => void>(() => {});
 
+  // Ref for case action message auto-dismiss timeout – cleared on unmount to
+  // prevent state updates on an unmounted component.
+  const caseActionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleCaseActionDismiss = useCallback((ms: number) => {
+    if (caseActionTimeoutRef.current !== null) {
+      clearTimeout(caseActionTimeoutRef.current);
+    }
+    caseActionTimeoutRef.current = setTimeout(() => {
+      setCaseActionMessage(null);
+      caseActionTimeoutRef.current = null;
+    }, ms);
+  }, []);
+
   const handleCodeDetected = useCallback((code: string) => {
     submitCodeRef.current(code);
   }, []);
@@ -80,11 +94,14 @@ export function ScanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputMethod]);
 
-  // Stop scanners on unmount
+  // Stop scanners on unmount; also clear any pending case-action-message timeout
   useEffect(() => {
     return () => {
       barcodeScanner.stopScanning();
       nfcScanner.stopScanning();
+      if (caseActionTimeoutRef.current !== null) {
+        clearTimeout(caseActionTimeoutRef.current);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -158,13 +175,13 @@ export function ScanPage() {
         if (!checkData.success || !checkData.device) {
           setCaseActionMessage({ type: 'error', text: checkData.message || t('scan.scanError') });
           setScanCode('');
-          setTimeout(() => setCaseActionMessage(null), 3000);
+          scheduleCaseActionDismiss(3000);
         } else {
           const deviceId = checkData.device.device_id;
           if (caseDeviceIds.includes(deviceId)) {
             setCaseActionMessage({ type: 'error', text: t('scan.case.alreadyScanned', { id: deviceId }) });
             setScanCode('');
-            setTimeout(() => setCaseActionMessage(null), 3000);
+            scheduleCaseActionDismiss(3000);
           } else {
             // Add device to case immediately
             const { data: addData } = await casesApi.addDevices(scannedCase.case_id, [deviceId]);
@@ -176,7 +193,7 @@ export function ScanPage() {
               setCaseActionMessage({ type: 'error', text: errMsg });
             }
             setScanCode('');
-            setTimeout(() => setCaseActionMessage(null), 3000);
+            scheduleCaseActionDismiss(3000);
           }
         }
       }
@@ -290,11 +307,11 @@ export function ScanPage() {
       if (action === 'case' && step === 'case') {
         setCaseActionMessage({ type: 'error', text: error.response?.data?.error || t('scan.case.caseNotFound') });
         setScanCode('');
-        setTimeout(() => setCaseActionMessage(null), 4000);
+        scheduleCaseActionDismiss(4000);
       } else if (action === 'case' && step === 'device-for-case') {
         setCaseActionMessage({ type: 'error', text: error.response?.data?.error || t('scan.scanError') });
         setScanCode('');
-        setTimeout(() => setCaseActionMessage(null), 3000);
+        scheduleCaseActionDismiss(3000);
       } else {
         setResult({
           success: false,
@@ -524,10 +541,10 @@ export function ScanPage() {
                               await casesApi.removeDevice(scannedCase.case_id, id);
                               setCaseDeviceIds(prev => prev.filter(d => d !== id));
                               setCaseActionMessage({ type: 'success', text: t('casesPage.messages.deviceRemoved', { id }) });
-                              setTimeout(() => setCaseActionMessage(null), 2000);
+                              scheduleCaseActionDismiss(2000);
                             } catch {
                               setCaseActionMessage({ type: 'error', text: t('scan.case.removeFailed') });
-                              setTimeout(() => setCaseActionMessage(null), 2000);
+                              scheduleCaseActionDismiss(2000);
                             }
                           }}
                           className="text-gray-500 hover:text-red-400 transition-colors"
@@ -674,16 +691,16 @@ export function ScanPage() {
             {/* Action Selection - only show in step 1 */}
             {(step === 'device' || step === 'case') && (
               <div className="grid grid-cols-4 gap-2 sm:gap-3">
-                {[
+                {([
                   { value: 'check', label: t('scan.actions.check') },
                   { value: 'intake', label: t('scan.actions.intake') },
                   { value: 'outtake', label: t('scan.actions.outtake') },
                   { value: 'case', label: t('scan.actions.case') },
-                ].map((btn) => (
+                ] as const).map((btn) => (
                   <button
                     key={btn.value}
                     type="button"
-                    onClick={() => handleActionChange(btn.value as any)}
+                    onClick={() => handleActionChange(btn.value)}
                     className={`px-2 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all ${
                       action === btn.value
                         ? 'bg-accent-red text-white scale-105'
