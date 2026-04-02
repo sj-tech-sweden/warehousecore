@@ -77,8 +77,6 @@ export function ScanFieldModal({ isOpen, fieldLabel, onConfirm, onClose }: ScanF
 
   if (!isOpen) return null;
 
-  const displayValue = inputMethod === 'keyboard' ? manualValue : scannedValue;
-
   return (
     <ModalPortal>
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -223,7 +221,7 @@ export function ScanFieldModal({ isOpen, fieldLabel, onConfirm, onClose }: ScanF
               <button
                 type="button"
                 onClick={handleConfirm}
-                disabled={!displayValue}
+                disabled={!(inputMethod === 'keyboard' ? manualValue : scannedValue)}
                 className="flex-1 px-4 py-2 rounded-xl bg-accent-red text-white font-semibold text-sm hover:bg-accent-red/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('scanField.apply')}
