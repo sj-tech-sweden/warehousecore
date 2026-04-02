@@ -2449,20 +2449,42 @@ func UpdateDefect(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf("UPDATE defect_reports SET %s WHERE defect_id = $%d", strings.Join(updates, ", "), argNum)
 	args = append(args, defectID)
 
-	_, err := db.Exec(query, args...)
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("Error starting transaction for defect update: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update defect"})
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(query, args...)
 	if err != nil {
 		log.Printf("Error updating defect: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	// If status is repaired or closed, update device status
+	// If status is repaired or closed, update device status to free
 	if input.Status != nil && (*input.Status == "repaired" || *input.Status == "closed") {
 		var deviceID string
-		db.QueryRow(`SELECT device_id FROM defect_reports WHERE defect_id = $1`, defectID).Scan(&deviceID)
-		if deviceID != "" {
-			db.Exec(`UPDATE devices SET status = 'in_storage' WHERE deviceID = $1`, deviceID)
+		if err := tx.QueryRow(`SELECT device_id FROM defect_reports WHERE defect_id = $1`, defectID).Scan(&deviceID); err != nil {
+			log.Printf("Error fetching device_id for defect %s: %v", defectID, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch device for defect"})
+			return
 		}
+		if deviceID != "" {
+			if _, err := tx.Exec(`UPDATE devices SET status = 'free' WHERE deviceID = $1`, deviceID); err != nil {
+				log.Printf("Error updating device status for device %s: %v", deviceID, err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update device status"})
+				return
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Error committing defect update transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit defect update"})
+		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Defect updated successfully"})
