@@ -449,7 +449,7 @@ func (s *DeviceAdminService) FetchDevice(ctx context.Context, deviceID string) (
 		       dc.caseID,
 		       COALESCE(c.name, '') AS case_name,
 		       jd.jobID,
-		       COALESCE(CAST(j.jobID AS TEXT), '') AS job_number
+		       COALESCE(CAST(jd.jobID AS TEXT), '') AS job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
@@ -457,7 +457,6 @@ func (s *DeviceAdminService) FetchDevice(ctx context.Context, deviceID string) (
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
 		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID
-		LEFT JOIN jobs j ON jd.jobID = j.jobID
 		WHERE d.deviceID = $1
 		LIMIT 1
 	`, deviceID).Scan(

@@ -1187,7 +1187,7 @@ func GetProductDevices(w http.ResponseWriter, r *http.Request) {
 		       dc.caseID,
 		       COALESCE(c.name, '') AS case_name,
 		       lj.jobID,
-		       CAST(lj.jobID AS TEXT) AS job_number
+		       COALESCE(CAST(lj.jobID AS TEXT), '') AS job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
@@ -1195,7 +1195,6 @@ func GetProductDevices(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
 		LEFT JOIN latest_job lj ON lj.deviceID = d.deviceID
-		LEFT JOIN jobs j ON lj.jobID = j.jobID
 		WHERE d.productID = $1
 		ORDER BY d.deviceID ASC
 	`

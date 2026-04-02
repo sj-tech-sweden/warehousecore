@@ -116,7 +116,7 @@ func GetAllDevicesAdmin(w http.ResponseWriter, r *http.Request) {
 		       dc.caseID,
 		       COALESCE(c.name, '') AS case_name,
 		       jd.jobID,
-		       COALESCE(CAST(j.jobID AS TEXT), '') AS job_number
+		       COALESCE(CAST(jd.jobID AS TEXT), '') AS job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
@@ -124,7 +124,6 @@ func GetAllDevicesAdmin(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
 		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID
-		LEFT JOIN jobs j ON jd.jobID = j.jobID
 		ORDER BY d.deviceID DESC
 	`
 
