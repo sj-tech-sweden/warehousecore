@@ -1425,7 +1425,8 @@
       "alreadyInZone": "Already in this zone",
       "searchPlaceholder": "Search devices...",
       "searchLabel": "Search devices",
-      "clearSearch": "Clear search"
+      "clearSearch": "Clear search",
+      "noSearchResults": "No devices match your search"
     },
     "productDependencies": {
       "title": "Product Dependencies",

@@ -509,8 +509,9 @@ export function ScanPage() {
                 </div>
                 <button
                   type="button"
+                  disabled={loading}
                   onClick={() => { setStep('case'); setScannedCase(null); setCaseDeviceIds([]); setCaseActionMessage(null); }}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-gray-300 transition-colors flex-shrink-0"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-gray-300 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <X className="w-3 h-3" />
                   {t('scan.case.changeCase')}
@@ -536,6 +537,7 @@ export function ScanPage() {
                         {id}
                         <button
                           type="button"
+                          disabled={loading}
                           onClick={async () => {
                             try {
                               await casesApi.removeDevice(scannedCase.case_id, id);
@@ -547,7 +549,7 @@ export function ScanPage() {
                               scheduleCaseActionDismiss(2000);
                             }
                           }}
-                          className="text-gray-500 hover:text-red-400 transition-colors"
+                          className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-2.5 h-2.5" />
                         </button>

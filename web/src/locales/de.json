@@ -1425,7 +1425,8 @@
       "alreadyInZone": "Bereits in dieser Zone",
       "searchPlaceholder": "Geräte suchen...",
       "searchLabel": "Geräte suchen",
-      "clearSearch": "Suche löschen"
+      "clearSearch": "Suche löschen",
+      "noSearchResults": "Keine Geräte gefunden"
     },
     "productDependencies": {
       "title": "Produktabhängigkeiten",

@@ -227,6 +227,10 @@ export function DeviceTreeModal({ isOpen, onClose, onConfirm, zoneId }: DeviceTr
             <div className="text-center py-12 text-gray-400">
               {t('modals.deviceTree.noDevices')}
             </div>
+          ) : search.trim() && matchingDeviceIds.size === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              {t('modals.deviceTree.noSearchResults')}
+            </div>
           ) : (
             <div className="space-y-2">
               {treeData.map((category) => (
