@@ -692,7 +692,12 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                 {editingDevice ? t('admin.devices.editDevice') : t('admin.devices.createDevice')}
               </h3>
               <button
-                onClick={() => { onCancel ? onCancel() : setModalOpen(false); }}
+                onClick={() => {
+                  setModalOpen(false);
+                  if (onCancel) {
+                    onCancel();
+                  }
+                }}
                 className="p-2 hover:bg-white/10 rounded-lg transition-colors"
                 aria-label={t('common.close')}
                 title={t('common.close')}
@@ -1097,7 +1102,12 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => { onCancel ? onCancel() : setModalOpen(false); }}
+                  onClick={() => {
+                    setModalOpen(false);
+                    if (onCancel) {
+                      onCancel();
+                    }
+                  }}
                   className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 rounded-lg font-semibold text-gray-300 transition-colors"
                 >
                   {t('common.cancel')}
