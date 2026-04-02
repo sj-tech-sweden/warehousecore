@@ -1423,7 +1423,9 @@
       "addSelected_other": "{{count}} Geräte hinzufügen",
       "countShort": "{{count}} Geräte",
       "alreadyInZone": "Bereits in dieser Zone",
-      "searchPlaceholder": "Geräte suchen..."
+      "searchPlaceholder": "Geräte suchen...",
+      "searchLabel": "Geräte suchen",
+      "clearSearch": "Suche löschen"
     },
     "productDependencies": {
       "title": "Produktabhängigkeiten",

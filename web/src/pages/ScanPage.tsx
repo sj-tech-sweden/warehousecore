@@ -261,7 +261,7 @@ export function ScanPage() {
         setStep('device');
       }
       // All other actions (outtake, check) - single step
-      else {
+      else if (action !== 'case') {
         // For consumables with intake/outtake, ask for quantity first
         let quantity = undefined;
         if ((action === 'intake' || action === 'outtake')) {
@@ -295,7 +295,7 @@ export function ScanPage() {
         // Now do the actual scan with quantity if provided
         const { data } = await scansApi.process({
           scan_code: code,
-          action: action as 'intake' | 'outtake' | 'check' | 'transfer',
+          action: action,
           job_id: quantity, // Pass quantity via job_id field (backend expects this)
         });
         setResult(data);
@@ -330,7 +330,7 @@ export function ScanPage() {
     } finally {
       setLoading(false);
     }
-  }, [action, step, deviceScanCode, consumableQuantity, scannedCase, caseDeviceIds, t, handleJobCodeScan]);
+  }, [action, step, deviceScanCode, consumableQuantity, scannedCase, caseDeviceIds, t, handleJobCodeScan, scheduleCaseActionDismiss]);
 
   // Keep submitCodeRef in sync with the latest processCode so scanner callbacks
   // (which are memoised on mount) can always reach the current state closure.

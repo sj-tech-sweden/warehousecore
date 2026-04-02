@@ -201,12 +201,14 @@ export function DeviceTreeModal({ isOpen, onClose, onConfirm, zoneId }: DeviceTr
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('modals.deviceTree.searchPlaceholder')}
+              aria-label={t('modals.deviceTree.searchLabel')}
               className="w-full pl-9 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch('')}
+                aria-label={t('modals.deviceTree.clearSearch')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
               >
                 <X className="w-4 h-4" />
