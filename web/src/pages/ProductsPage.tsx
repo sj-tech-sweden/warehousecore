@@ -90,6 +90,7 @@ export function ProductsPage() {
             key={devicesProductFilter}
             initialEditDeviceId={initialEditDeviceId}
             onEditComplete={initialEditDeviceId ? () => navigate('/scan') : undefined}
+            onCancel={initialEditDeviceId ? () => navigate('/scan') : undefined}
           />
         )}
       </div>
