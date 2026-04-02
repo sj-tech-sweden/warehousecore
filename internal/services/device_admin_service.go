@@ -336,6 +336,7 @@ func (s *DeviceAdminService) UpdateDevice(ctx context.Context, deviceID string, 
 			"UPDATE device_movements SET device_id = $1 WHERE device_id = $2",
 			"UPDATE scan_events SET device_id = $1 WHERE device_id = $2",
 			"UPDATE defect_reports SET device_id = $1 WHERE device_id = $2",
+			"UPDATE inspection_schedules SET device_id = $1 WHERE device_id = $2",
 			"UPDATE job_devices SET deviceID = $1 WHERE deviceID = $2",
 			"UPDATE devicescases SET deviceID = $1 WHERE deviceID = $2",
 		}

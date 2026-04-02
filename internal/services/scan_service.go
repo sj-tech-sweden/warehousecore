@@ -381,7 +381,7 @@ func (s *ScanService) getDeviceWithDetails(deviceID string) *models.DeviceWithDe
 		       COALESCE(z.name, '') as zone_name,
 		       COALESCE(z.code, '') as zone_code,
 		       COALESCE(c.name, '') as case_name,
-		       COALESCE(CAST(j.jobID AS CHAR), '') as job_number
+		       COALESCE(CAST(j.jobID AS TEXT), '') as job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id

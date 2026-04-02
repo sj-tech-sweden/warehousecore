@@ -34,9 +34,9 @@ export function DeviceInfoModal({ device, isOpen, onClose, onEdit }: DeviceInfoM
 
   if (!isOpen || !device) return null;
 
-  const downloadQR = () => window.open(devicesAdminApi.downloadQR(device.device_id), '_blank');
-  const downloadBarcode = () => window.open(devicesAdminApi.downloadBarcode(device.device_id), '_blank');
-  const openLabel = () => { if (device.label_path) window.open(device.label_path, '_blank'); };
+  const downloadQR = () => window.open(devicesAdminApi.downloadQR(device.device_id), '_blank', 'noopener,noreferrer');
+  const downloadBarcode = () => window.open(devicesAdminApi.downloadBarcode(device.device_id), '_blank', 'noopener,noreferrer');
+  const openLabel = () => { if (device.label_path) window.open(device.label_path, '_blank', 'noopener,noreferrer'); };
 
   return (
     <ModalPortal>
