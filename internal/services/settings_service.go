@@ -6,6 +6,8 @@ import (
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
+
+	"gorm.io/gorm"
 )
 
 // GetAPILimit retrieves the configured API limit from settings
@@ -68,21 +70,27 @@ func GetCaseLimit() int {
 func GetCurrencySymbol() string {
 	db := repository.GetDB()
 	if db == nil {
+		log.Printf("[SETTINGS] Database not available, using default currency symbol")
 		return "€"
 	}
 
 	var setting models.AppSetting
 	if err := db.Where("scope = ? AND key = ?", "warehousecore", "app.currency").First(&setting).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			log.Printf("[SETTINGS] Failed to query currency symbol: %v", err)
+		}
 		return "€"
 	}
 
 	bytes, err := json.Marshal(setting.Value)
 	if err != nil {
+		log.Printf("[SETTINGS] Failed to marshal currency setting: %v", err)
 		return "€"
 	}
 
 	var currencyConfig map[string]interface{}
 	if err := json.Unmarshal(bytes, &currencyConfig); err != nil {
+		log.Printf("[SETTINGS] Failed to unmarshal currency setting: %v", err)
 		return "€"
 	}
 
@@ -90,6 +98,7 @@ func GetCurrencySymbol() string {
 		return symbol
 	}
 
+	log.Printf("[SETTINGS] No symbol field in currency setting, using default")
 	return "€"
 }
 
@@ -105,13 +114,15 @@ func UpdateCurrencySymbol(symbol string) error {
 
 	currencyValue := models.JSONMap{"symbol": symbol}
 
-	if err != nil {
+	if err == gorm.ErrRecordNotFound {
 		setting = models.AppSetting{
 			Scope: "warehousecore",
 			Key:   "app.currency",
 			Value: currencyValue,
 		}
 		return db.Create(&setting).Error
+	} else if err != nil {
+		return err
 	}
 
 	setting.Value = currencyValue

@@ -65,7 +65,12 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
 
   const formatCurrency = (value?: number) => {
     if (value == null) return '—';
-    return `${value.toFixed(2)} ${currencySymbol}`;
+    const locale = i18n.language?.startsWith('de') ? 'de-DE' : 'en-US';
+    const formatted = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+    return `${formatted} ${currencySymbol}`;
   };
 
   const formatMeasurement = (value?: number, unit?: string) => {

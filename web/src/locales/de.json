@@ -343,7 +343,7 @@
       "preview": "Vorschau",
       "importantNotes": "Wichtige Hinweise",
       "note1": "Das Währungssymbol ist nur eine Anzeigebezeichnung und hat keinen Einfluss darauf, wie Preise gespeichert oder berechnet werden.",
-      "note2": "Änderungen werden nach dem Speichern sofort auf allen Seiten wirksam.",
+      "note2": "Änderungen werden nach dem Speichern und einer Navigation oder einem Neuladen auf allen Seiten sichtbar.",
       "symbolRequired": "Währungssymbol darf nicht leer sein",
       "symbolTooLong": "Währungssymbol darf maximal 8 Zeichen lang sein",
       "saveSettings": "Einstellungen speichern",

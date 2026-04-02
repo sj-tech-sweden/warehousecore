@@ -343,7 +343,7 @@
       "preview": "Preview",
       "importantNotes": "Important Notes",
       "note1": "The currency symbol is only a display label and does not affect how prices are stored or calculated.",
-      "note2": "Changes take effect immediately across all pages after saving.",
+      "note2": "Changes apply after saving and will appear on pages when they are refreshed or revisited.",
       "symbolRequired": "Currency symbol cannot be empty",
       "symbolTooLong": "Currency symbol must be 8 characters or fewer",
       "saveSettings": "Save Settings",

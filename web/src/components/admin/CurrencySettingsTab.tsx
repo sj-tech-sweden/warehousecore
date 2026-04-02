@@ -43,8 +43,12 @@ export function CurrencySettingsTab() {
 
     try {
       const { data } = await adminSettingsApi.updateCurrency(trimmed);
-      setSymbol(data.currency_symbol);
+      const nextSymbol = data.currency_symbol;
+      setSymbol(nextSymbol);
       invalidateCurrencyCache();
+      window.dispatchEvent(
+        new CustomEvent('currency-symbol-updated', { detail: { symbol: nextSymbol } }),
+      );
       setMessage({ type: 'success', text: t('admin.currencySettings.settingsSaved') });
     } catch (error) {
       console.error('Failed to update currency settings:', error);

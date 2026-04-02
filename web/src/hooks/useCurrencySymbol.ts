@@ -8,16 +8,25 @@ async function fetchCurrencySymbol(): Promise<string> {
   if (fetchPromise) return fetchPromise;
 
   fetchPromise = fetch('/api/v1/config')
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) {
+        throw new Error(`Failed to fetch config: ${r.status} ${r.statusText}`);
+      }
+      return r.json();
+    })
     .then((cfg: { currencySymbol?: string }) => {
       const symbol = cfg?.currencySymbol || '€';
       cachedSymbol = symbol;
       return symbol;
     })
     .catch(err => {
+      const fallback = (window as any).__APP_CONFIG__?.currencySymbol || '€';
       console.error('[useCurrencySymbol] Failed to fetch config, using fallback:', err);
+      cachedSymbol = fallback;
+      return fallback;
+    })
+    .finally(() => {
       fetchPromise = null;
-      return (window as any).__APP_CONFIG__?.currencySymbol || '€';
     });
 
   return fetchPromise;
@@ -30,6 +39,13 @@ export function useCurrencySymbol(): string {
 
   useEffect(() => {
     fetchCurrencySymbol().then(s => setSymbol(s));
+
+    const handleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ symbol: string }>).detail;
+      if (detail?.symbol) setSymbol(detail.symbol);
+    };
+    window.addEventListener('currency-symbol-updated', handleUpdate);
+    return () => window.removeEventListener('currency-symbol-updated', handleUpdate);
   }, []);
 
   return symbol;
