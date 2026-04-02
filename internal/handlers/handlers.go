@@ -2461,7 +2461,7 @@ func UpdateDefect(w http.ResponseWriter, r *http.Request) {
 		var deviceID string
 		db.QueryRow(`SELECT device_id FROM defect_reports WHERE defect_id = $1`, defectID).Scan(&deviceID)
 		if deviceID != "" {
-			db.Exec(`UPDATE devices SET status = 'in_storage' WHERE deviceID = $1`, deviceID)
+			db.Exec(`UPDATE devices SET status = 'free' WHERE deviceID = $1`, deviceID)
 		}
 	}
 
