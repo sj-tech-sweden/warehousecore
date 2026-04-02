@@ -82,8 +82,7 @@ export function SearchableSelect({
     setActiveIndex(-1);
   };
 
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleClear = () => {
     onChange('');
     setIsOpen(false);
     setSearchText('');
