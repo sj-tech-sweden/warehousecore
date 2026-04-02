@@ -87,6 +87,10 @@ export function ScanPage() {
   const processCode = useCallback(async (code: string) => {
     if (!code.trim()) return;
 
+  const handleScan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scanCode.trim()) return;
+
     // Check if scan code is a Job-Code (format: JOB######)
     const jobCodeMatch = code.match(/^JOB(\d{6})$/i);
     if (jobCodeMatch) {
