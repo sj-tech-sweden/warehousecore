@@ -45,7 +45,7 @@ export function useBarcodeScanner({ onDetected }: BarcodeScannerOptions): Barcod
     setError(null);
 
     if (!isSupported) {
-      setError('BarcodeDetector is not supported in this browser.');
+      setError('scan.camera.errors.notSupported');
       return;
     }
 
@@ -58,7 +58,7 @@ export function useBarcodeScanner({ onDetected }: BarcodeScannerOptions): Barcod
         ],
       });
     } catch {
-      setError('Failed to initialize BarcodeDetector.');
+      setError('scan.camera.errors.initFailed');
       return;
     }
 
@@ -68,7 +68,7 @@ export function useBarcodeScanner({ onDetected }: BarcodeScannerOptions): Barcod
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       });
     } catch {
-      setError('Camera access denied or unavailable.');
+      setError('scan.camera.errors.accessDenied');
       return;
     }
 
@@ -76,7 +76,13 @@ export function useBarcodeScanner({ onDetected }: BarcodeScannerOptions): Barcod
 
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
-      await videoRef.current.play().catch(() => {});
+      try {
+        await videoRef.current.play();
+      } catch {
+        setError('scan.camera.errors.playFailed');
+        stopScanning();
+        return;
+      }
     }
 
     setIsScanning(true);
@@ -109,7 +115,7 @@ export function useBarcodeScanner({ onDetected }: BarcodeScannerOptions): Barcod
     };
 
     animationFrameRef.current = requestAnimationFrame(detect);
-  }, [isSupported, onDetected]);
+  }, [isSupported, onDetected, stopScanning]);
 
   // Cleanup on unmount
   useEffect(() => {

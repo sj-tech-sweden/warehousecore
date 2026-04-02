@@ -1056,12 +1056,23 @@
     },
     "camera": {
       "starting": "Starting camera...",
-      "hint": "Point the camera at a barcode or QR code"
+      "hint": "Point the camera at a barcode or QR code",
+      "errors": {
+        "notSupported": "Camera barcode scanning is not supported in this browser.",
+        "initFailed": "Failed to initialize barcode detector.",
+        "accessDenied": "Camera access denied or unavailable.",
+        "playFailed": "Failed to start camera preview."
+      }
     },
     "nfc": {
       "starting": "Starting NFC...",
       "ready": "Ready – hold device near NFC tag",
-      "hint": "Hold your phone close to the NFC tag to scan it"
+      "hint": "Hold your phone close to the NFC tag to scan it",
+      "errors": {
+        "notSupported": "Web NFC is not supported in this browser.",
+        "readError": "NFC read error. Please try again.",
+        "startFailed": "Failed to start NFC scanning."
+      }
     }
   },
   "auth": {

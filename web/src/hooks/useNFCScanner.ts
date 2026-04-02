@@ -33,7 +33,7 @@ export function useNFCScanner({ onDetected }: NFCScannerOptions): NFCScannerResu
     setError(null);
 
     if (!isSupported) {
-      setError('Web NFC is not supported in this browser.');
+      setError('scan.nfc.errors.notSupported');
       return;
     }
 
@@ -71,14 +71,14 @@ export function useNFCScanner({ onDetected }: NFCScannerOptions): NFCScannerResu
       });
 
       reader.addEventListener('readingerror', () => {
-        setError('NFC read error. Please try again.');
+        setError('scan.nfc.errors.readError');
       });
 
       await reader.scan({ signal: abortController.signal });
       setIsScanning(true);
     } catch (err: unknown) {
       if ((err as { name?: string })?.name === 'AbortError') return;
-      setError((err as { message?: string })?.message ?? 'Failed to start NFC scanning.');
+      setError('scan.nfc.errors.startFailed');
       setIsScanning(false);
     }
   }, [isSupported, onDetected]);

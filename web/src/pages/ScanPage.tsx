@@ -84,12 +84,41 @@ export function ScanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleJobCodeScan = useCallback(async (jobId: number) => {
+    setScanCode('');
+    setLoading(true);
+
+    try {
+      // First, verify job exists
+      await jobsApi.getById(jobId);
+
+      // Check LED status
+      const { data: ledStatus } = await ledApi.getStatus();
+
+      if (ledStatus.mqtt_connected) {
+        // LED is on - navigate directly to job
+        await ledApi.highlightJob(jobId);
+        navigate(`/jobs/${jobId}`);
+      } else {
+        // LED is off - ask user if they want to enable it
+        setScannedJobId(jobId);
+        setShowLEDModal(true);
+      }
+    } catch (error: any) {
+      console.error('Job scan failed:', error);
+      setResult({
+        success: false,
+        message: error.response?.data?.error || t('jobsPage.jobNotFound', { id: jobId }),
+        action: 'check',
+        duplicate: false,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate, t]);
+
   const processCode = useCallback(async (code: string) => {
     if (!code.trim()) return;
-
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scanCode.trim()) return;
 
     // Check if scan code is a Job-Code (format: JOB######)
     const jobCodeMatch = code.match(/^JOB(\d{6})$/i);
@@ -223,8 +252,7 @@ export function ScanPage() {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [action, step, deviceScanCode, consumableQuantity, t]);
+  }, [action, step, deviceScanCode, consumableQuantity, t, handleJobCodeScan]);
 
   // Keep submitCodeRef in sync with the latest processCode so scanner callbacks
   // (which are memoised on mount) can always reach the current state closure.
@@ -250,39 +278,6 @@ export function ScanPage() {
     setScanCode('');
     setResult(null);
     setInputMethod(method);
-  };
-
-  const handleJobCodeScan = async (jobId: number) => {
-    setScanCode('');
-    setLoading(true);
-
-    try {
-      // First, verify job exists
-      await jobsApi.getById(jobId);
-
-      // Check LED status
-      const { data: ledStatus } = await ledApi.getStatus();
-
-      if (ledStatus.mqtt_connected) {
-        // LED is on - navigate directly to job
-        await ledApi.highlightJob(jobId);
-        navigate(`/jobs/${jobId}`);
-      } else {
-        // LED is off - ask user if they want to enable it
-        setScannedJobId(jobId);
-        setShowLEDModal(true);
-      }
-    } catch (error: any) {
-      console.error('Job scan failed:', error);
-      setResult({
-        success: false,
-        message: error.response?.data?.error || t('jobsPage.jobNotFound', { id: jobId }),
-        action: 'check',
-        duplicate: false,
-      });
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleLEDModalConfirm = async () => {
@@ -433,7 +428,7 @@ export function ScanPage() {
               {barcodeScanner.error ? (
                 <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
                   <X className="w-5 h-5 flex-shrink-0" />
-                  {barcodeScanner.error}
+                  {t(barcodeScanner.error)}
                 </div>
               ) : (
                 <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
@@ -471,7 +466,7 @@ export function ScanPage() {
               {nfcScanner.error ? (
                 <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
                   <X className="w-5 h-5 flex-shrink-0" />
-                  {nfcScanner.error}
+                  {t(nfcScanner.error)}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/5 border border-white/10">
