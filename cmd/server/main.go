@@ -77,12 +77,16 @@ func serveIndexWithConfig(w http.ResponseWriter, r *http.Request) {
 		companyName = brandingService.CompanyName()
 	}
 
+	// Resolve currency symbol
+	currencySymbol := services.GetCurrencySymbol()
+
 	// Create config injection script
 	configScript := fmt.Sprintf(
-		`<script>window.__APP_CONFIG__={rentalCoreDomain:"%s",warehouseCoreDomain:"%s",companyName:"%s"};</script>`,
+		`<script>window.__APP_CONFIG__={rentalCoreDomain:"%s",warehouseCoreDomain:"%s",companyName:"%s",currencySymbol:"%s"};</script>`,
 		template.JSEscapeString(rentalCoreDomain),
 		template.JSEscapeString(warehouseCoreDomain),
 		template.JSEscapeString(companyName),
+		template.JSEscapeString(currencySymbol),
 	)
 
 	// Inject the script before </head>
@@ -152,9 +156,10 @@ func main() {
 		if brandingService != nil {
 			name = brandingService.CompanyName()
 		}
+		currencySymbol := services.GetCurrencySymbol()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		fmt.Fprintf(w, `{"companyName":%q}`, name)
+		fmt.Fprintf(w, `{"companyName":%q,"currencySymbol":%q}`, name, currencySymbol)
 	}).Methods("GET")
 
 	// Public product pictures (must be accessible without headers for IMG tags)
@@ -358,6 +363,8 @@ func main() {
 	admin.HandleFunc("/devices/{id}/barcode", handlers.GenerateDeviceBarcode).Methods("GET")
 	admin.HandleFunc("/api-limits", handlers.GetAPILimits).Methods("GET")
 	admin.HandleFunc("/api-limits", handlers.UpdateAPILimits).Methods("PUT")
+	admin.HandleFunc("/currency", handlers.GetCurrencySettings).Methods("GET")
+	admin.HandleFunc("/currency", handlers.UpdateCurrencySettings).Methods("PUT")
 
 	// CSV Export endpoints (read-only, admin or manager)
 	adminRead.HandleFunc("/export/{type}", handlers.ExportCSV).Methods("GET")

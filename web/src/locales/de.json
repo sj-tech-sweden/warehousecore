@@ -330,8 +330,27 @@
       "brands": "Marken & Hersteller",
       "countTypes": "Mess-Einheiten",
       "apiKeys": "API-Keys",
+      "currency": "Währung",
       "export": "CSV-Export",
       "devices": "Geräte"
+    },
+    "currencySettings": {
+      "title": "Währungseinstellungen",
+      "subtitle": "Konfiguriere das Währungssymbol, das in der gesamten Anwendung angezeigt wird",
+      "currencySymbol": "Währungssymbol",
+      "currencySymbolDesc": "Das Symbol, das neben Geldwerten angezeigt wird (z.B. Preise, Kosten).",
+      "examples": "Beispiele: € (Euro), $ (US-Dollar), £ (Pfund), Fr. (Schweizer Franken), SEK, kr",
+      "preview": "Vorschau",
+      "importantNotes": "Wichtige Hinweise",
+      "note1": "Das Währungssymbol ist nur eine Anzeigebezeichnung und hat keinen Einfluss darauf, wie Preise gespeichert oder berechnet werden.",
+      "note2": "Änderungen werden nach dem Speichern sofort auf allen Seiten wirksam.",
+      "symbolRequired": "Währungssymbol darf nicht leer sein",
+      "symbolTooLong": "Währungssymbol darf maximal 8 Zeichen lang sein",
+      "saveSettings": "Einstellungen speichern",
+      "saving": "Speichert...",
+      "settingsSaved": "Währungseinstellungen erfolgreich gespeichert!",
+      "loadError": "Fehler beim Laden der Währungseinstellungen",
+      "saveError": "Fehler beim Speichern der Währungseinstellungen"
     },
     "apiSettings": {
       "title": "API-Limits",

@@ -63,6 +63,61 @@ func GetCaseLimit() int {
 	return GetAPILimit("api.case_limit", 50000)
 }
 
+// GetCurrencySymbol retrieves the configured currency symbol from settings
+// Returns "€" as the default if not configured
+func GetCurrencySymbol() string {
+	db := repository.GetDB()
+	if db == nil {
+		return "€"
+	}
+
+	var setting models.AppSetting
+	if err := db.Where("scope = ? AND key = ?", "warehousecore", "app.currency").First(&setting).Error; err != nil {
+		return "€"
+	}
+
+	bytes, err := json.Marshal(setting.Value)
+	if err != nil {
+		return "€"
+	}
+
+	var currencyConfig map[string]interface{}
+	if err := json.Unmarshal(bytes, &currencyConfig); err != nil {
+		return "€"
+	}
+
+	if symbol, ok := currencyConfig["symbol"].(string); ok && symbol != "" {
+		return symbol
+	}
+
+	return "€"
+}
+
+// UpdateCurrencySymbol updates the currency symbol in the database
+func UpdateCurrencySymbol(symbol string) error {
+	db := repository.GetDB()
+	if db == nil {
+		return ErrDatabaseNotAvailable
+	}
+
+	var setting models.AppSetting
+	err := db.Where("scope = ? AND key = ?", "warehousecore", "app.currency").First(&setting).Error
+
+	currencyValue := models.JSONMap{"symbol": symbol}
+
+	if err != nil {
+		setting = models.AppSetting{
+			Scope: "warehousecore",
+			Key:   "app.currency",
+			Value: currencyValue,
+		}
+		return db.Create(&setting).Error
+	}
+
+	setting.Value = currencyValue
+	return db.Save(&setting).Error
+}
+
 // UpdateAPILimit updates the API limit setting in the database
 func UpdateAPILimit(settingKey string, limit int) error {
 	db := repository.GetDB()

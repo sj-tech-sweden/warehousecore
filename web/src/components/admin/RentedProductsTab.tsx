@@ -14,6 +14,7 @@ import {
 import { api } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
 import { useTranslation } from 'react-i18next';
+import { useCurrencySymbol } from '../../hooks/useCurrencySymbol';
 
 interface RentalEquipment {
   equipment_id: number;
@@ -73,6 +74,7 @@ function useDebouncedValue<T>(value: T, delay: number) {
 
 export function RentedProductsTab() {
   const { t, i18n } = useTranslation();
+  const currencySymbol = useCurrencySymbol();
   const [equipment, setEquipment] = useState<RentalEquipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -278,7 +280,7 @@ export function RentedProductsTab() {
 
   const hasActiveFilters = debouncedSearch.trim() !== '' || supplierFilter !== '';
 
-  const formatCurrency = (value: number) => `${value.toFixed(2)} €`;
+  const formatCurrency = (value: number) => `${value.toFixed(2)} ${currencySymbol}`;
 
   const profitMargin = (rental: number, customer: number) => {
     if (rental === 0) return 0;
@@ -658,7 +660,7 @@ export function RentedProductsTab() {
                         className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 pr-8 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
                         title={t('admin.rentedProducts.fields.rentalPrice')}
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">€</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{currencySymbol}</span>
                     </div>
                     <p className="mt-1 text-xs text-gray-500">{t('admin.rentedProducts.help.rentalPrice')}</p>
                   </div>
@@ -683,7 +685,7 @@ export function RentedProductsTab() {
                         className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 pr-8 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
                         title={t('admin.rentedProducts.fields.customerPrice')}
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">€</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{currencySymbol}</span>
                     </div>
                     <p className="mt-1 text-xs text-gray-500">{t('admin.rentedProducts.help.customerPrice')}</p>
                   </div>

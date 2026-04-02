@@ -574,12 +574,21 @@ export interface APILimits {
   case_limit: number;
 }
 
+export interface CurrencySettings {
+  currency_symbol: string;
+}
+
 export const adminSettingsApi = {
   getAPILimits: () => api.get<APILimits>('/admin/api-limits'),
   updateAPILimits: (limits: Partial<APILimits>) =>
     api.put<APILimits & { message: string }>('/admin/api-limits', {
       device_limit: limits.device_limit,
       case_limit: limits.case_limit,
+    }),
+  getCurrency: () => api.get<CurrencySettings>('/admin/currency'),
+  updateCurrency: (symbol: string) =>
+    api.put<CurrencySettings & { message: string }>('/admin/currency', {
+      currency_symbol: symbol,
     }),
 };
 

@@ -23,6 +23,7 @@ import { ProductDependenciesModal } from '../ProductDependenciesModal';
 import { ProductDetailModal } from '../ProductDetailModal';
 import { ProductDevicesModal } from '../ProductDevicesModal';
 import { SearchableSelect } from '../SearchableSelect';
+import { useCurrencySymbol } from '../../hooks/useCurrencySymbol';
 
 interface Product {
   product_id: number;
@@ -167,6 +168,7 @@ interface ProductsTabProps {
 
 export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
   const { t } = useTranslation();
+  const currencySymbol = useCurrencySymbol();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -594,7 +596,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       .join(' · ') || t('admin.products.noCategoryAssigned');
 
   const formatCurrency = (value?: number | null) =>
-    value != null ? `${value.toFixed(2)} €` : t('admin.products.dash');
+    value != null ? `${value.toFixed(2)} ${currencySymbol}` : t('admin.products.dash');
 
   const averageDailyPrice =
     sortedProducts.length === 0
@@ -714,7 +716,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
           <span>
             {t('admin.products.avgDailyPrice')}:{' '}
             <strong className="text-white">
-              {averageDailyPrice != null ? `${averageDailyPrice.toFixed(2)} €` : t('admin.products.dash')}
+              {averageDailyPrice != null ? `${averageDailyPrice.toFixed(2)} ${currencySymbol}` : t('admin.products.dash')}
             </strong>
           </span>
           {categoryFilter !== '' && (
@@ -1089,7 +1091,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-white">
-                      {t('admin.products.pricePerDay')} (€)
+                      {t('admin.products.pricePerDay')} ({currencySymbol})
                     </label>
                     <input
                       type="number"
@@ -1304,7 +1306,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
 
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-white">
-                          {t('admin.products.pricePerUnit')} (€)
+                          {t('admin.products.pricePerUnit')} ({currencySymbol})
                         </label>
                         <input
                           type="number"

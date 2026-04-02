@@ -330,8 +330,27 @@
       "brands": "Brands & Manufacturers",
       "countTypes": "Units of Measure",
       "apiKeys": "API Keys",
+      "currency": "Currency",
       "export": "CSV Export",
       "devices": "Devices"
+    },
+    "currencySettings": {
+      "title": "Currency Settings",
+      "subtitle": "Configure the currency symbol displayed throughout the application",
+      "currencySymbol": "Currency Symbol",
+      "currencySymbolDesc": "The symbol shown next to monetary values (e.g. prices, costs).",
+      "examples": "Examples: € (Euro), $ (US Dollar), £ (Pound), Fr. (Swiss Franc), SEK, kr",
+      "preview": "Preview",
+      "importantNotes": "Important Notes",
+      "note1": "The currency symbol is only a display label and does not affect how prices are stored or calculated.",
+      "note2": "Changes take effect immediately across all pages after saving.",
+      "symbolRequired": "Currency symbol cannot be empty",
+      "symbolTooLong": "Currency symbol must be 8 characters or fewer",
+      "saveSettings": "Save Settings",
+      "saving": "Saving...",
+      "settingsSaved": "Currency settings saved successfully!",
+      "loadError": "Failed to load currency settings",
+      "saveError": "Failed to save currency settings"
     },
     "apiSettings": {
       "title": "API Limits",

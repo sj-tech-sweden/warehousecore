@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler, KeyRound, Tag, Download } from 'lucide-react';
+import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler, KeyRound, Tag, Download, DollarSign } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ZoneTypesTab } from '../components/admin/ZoneTypesTab';
 import { LEDSettingsTab } from '../components/admin/LEDSettingsTab';
@@ -11,8 +11,9 @@ import { CountTypesTab } from '../components/admin/CountTypesTab';
 import { APIKeysTab } from '../components/admin/APIKeysTab';
 import { BrandsManufacturersTab } from '../components/admin/BrandsManufacturersTab';
 import { ExportTab } from '../components/admin/ExportTab';
+import { CurrencySettingsTab } from '../components/admin/CurrencySettingsTab';
 
-type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'brands' | 'counttypes' | 'roles' | 'apisettings' | 'apikeys' | 'export';
+type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'brands' | 'counttypes' | 'roles' | 'apisettings' | 'apikeys' | 'export' | 'currency';
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('zonetypes');
@@ -27,6 +28,7 @@ export function AdminPage() {
     { id: 'counttypes' as TabType, label: t('admin.tabs.countTypes'), icon: Ruler },
     { id: 'roles' as TabType, label: t('admin.tabs.roles'), icon: Users },
     { id: 'apisettings' as TabType, label: t('admin.tabs.apiSettings'), icon: Database },
+    { id: 'currency' as TabType, label: t('admin.tabs.currency'), icon: DollarSign },
     { id: 'apikeys' as TabType, label: t('admin.tabs.apiKeys'), icon: KeyRound },
     { id: 'export' as TabType, label: t('admin.tabs.export'), icon: Download },
   ];
@@ -76,6 +78,7 @@ export function AdminPage() {
         {activeTab === 'counttypes' && <CountTypesTab />}
         {activeTab === 'roles' && <RolesTab />}
         {activeTab === 'apisettings' && <APISettingsTab />}
+        {activeTab === 'currency' && <CurrencySettingsTab />}
         {activeTab === 'apikeys' && <APIKeysTab />}
         {activeTab === 'export' && <ExportTab />}
       </div>

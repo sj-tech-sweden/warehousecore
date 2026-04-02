@@ -657,3 +657,49 @@ func UpdateAPILimits(w http.ResponseWriter, r *http.Request) {
 		"message":      "API limits updated successfully",
 	})
 }
+
+// ===========================
+// CURRENCY SETTINGS HANDLERS
+// ===========================
+
+// GetCurrencySettings returns the configured currency symbol
+func GetCurrencySettings(w http.ResponseWriter, r *http.Request) {
+	symbol := services.GetCurrencySymbol()
+	respondJSON(w, http.StatusOK, map[string]string{
+		"currency_symbol": symbol,
+	})
+}
+
+// UpdateCurrencySettings updates the currency symbol
+func UpdateCurrencySettings(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		CurrencySymbol string `json:"currency_symbol"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if strings.TrimSpace(payload.CurrencySymbol) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Currency symbol cannot be empty"})
+		return
+	}
+
+	if len([]rune(strings.TrimSpace(payload.CurrencySymbol))) > 8 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Currency symbol must be 8 characters or fewer"})
+		return
+	}
+
+	symbol := strings.TrimSpace(payload.CurrencySymbol)
+	if err := services.UpdateCurrencySymbol(symbol); err != nil {
+		log.Printf("[CURRENCY] Failed to update currency symbol: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update currency symbol"})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"currency_symbol": symbol,
+		"message":         "Currency symbol updated successfully",
+	})
+}

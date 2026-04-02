@@ -12,6 +12,7 @@ import {
 import { api } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
 import { SearchableSelect } from '../SearchableSelect';
+import { useCurrencySymbol } from '../../hooks/useCurrencySymbol';
 
 interface ProductPackage {
   package_id: number;
@@ -107,7 +108,7 @@ const initialFormData: PackageFormData = {
 
 const ensureArray = <T,>(value: T[] | undefined | null): T[] => (Array.isArray(value) ? value : []);
 
-function formatPrice(value?: number | string | null, fallback = '-') {
+function formatPrice(value?: number | string | null, fallback = '-', currencySymbol = '€') {
   if (value === undefined || value === null || value === '') {
     return fallback;
   }
@@ -117,11 +118,12 @@ function formatPrice(value?: number | string | null, fallback = '-') {
     return fallback;
   }
 
-  return `${numericValue.toFixed(2)} €`;
+  return `${numericValue.toFixed(2)} ${currencySymbol}`;
 }
 
 export function ProductPackagesTab() {
   const { t } = useTranslation();
+  const currencySymbol = useCurrencySymbol();
   const [packages, setPackages] = useState<ProductPackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -136,7 +138,7 @@ export function ProductPackagesTab() {
   const [aliasInput, setAliasInput] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const scrollPosition = useRef(0);
-  const viewPackagePriceDisplay = viewPackage ? formatPrice(viewPackage.price, '') : '';
+  const viewPackagePriceDisplay = viewPackage ? formatPrice(viewPackage.price, '', currencySymbol) : '';
   const [categories, setCategories] = useState<Array<{ category_id: number; name: string }>>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [subbiercategories, setSubbiercategories] = useState<Subbiercategory[]>([]);
@@ -645,7 +647,7 @@ export function ProductPackagesTab() {
                   <td className="py-3 px-4 text-white font-medium">{pkg.name}</td>
                   <td className="py-3 px-4 text-gray-400">{pkg.description || '-'}</td>
                   <td className="py-3 px-4 text-right text-white">
-                    {formatPrice(pkg.price)}
+                    {formatPrice(pkg.price, '-', currencySymbol)}
                   </td>
                   <td className="py-3 px-4 text-right text-white">{pkg.total_items}</td>
                   <td className="py-3 px-4 text-right">
@@ -738,7 +740,7 @@ export function ProductPackagesTab() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  {t('products.price')} (€)
+                  {t('products.price')} ({currencySymbol})
                 </label>
                 <input
                   type="number"
