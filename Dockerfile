@@ -21,16 +21,14 @@ FROM golang:1.25-alpine AS backend-builder
 # Install build dependencies (CGO still needed for webp image processing)
 RUN apk add --no-cache git gcc musl-dev
 
-# Ensure Go modules are enabled inside the build container and set GOPATH
+# Ensure Go modules are enabled inside the build container
 ENV GO111MODULE=on
-ENV GOPATH=/go
 
-# Build inside GOPATH so local module imports resolve
-WORKDIR /go/src/warehousecore
+# Build at module root
+WORKDIR /app
 
-# Copy go mod files
+# Copy go mod files and download dependencies
 COPY go.mod go.sum* ./
-# Ensure module checksums are populated inside the builder (creates go.sum if missing)
 RUN go mod download || true
 RUN go mod tidy || true
 
@@ -39,7 +37,7 @@ COPY . .
 
 # Build the application with CGO enabled (needed for webp library)
 # Output binary to /app so final stage can copy from that path
-RUN CGO_ENABLED=1 GOOS=linux go build -a -o /app/warehousecore ./cmd/server
+RUN CGO_ENABLED=1 GOOS=linux go build -mod=mod -a -o /app/warehousecore ./cmd/server
 
 # Stage 3: Final Image
 FROM alpine:latest
@@ -63,17 +61,18 @@ ENV CHROME_BIN=/usr/bin/chromium-browser \
 WORKDIR /root/
 
 # Copy binary from backend builder
+# Copy binary from backend builder
 COPY --from=backend-builder /app/warehousecore .
 
 # Copy migrations
-COPY --from=backend-builder /go/src/warehousecore/migrations ./migrations
+COPY --from=backend-builder /app/migrations ./migrations
 
 # Copy LED configuration files
-COPY --from=backend-builder /go/src/warehousecore/internal/led/config ./internal/led/config
-COPY --from=backend-builder /go/src/warehousecore/internal/led/schema ./internal/led/schema
+COPY --from=backend-builder /app/internal/led/config ./internal/led/config
+COPY --from=backend-builder /app/internal/led/schema ./internal/led/schema
 
 # Copy HTML template for label rendering
-COPY --from=backend-builder /go/src/warehousecore/internal/services/label_template.html ./internal/services/
+COPY --from=backend-builder /app/internal/services/label_template.html ./internal/services/
 
 # Copy frontend build from frontend builder
 COPY --from=frontend-builder /app/web/dist ./web/dist
