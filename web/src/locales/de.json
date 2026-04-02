@@ -1006,7 +1006,8 @@
     },
     "placeholders": {
       "zone": "Lagerplatz-Barcode / Code",
-      "device": "Barcode / QR-Code / Geräte-ID"
+      "device": "Barcode / QR-Code / Geräte-ID",
+      "manualFallback": "Oder Code manuell eingeben"
     },
     "actions": {
       "intake": "Einlagern",
@@ -1047,6 +1048,31 @@
       "descriptionPlaceholder": "Beschreibe das Problem ausführlich...",
       "successTitle": "Bericht erstellt",
       "successDescription": "Das Problem wurde protokolliert und das Gerät entsprechend markiert."
+    },
+    "inputMethods": {
+      "keyboard": "Tastatur",
+      "camera": "Kamera",
+      "nfc": "NFC"
+    },
+    "camera": {
+      "starting": "Kamera wird gestartet...",
+      "hint": "Richte die Kamera auf einen Barcode oder QR-Code",
+      "errors": {
+        "notSupported": "Kamera-Barcode-Scan wird in diesem Browser nicht unterstützt.",
+        "initFailed": "Barcode-Detektor konnte nicht initialisiert werden.",
+        "accessDenied": "Kamerazugriff verweigert oder nicht verfügbar.",
+        "playFailed": "Kameravorschau konnte nicht gestartet werden."
+      }
+    },
+    "nfc": {
+      "starting": "NFC wird gestartet...",
+      "ready": "Bereit – Gerät an NFC-Tag halten",
+      "hint": "Halte dein Handy nah an den NFC-Tag zum Scannen",
+      "errors": {
+        "notSupported": "Web NFC wird in diesem Browser nicht unterstützt.",
+        "readError": "NFC-Lesefehler. Bitte erneut versuchen.",
+        "startFailed": "NFC-Scan konnte nicht gestartet werden."
+      }
     }
   },
   "auth": {

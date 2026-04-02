@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import { ScanLine, CheckCircle, XCircle, MapPin, Lightbulb, Wrench, AlertTriangle, Info } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { ScanLine, CheckCircle, XCircle, MapPin, Lightbulb, Wrench, AlertTriangle, Info, Camera, Nfc, Keyboard, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { scansApi, zonesApi, jobsApi, ledApi, maintenanceApi } from '../lib/api';
 import type { Device, ScanResponse } from '../lib/api';
 import { useBlockBodyScroll } from '../hooks/useBlockBodyScroll';
 import { DeviceInfoModal } from '../components/DeviceInfoModal';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
+import { useNFCScanner } from '../hooks/useNFCScanner';
 
+type InputMethod = 'keyboard' | 'camera' | 'nfc';
 type ScanStep = 'device' | 'zone';
 
 export function ScanPage() {
@@ -16,6 +19,9 @@ export function ScanPage() {
   const [action, setAction] = useState<'intake' | 'outtake' | 'check'>('check');
   const [result, setResult] = useState<ScanResponse | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Input method: keyboard (default), camera, or nfc
+  const [inputMethod, setInputMethod] = useState<InputMethod>('keyboard');
 
   // Two-step workflow for intake
   const [step, setStep] = useState<ScanStep>('device');
@@ -41,158 +47,44 @@ export function ScanPage() {
   const [serviceSuccess, setServiceSuccess] = useState(false);
   const [serviceError, setServiceError] = useState<string | null>(null);
 
-  // Block body scroll when LED modal, service modal, or device detail modal is open
+  // Block body scroll when LED modal or service modal is open
   useBlockBodyScroll(showLEDModal || showServiceModal);
 
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scanCode.trim()) return;
+  // Keep a stable ref to the current scan submission handler so the scanner
+  // callbacks (which are memoised) can always call the latest version.
+  const submitCodeRef = useRef<(code: string) => void>(() => {});
 
-    // Check if scan code is a Job-Code (format: JOB######)
-    const jobCodeMatch = scanCode.match(/^JOB(\d{6})$/i);
-    if (jobCodeMatch) {
-      const jobId = parseInt(jobCodeMatch[1], 10);
-      await handleJobCodeScan(jobId);
-      return;
+  const handleCodeDetected = useCallback((code: string) => {
+    submitCodeRef.current(code);
+  }, []);
+
+  const barcodeScanner = useBarcodeScanner({ onDetected: handleCodeDetected });
+  const nfcScanner = useNFCScanner({ onDetected: handleCodeDetected });
+
+  // Start/stop scanners when input method changes
+  useEffect(() => {
+    if (inputMethod !== 'camera') barcodeScanner.stopScanning();
+    if (inputMethod !== 'nfc') nfcScanner.stopScanning();
+
+    if (inputMethod === 'camera') {
+      barcodeScanner.startScanning();
+    } else if (inputMethod === 'nfc') {
+      nfcScanner.startScanning();
     }
+    // Intentionally not including scanner methods in deps to avoid loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputMethod]);
 
-    setLoading(true);
-    try {
-      // Step 1: Scan device
-      if (action === 'intake' && step === 'device') {
-        // Verify device exists by trying to scan it (check action)
-        const { data } = await scansApi.process({
-          scan_code: scanCode,
-          action: 'check',
-        });
+  // Stop scanners on unmount
+  useEffect(() => {
+    return () => {
+      barcodeScanner.stopScanning();
+      nfcScanner.stopScanning();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-        if (data.success) {
-          // Check if this is an accessory/consumable (has product info with unit)
-          if (data.product && data.product.unit) {
-            // This is an accessory/consumable - ask for quantity
-            const quantityStr = window.prompt(t('scan.prompts.intakeQuantity', { unit: data.product.unit }));
-
-            if (!quantityStr || isNaN(Number(quantityStr)) || Number(quantityStr) <= 0) {
-              setResult({
-                success: false,
-                message: t('scan.invalidQuantity'),
-                action,
-                duplicate: false,
-              });
-              setLoading(false);
-              return;
-            }
-
-            // Store quantity and proceed to zone scan
-            setConsumableQuantity(Number(quantityStr));
-            setDeviceScanCode(scanCode);
-            setStep('zone');
-            setScanCode('');
-            setResult(null);
-            setLoading(false);
-            return;
-          }
-
-          // Regular device - proceed to zone scan
-          setDeviceScanCode(scanCode);
-          setStep('zone');
-          setScanCode('');
-          setResult(null);
-        } else {
-          setResult(data);
-        }
-      }
-      // Step 2: Scan zone for intake
-      else if (action === 'intake' && step === 'zone') {
-        // Find zone by barcode
-        const { data: zone } = await zonesApi.getByScan(scanCode);
-
-        // Now process the actual intake with zone_id (and quantity if it's a consumable)
-        const { data } = await scansApi.process({
-          scan_code: deviceScanCode,
-          action: 'intake',
-          zone_id: zone.zone_id,
-          job_id: consumableQuantity, // Pass quantity for consumables
-        });
-
-        setResult(data);
-        setScanCode('');
-        setDeviceScanCode('');
-        setConsumableQuantity(undefined);
-        setStep('device');
-      }
-      // All other actions (outtake, check) - single step
-      else {
-        // For consumables with intake/outtake, ask for quantity first
-        let quantity = undefined;
-        if ((action === 'intake' || action === 'outtake')) {
-          // First check if this might be a consumable (quick check without committing)
-          const checkResponse = await scansApi.process({
-            scan_code: scanCode,
-            action: 'check',
-          });
-
-          // If the response includes product info with a unit, it's an accessory/consumable
-          if (checkResponse.data.product && checkResponse.data.product.unit) {
-            const promptText = action === 'intake'
-              ? t('scan.prompts.intakeQuantity', { unit: checkResponse.data.product.unit })
-              : t('scan.prompts.outtakeQuantity', { unit: checkResponse.data.product.unit });
-            const quantityStr = window.prompt(promptText);
-
-            if (!quantityStr || isNaN(Number(quantityStr)) || Number(quantityStr) <= 0) {
-              setResult({
-                success: false,
-                message: t('scan.invalidQuantity'),
-                action,
-                duplicate: false,
-              });
-              setLoading(false);
-              return;
-            }
-            quantity = Number(quantityStr);
-          }
-        }
-
-        // Now do the actual scan with quantity if provided
-        const { data } = await scansApi.process({
-          scan_code: scanCode,
-          action,
-          job_id: quantity, // Pass quantity via job_id field (backend expects this)
-        });
-        setResult(data);
-        setScanCode('');
-      }
-    } catch (error: any) {
-      console.error('Scan failed:', error);
-      setResult({
-        success: false,
-        message: error.response?.data?.error || t('scan.scanError'),
-        action,
-        duplicate: false,
-      });
-
-      // Reset to step 1 on error
-      if (step === 'zone') {
-        setStep('device');
-        setDeviceScanCode('');
-        setScanCode('');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const handleActionChange = (newAction: 'intake' | 'outtake' | 'check') => {
-    setAction(newAction);
-    setStep('device');
-    setDeviceScanCode('');
-    setConsumableQuantity(undefined);
-    setScanCode('');
-    setResult(null);
-  };
-
-  const handleJobCodeScan = async (jobId: number) => {
+  const handleJobCodeScan = useCallback(async (jobId: number) => {
     setScanCode('');
     setLoading(true);
 
@@ -223,6 +115,169 @@ export function ScanPage() {
     } finally {
       setLoading(false);
     }
+  }, [navigate, t]);
+
+  const processCode = useCallback(async (code: string) => {
+    if (!code.trim()) return;
+
+    // Check if scan code is a Job-Code (format: JOB######)
+    const jobCodeMatch = code.match(/^JOB(\d{6})$/i);
+    if (jobCodeMatch) {
+      const jobId = parseInt(jobCodeMatch[1], 10);
+      await handleJobCodeScan(jobId);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Step 1: Scan device
+      if (action === 'intake' && step === 'device') {
+        // Verify device exists by trying to scan it (check action)
+        const { data } = await scansApi.process({
+          scan_code: code,
+          action: 'check',
+        });
+
+        if (data.success) {
+          // Check if this is an accessory/consumable (has product info with unit)
+          if (data.product && data.product.unit) {
+            // This is an accessory/consumable - ask for quantity
+            const quantityStr = window.prompt(t('scan.prompts.intakeQuantity', { unit: data.product.unit }));
+
+            if (!quantityStr || isNaN(Number(quantityStr)) || Number(quantityStr) <= 0) {
+              setResult({
+                success: false,
+                message: t('scan.invalidQuantity'),
+                action,
+                duplicate: false,
+              });
+              setLoading(false);
+              return;
+            }
+
+            // Store quantity and proceed to zone scan
+            setConsumableQuantity(Number(quantityStr));
+            setDeviceScanCode(code);
+            setStep('zone');
+            setScanCode('');
+            setResult(null);
+            setLoading(false);
+            return;
+          }
+
+          // Regular device - proceed to zone scan
+          setDeviceScanCode(code);
+          setStep('zone');
+          setScanCode('');
+          setResult(null);
+        } else {
+          setResult(data);
+        }
+      }
+      // Step 2: Scan zone for intake
+      else if (action === 'intake' && step === 'zone') {
+        // Find zone by barcode
+        const { data: zone } = await zonesApi.getByScan(code);
+
+        // Now process the actual intake with zone_id (and quantity if it's a consumable)
+        const { data } = await scansApi.process({
+          scan_code: deviceScanCode,
+          action: 'intake',
+          zone_id: zone.zone_id,
+          job_id: consumableQuantity, // Pass quantity for consumables
+        });
+
+        setResult(data);
+        setScanCode('');
+        setDeviceScanCode('');
+        setConsumableQuantity(undefined);
+        setStep('device');
+      }
+      // All other actions (outtake, check) - single step
+      else {
+        // For consumables with intake/outtake, ask for quantity first
+        let quantity = undefined;
+        if ((action === 'intake' || action === 'outtake')) {
+          // First check if this might be a consumable (quick check without committing)
+          const checkResponse = await scansApi.process({
+            scan_code: code,
+            action: 'check',
+          });
+
+          // If the response includes product info with a unit, it's an accessory/consumable
+          if (checkResponse.data.product && checkResponse.data.product.unit) {
+            const promptText = action === 'intake'
+              ? t('scan.prompts.intakeQuantity', { unit: checkResponse.data.product.unit })
+              : t('scan.prompts.outtakeQuantity', { unit: checkResponse.data.product.unit });
+            const quantityStr = window.prompt(promptText);
+
+            if (!quantityStr || isNaN(Number(quantityStr)) || Number(quantityStr) <= 0) {
+              setResult({
+                success: false,
+                message: t('scan.invalidQuantity'),
+                action,
+                duplicate: false,
+              });
+              setLoading(false);
+              return;
+            }
+            quantity = Number(quantityStr);
+          }
+        }
+
+        // Now do the actual scan with quantity if provided
+        const { data } = await scansApi.process({
+          scan_code: code,
+          action,
+          job_id: quantity, // Pass quantity via job_id field (backend expects this)
+        });
+        setResult(data);
+        setScanCode('');
+      }
+    } catch (error: any) {
+      console.error('Scan failed:', error);
+      setResult({
+        success: false,
+        message: error.response?.data?.error || t('scan.scanError'),
+        action,
+        duplicate: false,
+      });
+
+      // Reset to step 1 on error
+      if (step === 'zone') {
+        setStep('device');
+        setDeviceScanCode('');
+        setScanCode('');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [action, step, deviceScanCode, consumableQuantity, t, handleJobCodeScan]);
+
+  // Keep submitCodeRef in sync with the latest processCode so scanner callbacks
+  // (which are memoised on mount) can always reach the current state closure.
+  useEffect(() => {
+    submitCodeRef.current = processCode;
+  }, [processCode]);
+
+  const handleScan = (e: React.FormEvent) => {
+    e.preventDefault();
+    processCode(scanCode);
+  };
+
+  const handleActionChange = (newAction: 'intake' | 'outtake' | 'check') => {
+    setAction(newAction);
+    setStep('device');
+    setDeviceScanCode('');
+    setConsumableQuantity(undefined);
+    setScanCode('');
+    setResult(null);
+  };
+
+  const handleInputMethodChange = (method: InputMethod) => {
+    setScanCode('');
+    setResult(null);
+    setInputMethod(method);
   };
 
   const handleLEDModalConfirm = async () => {
@@ -323,15 +378,125 @@ export function ScanPage() {
             </div>
           )}
 
+          {/* Input Method Selector */}
+          <div className="flex gap-2 mb-4 sm:mb-6 p-1 bg-white/5 rounded-xl">
+            <button
+              type="button"
+              onClick={() => handleInputMethodChange('keyboard')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                inputMethod === 'keyboard'
+                  ? 'bg-accent-red text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Keyboard className="w-4 h-4" />
+              {t('scan.inputMethods.keyboard')}
+            </button>
+            {barcodeScanner.isSupported && (
+              <button
+                type="button"
+                onClick={() => handleInputMethodChange('camera')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                  inputMethod === 'camera'
+                    ? 'bg-accent-red text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Camera className="w-4 h-4" />
+                {t('scan.inputMethods.camera')}
+              </button>
+            )}
+            {nfcScanner.isSupported && (
+              <button
+                type="button"
+                onClick={() => handleInputMethodChange('nfc')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                  inputMethod === 'nfc'
+                    ? 'bg-accent-red text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Nfc className="w-4 h-4" />
+                {t('scan.inputMethods.nfc')}
+              </button>
+            )}
+          </div>
+
+          {/* Camera Preview */}
+          {inputMethod === 'camera' && (
+            <div className="mb-4 sm:mb-6">
+              {barcodeScanner.error ? (
+                <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  <X className="w-5 h-5 flex-shrink-0" />
+                  {t(barcodeScanner.error)}
+                </div>
+              ) : (
+                <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+                  <video
+                    ref={barcodeScanner.videoRef}
+                    className="w-full h-full object-cover"
+                    playsInline
+                    muted
+                  />
+                  {/* Scanning overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-2/3 h-2/3 border-2 border-accent-red/70 rounded-lg relative">
+                      <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-accent-red rounded-tl-md -translate-x-0.5 -translate-y-0.5"></div>
+                      <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-accent-red rounded-tr-md translate-x-0.5 -translate-y-0.5"></div>
+                      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-accent-red rounded-bl-md -translate-x-0.5 translate-y-0.5"></div>
+                      <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-accent-red rounded-br-md translate-x-0.5 translate-y-0.5"></div>
+                    </div>
+                  </div>
+                  {!barcodeScanner.isScanning && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                      <p className="text-white text-sm">{t('scan.camera.starting')}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <p className="text-center text-gray-400 text-xs sm:text-sm mt-2">
+                {t('scan.camera.hint')}
+              </p>
+            </div>
+          )}
+
+          {/* NFC Waiting State */}
+          {inputMethod === 'nfc' && (
+            <div className="mb-4 sm:mb-6">
+              {nfcScanner.error ? (
+                <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  <X className="w-5 h-5 flex-shrink-0" />
+                  {t(nfcScanner.error)}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/5 border border-white/10">
+                  <div className={`p-4 rounded-full ${nfcScanner.isScanning ? 'bg-accent-red/20 animate-pulse' : 'bg-white/10'}`}>
+                    <Nfc className={`w-12 h-12 ${nfcScanner.isScanning ? 'text-accent-red' : 'text-gray-500'}`} />
+                  </div>
+                  <p className="text-white text-sm sm:text-base font-semibold">
+                    {nfcScanner.isScanning ? t('scan.nfc.ready') : t('scan.nfc.starting')}
+                  </p>
+                  <p className="text-gray-400 text-xs sm:text-sm text-center">
+                    {t('scan.nfc.hint')}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <form onSubmit={handleScan} className="space-y-4 sm:space-y-6">
-            {/* Scan Input */}
+            {/* Scan Input - primary input in keyboard mode, manual fallback in camera/NFC modes */}
             <div>
               <input
                 type="text"
                 value={scanCode}
                 onChange={(e) => setScanCode(e.target.value)}
-                placeholder={step === 'zone' ? t('scan.placeholders.zone') : t('scan.placeholders.device')}
-                autoFocus
+                placeholder={
+                  inputMethod === 'keyboard'
+                    ? (step === 'zone' ? t('scan.placeholders.zone') : t('scan.placeholders.device'))
+                    : t('scan.placeholders.manualFallback')
+                }
+                autoFocus={inputMethod === 'keyboard'}
                 className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/10 backdrop-blur-md border-2 border-white/20 rounded-xl text-white text-base sm:text-xl placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
               />
             </div>
