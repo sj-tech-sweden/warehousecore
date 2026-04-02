@@ -1508,8 +1508,15 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
             ledApi.locateBin(device.zone_code).catch(err => console.error('LED locate failed:', err));
           }
         }}
-        onOpenZone={() => {}}
-        onOpenDevice={(device) => setDeviceDetail(device)}
+        onOpenZone={(device) => {
+          if (device.zone_code) {
+            ledApi.locateBin(device.zone_code).catch(err => console.error('LED locate failed:', err));
+          }
+        }}
+        onOpenDevice={(device) => {
+          setDeviceDetail(device);
+          closeDevicesModal();
+        }}
       />
 
       {/* Device Detail Modal (opened from Product Devices list) */}

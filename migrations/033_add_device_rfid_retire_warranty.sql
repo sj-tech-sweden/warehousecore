@@ -1,6 +1,5 @@
--- Migration: 032_add_device_rfid_retire_warranty.sql
--- Description: Add RFID, retire_date, and warranty_end_date columns to devices table,
---              and remove the NOT NULL constraint on deviceID so it can be updated.
+-- Migration: 033_add_device_rfid_retire_warranty.sql
+-- Description: Add RFID, retire_date, and warranty_end_date columns to devices table.
 -- Date: 2026-04-01
 
 ALTER TABLE devices

@@ -330,6 +330,22 @@ func (s *DeviceAdminService) UpdateDevice(ctx context.Context, deviceID string, 
 		return nil, fmt.Errorf("failed to update device: %w", err)
 	}
 
+	// If device ID is being renamed, update all child tables that reference it
+	if newDeviceID != deviceID {
+		childUpdates := []string{
+			"UPDATE device_movements SET device_id = $1 WHERE device_id = $2",
+			"UPDATE scan_events SET device_id = $1 WHERE device_id = $2",
+			"UPDATE defect_reports SET device_id = $1 WHERE device_id = $2",
+			"UPDATE job_devices SET deviceID = $1 WHERE deviceID = $2",
+			"UPDATE devicescases SET deviceID = $1 WHERE deviceID = $2",
+		}
+		for _, stmt := range childUpdates {
+			if _, err := tx.ExecContext(ctx, stmt, newDeviceID, deviceID); err != nil {
+				return nil, fmt.Errorf("failed to update device references: %w", err)
+			}
+		}
+	}
+
 	shouldResetCodes := input.RegenerateCodes.Set && input.RegenerateCodes.Valid && input.RegenerateCodes.Value
 	if shouldResetCodes {
 		if err := s.resetDeviceCodes(ctx, tx, newDeviceID); err != nil {

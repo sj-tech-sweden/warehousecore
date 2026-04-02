@@ -117,7 +117,7 @@ export function DevicesTab({ initialProductFilter }: DevicesTabProps) {
   const [refreshing, setRefreshing] = useState(false);
 
   // Block body scroll when any modal is open
-  useBlockBodyScroll(modalOpen || viewDevice !== null);
+  useBlockBodyScroll(modalOpen);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 

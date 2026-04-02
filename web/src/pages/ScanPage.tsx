@@ -42,7 +42,7 @@ export function ScanPage() {
   const [serviceError, setServiceError] = useState<string | null>(null);
 
   // Block body scroll when LED modal, service modal, or device detail modal is open
-  useBlockBodyScroll(showLEDModal || showServiceModal || viewDevice !== null);
+  useBlockBodyScroll(showLEDModal || showServiceModal);
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
