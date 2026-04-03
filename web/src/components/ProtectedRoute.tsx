@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
 interface ProtectedRouteProps {
@@ -8,6 +9,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, bypassForcePasswordChange = false }: ProtectedRouteProps) {
   const { isAuthenticated, loading, forcePasswordChange } = useAuth();
+  const { t } = useTranslation();
 
   // Show loading spinner while checking authentication
   if (loading) {
@@ -15,7 +17,7 @@ export function ProtectedRoute({ children, bypassForcePasswordChange = false }: 
       <div className="min-h-screen bg-dark flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-accent-red/20 border-t-accent-red rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Lade...</p>
+          <p className="text-gray-400">{t('common.loading')}</p>
         </div>
       </div>
     );
