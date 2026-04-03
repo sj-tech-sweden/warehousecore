@@ -593,6 +593,37 @@ export const adminSettingsApi = {
     }),
 };
 
+// Eventory integration
+export interface EventorySettings {
+  api_url: string;
+  api_key_configured: boolean;
+  api_key_masked: string;
+}
+
+export interface EventoryProduct {
+  id: string | number;
+  name: string;
+  description: string;
+  category: string;
+  price: number;
+}
+
+export interface EventorySyncResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  total: number;
+  message: string;
+}
+
+export const eventoryApi = {
+  getSettings: () => api.get<EventorySettings>('/admin/eventory/settings'),
+  updateSettings: (payload: { api_url: string; api_key?: string }) =>
+    api.put<EventorySettings & { message: string }>('/admin/eventory/settings', payload),
+  getProducts: () => api.get<{ products: EventoryProduct[]; count: number }>('/admin/eventory/products'),
+  sync: () => api.post<EventorySyncResult>('/admin/eventory/sync', {}),
+};
+
 // API Keys
 export interface APIKeyItem {
   id: number;

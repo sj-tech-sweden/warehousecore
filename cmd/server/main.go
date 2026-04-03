@@ -367,6 +367,12 @@ func main() {
 	admin.HandleFunc("/currency", handlers.GetCurrencySettings).Methods("GET")
 	admin.HandleFunc("/currency", handlers.UpdateCurrencySettings).Methods("PUT")
 
+	// Eventory integration endpoints (admin-only)
+	adminRead.HandleFunc("/eventory/settings", handlers.GetEventorySettings).Methods("GET")
+	admin.HandleFunc("/eventory/settings", handlers.UpdateEventorySettings).Methods("PUT")
+	admin.HandleFunc("/eventory/products", handlers.GetEventoryProducts).Methods("GET")
+	admin.HandleFunc("/eventory/sync", handlers.SyncEventoryProducts).Methods("POST")
+
 	// CSV Export endpoints (read-only, admin or manager)
 	adminRead.HandleFunc("/export/{type}", handlers.ExportCSV).Methods("GET")
 
