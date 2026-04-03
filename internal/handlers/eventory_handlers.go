@@ -6,21 +6,16 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
-	"warehousecore/internal/repository"
 	"warehousecore/internal/services"
 )
-
-// eventorySupplierName is the supplier name used when syncing products from Eventory.
-const eventorySupplierName = "Eventory"
 
 // ===========================
 // EVENTORY INTEGRATION HANDLERS
 // ===========================
 
-// GetEventorySettings returns the current Eventory integration configuration
-// The API key is masked in the response so it is never exposed to the browser.
+// GetEventorySettings returns the current Eventory integration configuration.
+// Secrets (API key, password) are masked so they are never exposed to the browser.
 func GetEventorySettings(w http.ResponseWriter, r *http.Request) {
 	cfg, err := services.GetEventoryConfig()
 	if err != nil {
@@ -35,18 +30,29 @@ func GetEventorySettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"api_url":            cfg.APIURL,
-		"api_key_configured": cfg.APIKey != "",
-		"api_key_masked":     maskedKey,
+		"api_url":                cfg.APIURL,
+		"api_key_configured":     cfg.APIKey != "",
+		"api_key_masked":         maskedKey,
+		"username":               cfg.Username,
+		"username_configured":    cfg.Username != "",
+		"password_configured":    cfg.Password != "",
+		"token_endpoint":         cfg.TokenEndpoint,
+		"supplier_name":          cfg.EffectiveSupplierName(),
+		"sync_interval_minutes":  cfg.SyncIntervalMinutes,
 	})
 }
 
-// UpdateEventorySettings saves the Eventory API URL and (optionally) the API key.
-// Sending an empty api_key in the payload leaves the existing stored key unchanged.
+// UpdateEventorySettings saves the Eventory connection settings.
+// Empty api_key / password fields leave the existing stored values unchanged.
 func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		APIURL string `json:"api_url"`
-		APIKey string `json:"api_key"`
+		APIURL              string `json:"api_url"`
+		APIKey              string `json:"api_key"`
+		Username            string `json:"username"`
+		Password            string `json:"password"`
+		TokenEndpoint       string `json:"token_endpoint"`
+		SupplierName        string `json:"supplier_name"`
+		SyncIntervalMinutes int    `json:"sync_interval_minutes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
@@ -59,18 +65,38 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If no new key is provided, keep the existing one
+	// SSRF protection: validate the URL
+	if err := services.ValidateEventoryURL(payload.APIURL); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Invalid API URL: %v", err)})
+		return
+	}
+
+	// Load existing config to preserve secrets when new values are blank
+	existing, err := services.GetEventoryConfig()
+	if err != nil {
+		log.Printf("[EVENTORY] Failed to load existing config while preserving secrets: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load existing Eventory settings"})
+		return
+	}
+
 	apiKey := strings.TrimSpace(payload.APIKey)
 	if apiKey == "" {
-		existing, err := services.GetEventoryConfig()
-		if err == nil {
-			apiKey = existing.APIKey
-		}
+		apiKey = existing.APIKey
+	}
+
+	password := strings.TrimSpace(payload.Password)
+	if password == "" {
+		password = existing.Password
 	}
 
 	cfg := &services.EventoryConfig{
-		APIURL: payload.APIURL,
-		APIKey: apiKey,
+		APIURL:              payload.APIURL,
+		APIKey:              apiKey,
+		Username:            strings.TrimSpace(payload.Username),
+		Password:            password,
+		TokenEndpoint:       strings.TrimSpace(payload.TokenEndpoint),
+		SupplierName:        strings.TrimSpace(payload.SupplierName),
+		SyncIntervalMinutes: payload.SyncIntervalMinutes,
 	}
 
 	if err := services.SaveEventoryConfig(cfg); err != nil {
@@ -79,10 +105,19 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Restart the background scheduler with the new interval
+	services.GetEventoryScheduler().Reset()
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"api_url":            cfg.APIURL,
-		"api_key_configured": cfg.APIKey != "",
-		"message":            "Eventory settings saved successfully",
+		"api_url":               cfg.APIURL,
+		"api_key_configured":    cfg.APIKey != "",
+		"username":              cfg.Username,
+		"username_configured":   cfg.Username != "",
+		"password_configured":   cfg.Password != "",
+		"token_endpoint":        cfg.TokenEndpoint,
+		"supplier_name":         cfg.EffectiveSupplierName(),
+		"sync_interval_minutes": cfg.SyncIntervalMinutes,
+		"message":               "Eventory settings saved successfully",
 	})
 }
 
@@ -110,7 +145,7 @@ func GetEventoryProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 // SyncEventoryProducts fetches products from Eventory and upserts them into
-// the local rental_equipment table using the supplier name "Eventory".
+// the local rental_equipment table.
 func SyncEventoryProducts(w http.ResponseWriter, r *http.Request) {
 	cfg, err := services.GetEventoryConfig()
 	if err != nil {
@@ -119,98 +154,20 @@ func SyncEventoryProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	products, err := services.FetchEventoryProducts(cfg)
+	imported, updated, skipped, total, err := services.RunEventorySync(cfg)
 	if err != nil {
-		log.Printf("[EVENTORY] Failed to fetch products for sync: %v", err)
-		respondJSON(w, http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("Failed to fetch from Eventory: %v", err)})
+		log.Printf("[EVENTORY] Sync failed: %v", err)
+		respondJSON(w, http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("Sync failed: %v", err)})
 		return
 	}
 
-	db := repository.GetSQLDB()
-	if db == nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database not available"})
-		return
-	}
-
-	imported := 0
-	updated := 0
-	skipped := 0
-
-	tx, err := db.Begin()
-	if err != nil {
-		log.Printf("[EVENTORY] Failed to begin transaction: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start database transaction"})
-		return
-	}
-	defer func() {
-		if err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				log.Printf("[EVENTORY] Rollback failed: %v", rbErr)
-			}
-		}
-	}()
-
-	for _, p := range products {
-		name := strings.TrimSpace(p.Name)
-		if name == "" {
-			skipped++
-			continue
-		}
-
-		category := strings.TrimSpace(p.Category)
-		description := strings.TrimSpace(p.Description)
-		now := time.Now()
-
-		// Atomic upsert: update first; if no row matched, insert.
-		result, execErr := tx.Exec(`
-			UPDATE rental_equipment
-			SET rental_price = $1, category = $2, description = $3, updated_at = $4
-			WHERE product_name = $5 AND supplier_name = $6
-		`, p.Price, nullableStr(category), nullableStr(description), now, name, eventorySupplierName)
-		if execErr != nil {
-			log.Printf("[EVENTORY] Failed to update product %q: %v", name, execErr)
-			skipped++
-			continue
-		}
-
-		rowsAffected, raErr := result.RowsAffected()
-		if raErr != nil {
-			log.Printf("[EVENTORY] Failed to get rows affected for %q: %v", name, raErr)
-			skipped++
-			continue
-		}
-
-		if rowsAffected == 0 {
-			_, insertErr := tx.Exec(`
-				INSERT INTO rental_equipment
-					(product_name, supplier_name, rental_price, customer_price, category, description, is_active, created_at, updated_at)
-				VALUES ($1, $2, $3, 0, $4, $5, TRUE, $6, $6)
-			`, name, eventorySupplierName, p.Price, nullableStr(category), nullableStr(description), now)
-			if insertErr != nil {
-				log.Printf("[EVENTORY] Failed to insert product %q: %v", name, insertErr)
-				skipped++
-			} else {
-				imported++
-			}
-		} else {
-			updated++
-		}
-	}
-
-	if commitErr := tx.Commit(); commitErr != nil {
-		err = commitErr
-		log.Printf("[EVENTORY] Failed to commit transaction: %v", commitErr)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit sync transaction"})
-		return
-	}
-
-	log.Printf("[EVENTORY] Sync complete: %d imported, %d updated, %d skipped", imported, updated, skipped)
+	log.Printf("[EVENTORY] Manual sync complete: %d imported, %d updated, %d skipped", imported, updated, skipped)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"imported": imported,
 		"updated":  updated,
 		"skipped":  skipped,
-		"total":    len(products),
+		"total":    total,
 		"message":  fmt.Sprintf("Sync complete: %d imported, %d updated, %d skipped", imported, updated, skipped),
 	})
 }

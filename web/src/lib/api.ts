@@ -598,6 +598,12 @@ export interface EventorySettings {
   api_url: string;
   api_key_configured: boolean;
   api_key_masked: string;
+  username: string;
+  username_configured: boolean;
+  password_configured: boolean;
+  token_endpoint: string;
+  supplier_name: string;
+  sync_interval_minutes: number;
 }
 
 export interface EventoryProduct {
@@ -616,9 +622,19 @@ export interface EventorySyncResult {
   message: string;
 }
 
+export interface EventorySettingsPayload {
+  api_url: string;
+  api_key?: string;
+  username?: string;
+  password?: string;
+  token_endpoint?: string;
+  supplier_name?: string;
+  sync_interval_minutes?: number;
+}
+
 export const eventoryApi = {
   getSettings: () => api.get<EventorySettings>('/admin/eventory/settings'),
-  updateSettings: (payload: { api_url: string; api_key?: string }) =>
+  updateSettings: (payload: EventorySettingsPayload) =>
     api.put<EventorySettings & { message: string }>('/admin/eventory/settings', payload),
   getProducts: () => api.get<{ products: EventoryProduct[]; count: number }>('/admin/eventory/products'),
   sync: () => api.post<EventorySyncResult>('/admin/eventory/sync', {}),

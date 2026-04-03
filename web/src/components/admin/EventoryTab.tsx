@@ -1,15 +1,33 @@
 import { useState, useEffect } from 'react';
-import { Save, RefreshCcw, AlertCircle, Link2, Package, CheckCircle2, XCircle } from 'lucide-react';
-import { eventoryApi, type EventoryProduct } from '../../lib/api';
+import { Save, RefreshCcw, AlertCircle, Link2, Package, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { eventoryApi, type EventoryProduct, type EventorySettingsPayload } from '../../lib/api';
 import { useTranslation } from 'react-i18next';
+
+const SYNC_INTERVAL_OPTIONS = [
+  { value: 0, labelKey: 'admin.eventory.syncIntervalDisabled' },
+  { value: 15, labelKey: 'admin.eventory.syncInterval15m' },
+  { value: 30, labelKey: 'admin.eventory.syncInterval30m' },
+  { value: 60, labelKey: 'admin.eventory.syncInterval1h' },
+  { value: 120, labelKey: 'admin.eventory.syncInterval2h' },
+  { value: 240, labelKey: 'admin.eventory.syncInterval4h' },
+  { value: 480, labelKey: 'admin.eventory.syncInterval8h' },
+  { value: 1440, labelKey: 'admin.eventory.syncInterval24h' },
+];
 
 export function EventoryTab() {
   const { t } = useTranslation();
 
+  // Settings state
   const [apiUrl, setApiUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [apiKeyMasked, setApiKeyMasked] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfigured, setPasswordConfigured] = useState(false);
+  const [tokenEndpoint, setTokenEndpoint] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [syncInterval, setSyncInterval] = useState(0);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,6 +49,11 @@ export function EventoryTab() {
       setApiUrl(data.api_url || '');
       setApiKeyConfigured(data.api_key_configured);
       setApiKeyMasked(data.api_key_masked || '');
+      setUsername(data.username || '');
+      setPasswordConfigured(data.password_configured);
+      setTokenEndpoint(data.token_endpoint || '');
+      setSupplierName(data.supplier_name || '');
+      setSyncInterval(data.sync_interval_minutes ?? 0);
     } catch (err) {
       console.error('Failed to load Eventory settings:', err);
       setMessage({ type: 'error', text: t('admin.eventory.loadError') });
@@ -50,15 +73,24 @@ export function EventoryTab() {
     setMessage(null);
 
     try {
-      const payload: { api_url: string; api_key?: string } = { api_url: trimmedUrl };
-      if (apiKey.trim()) {
-        payload.api_key = apiKey.trim();
-      }
+      const payload: EventorySettingsPayload = {
+        api_url: trimmedUrl,
+        username: username.trim(),
+        token_endpoint: tokenEndpoint.trim(),
+        supplier_name: supplierName.trim(),
+        sync_interval_minutes: syncInterval,
+      };
+      if (apiKey.trim()) payload.api_key = apiKey.trim();
+      if (password.trim()) payload.password = password.trim();
 
       const { data } = await eventoryApi.updateSettings(payload);
       setApiUrl(data.api_url || trimmedUrl);
       setApiKeyConfigured(data.api_key_configured);
-      setApiKey(''); // clear the input after saving
+      setApiKey('');
+      setPassword('');
+      setPasswordConfigured(data.password_configured);
+      setSupplierName(data.supplier_name || '');
+      setSyncInterval(data.sync_interval_minutes ?? 0);
       setMessage({ type: 'success', text: t('admin.eventory.settingsSaved') });
       loadSettings();
     } catch (err) {
@@ -174,7 +206,44 @@ export function EventoryTab() {
           <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.apiUrlDesc')}</p>
         </div>
 
-        {/* API Key */}
+        {/* Username / Password (OAuth2 password grant) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              {t('admin.eventory.username')}
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              placeholder={t('admin.eventory.usernamePlaceholder')}
+              autoComplete="off"
+              className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              {t('admin.eventory.password')}
+              {passwordConfigured && (
+                <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-400">
+                  <CheckCircle2 className="w-3 h-3" />
+                  {t('admin.eventory.passwordConfigured')}
+                </span>
+              )}
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder={passwordConfigured ? t('admin.eventory.passwordPlaceholderUpdate') : t('admin.eventory.passwordPlaceholder')}
+              autoComplete="new-password"
+              className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-gray-500">{t('admin.eventory.credentialsDesc')}</p>
+
+        {/* API Key (alternative to username/password) */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             {t('admin.eventory.apiKey')}
@@ -199,6 +268,56 @@ export function EventoryTab() {
             className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
           />
           <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.apiKeyDesc')}</p>
+        </div>
+
+        {/* Optional: token endpoint override */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            {t('admin.eventory.tokenEndpoint')}
+          </label>
+          <input
+            type="url"
+            value={tokenEndpoint}
+            onChange={e => setTokenEndpoint(e.target.value)}
+            placeholder="https://api.eventory.se/oauth/token"
+            className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
+          />
+          <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.tokenEndpointDesc')}</p>
+        </div>
+
+        {/* Supplier name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            {t('admin.eventory.supplierName')}
+          </label>
+          <input
+            type="text"
+            value={supplierName}
+            onChange={e => setSupplierName(e.target.value)}
+            placeholder="Eventory"
+            className="w-full sm:w-64 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
+          />
+          <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.supplierNameDesc')}</p>
+        </div>
+
+        {/* Sync interval */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            <Clock className="w-4 h-4 inline mr-1" />
+            {t('admin.eventory.syncInterval')}
+          </label>
+          <select
+            value={syncInterval}
+            onChange={e => setSyncInterval(Number(e.target.value))}
+            className="w-full sm:w-64 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white focus:outline-none focus:border-accent-red transition-colors"
+          >
+            {SYNC_INTERVAL_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>
+                {t(opt.labelKey)}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.syncIntervalDesc')}</p>
         </div>
 
         {/* Save button */}
@@ -241,7 +360,9 @@ export function EventoryTab() {
           </button>
         </div>
 
-        <p className="text-xs text-gray-500">{t('admin.eventory.syncNote')}</p>
+        <p className="text-xs text-gray-500">
+          {t('admin.eventory.syncNote', { supplier: supplierName || 'Eventory' })}
+        </p>
       </div>
 
       {/* Products preview */}
@@ -305,3 +426,4 @@ export function EventoryTab() {
     </div>
   );
 }
+
