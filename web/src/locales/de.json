@@ -1542,5 +1542,11 @@
     "loading": "Lade Berechtigungen...",
     "accessDenied": "Zugriff verweigert",
     "accessDeniedDescription": "Für diesen Bereich werden erweiterte Rechte benötigt. Bitte wende dich an einen Administrator, falls du Zugriff auf die Admin-Einstellungen benötigst."
+  },
+  "scanField": {
+    "title": "{{field}} scannen",
+    "placeholder": "{{field}} eingeben...",
+    "apply": "Übernehmen",
+    "scan": "Scannen"
   }
 }

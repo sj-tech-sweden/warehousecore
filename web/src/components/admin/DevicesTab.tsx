@@ -9,6 +9,7 @@ import {
   Plus,
   QrCode,
   RefreshCcw,
+  ScanLine,
   Search,
   Trash2,
   X,
@@ -20,6 +21,7 @@ import { useBlockBodyScroll } from '../../hooks/useBlockBodyScroll';
 import { ModalPortal } from '../ModalPortal';
 import { DeviceInfoModal } from '../DeviceInfoModal';
 import { SearchableSelect } from '../SearchableSelect';
+import { ScanFieldModal } from '../ScanFieldModal';
 
 interface Product {
   product_id: number;
@@ -119,6 +121,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
   const [productFilter, setProductFilter] = useState<number | ''>(initialProductFilter ?? '');
   const [zoneFilter, setZoneFilter] = useState<number | ''>('');
   const [refreshing, setRefreshing] = useState(false);
+  const [scanFieldTarget, setScanFieldTarget] = useState<keyof Pick<DeviceFormData, 'rfid' | 'serial_number' | 'barcode' | 'qr_code'> | null>(null);
 
   // Block body scroll when any modal is open
   useBlockBodyScroll(modalOpen);
@@ -336,6 +339,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
       }
 
       setModalOpen(false);
+      setScanFieldTarget(null);
       setFormData({ ...initialFormData, label_template_id: undefined });
 
       // If an onEditComplete callback is provided (navigated here from Scan), call it
@@ -695,11 +699,11 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
               <button
                 onClick={() => {
                   setModalOpen(false);
+                  setScanFieldTarget(null);
                   if (onCancel) {
                     onCancel();
                   }
                 }}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
                 aria-label={t('common.close')}
                 title={t('common.close')}
               >
@@ -852,37 +856,70 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     {t('devices.serialNumber')}
                   </label>
-                  <input
-                    type="text"
-                    value={formData.serial_number}
-                    onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
-                    className="input-field w-full"
-                    title={t('devices.serialNumber')}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.serial_number}
+                      onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
+                      className="input-field w-full"
+                      title={t('devices.serialNumber')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setScanFieldTarget('serial_number')}
+                      className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+                      title={t('scanField.scan')}
+                      aria-label={t('scanField.scan')}
+                    >
+                      <ScanLine className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     {t('devices.barcode')}
                   </label>
-                  <input
-                    type="text"
-                    value={formData.barcode}
-                    onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    className="input-field w-full"
-                    title={t('devices.barcode')}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.barcode}
+                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                      className="input-field w-full"
+                      title={t('devices.barcode')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setScanFieldTarget('barcode')}
+                      className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+                      title={t('scanField.scan')}
+                      aria-label={t('scanField.scan')}
+                    >
+                      <ScanLine className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     {t('labels.qrCode')}
                   </label>
-                  <input
-                    type="text"
-                    value={formData.qr_code}
-                    onChange={(e) => setFormData({ ...formData, qr_code: e.target.value })}
-                    className="input-field w-full"
-                    title={t('labels.qrCode')}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.qr_code}
+                      onChange={(e) => setFormData({ ...formData, qr_code: e.target.value })}
+                      className="input-field w-full"
+                      title={t('labels.qrCode')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setScanFieldTarget('qr_code')}
+                      className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+                      title={t('scanField.scan')}
+                      aria-label={t('scanField.scan')}
+                    >
+                      <ScanLine className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -891,13 +928,24 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   {t('devices.rfid')}
                 </label>
-                <input
-                  type="text"
-                  value={formData.rfid}
-                  onChange={(e) => setFormData({ ...formData, rfid: e.target.value })}
-                  className="input-field w-full"
-                  title={t('devices.rfid')}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formData.rfid}
+                    onChange={(e) => setFormData({ ...formData, rfid: e.target.value })}
+                    className="input-field w-full"
+                    title={t('devices.rfid')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setScanFieldTarget('rfid')}
+                    className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+                    title={t('scanField.scan')}
+                    aria-label={t('scanField.scan')}
+                  >
+                    <ScanLine className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Location and Condition */}
@@ -1104,6 +1152,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                   type="button"
                   onClick={() => {
                     setModalOpen(false);
+                    setScanFieldTarget(null);
                     if (onCancel) {
                       onCancel();
                     }
@@ -1137,6 +1186,28 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
         onClose={() => setViewDevice(null)}
         onEdit={(device) => openEditModal(device)}
       />
+
+      {/* Scan Field Modal */}
+      {(() => {
+        const scanFieldLabels: Record<NonNullable<typeof scanFieldTarget>, string> = {
+          rfid: t('devices.rfid'),
+          serial_number: t('devices.serialNumber'),
+          barcode: t('devices.barcode'),
+          qr_code: t('labels.qrCode'),
+        };
+        return (
+          <ScanFieldModal
+            isOpen={scanFieldTarget !== null}
+            fieldLabel={scanFieldTarget ? scanFieldLabels[scanFieldTarget] : ''}
+            onConfirm={(value) => {
+              if (scanFieldTarget) {
+                setFormData((prev) => ({ ...prev, [scanFieldTarget]: value }));
+              }
+            }}
+            onClose={() => setScanFieldTarget(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
