@@ -169,6 +169,27 @@ func TestValidateEventoryURL_RejectsUnspecified(t *testing.T) {
 	}
 }
 
+func TestValidateEventoryURL_RejectsSharedAddressSpace(t *testing.T) {
+	// 100.64.0.0/10 is RFC 6598 shared address space (CGNAT) — not publicly routable.
+	if err := ValidateEventoryURL("http://100.64.0.1/api"); err == nil {
+		t.Error("expected error for shared-address-space IP URL (100.64.0.0/10), got nil")
+	}
+}
+
+func TestValidateEventoryURL_RejectsBenchmarking(t *testing.T) {
+	// 198.18.0.0/15 is RFC 2544 benchmarking — not a valid outbound target.
+	if err := ValidateEventoryURL("http://198.18.0.1/api"); err == nil {
+		t.Error("expected error for benchmarking IP URL (198.18.0.0/15), got nil")
+	}
+}
+
+func TestValidateEventoryURL_RejectsTestNet(t *testing.T) {
+	// 192.0.2.0/24 is RFC 5737 TEST-NET-1 — documentation only, not routable.
+	if err := ValidateEventoryURL("http://192.0.2.1/api"); err == nil {
+		t.Error("expected error for TEST-NET-1 IP URL (192.0.2.0/24), got nil")
+	}
+}
+
 // ===========================
 // Endpoint fallback tests
 // ===========================

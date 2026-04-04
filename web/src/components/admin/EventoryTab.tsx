@@ -86,13 +86,15 @@ export function EventoryTab() {
       const { data } = await eventoryApi.updateSettings(payload);
       setApiUrl(data.api_url || trimmedUrl);
       setApiKeyConfigured(data.api_key_configured);
+      setApiKeyMasked(data.api_key_masked || '');
       setApiKey('');
-      setPassword('');
+      setUsername(data.username || '');
       setPasswordConfigured(data.password_configured);
+      setPassword('');
+      setTokenEndpoint(data.token_endpoint || '');
       setSupplierName(data.supplier_name || '');
       setSyncInterval(data.sync_interval_minutes ?? 0);
       setMessage({ type: 'success', text: t('admin.eventory.settingsSaved') });
-      loadSettings();
     } catch (err) {
       console.error('Failed to save Eventory settings:', err);
       setMessage({ type: 'error', text: t('admin.eventory.saveError') });

@@ -366,8 +366,11 @@ func ValidateEventoryURL(rawURL string) error {
 	// or loopback. This prevents DNS-based SSRF even when the literal hostname
 	// looks safe. Fail closed: if DNS resolution fails we cannot verify that the
 	// host is safe, so we reject the URL to prevent SSRF via unresolvable names
-	// that could later resolve to private ranges.
-	addrs, err := net.LookupHost(host)
+	// that could later resolve to private ranges. A short timeout prevents slow
+	// DNS from hanging settings saves or server bootstrap.
+	dnsCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupHost(dnsCtx, host)
 	if err != nil {
 		return fmt.Errorf("URL hostname could not be resolved during validation: %w", err)
 	}
@@ -382,8 +385,8 @@ func ValidateEventoryURL(rawURL string) error {
 
 // isPrivateIP reports whether ip should be blocked from outbound SSRF checks.
 // It rejects loopback, link-local, private RFC-1918/RFC-4193, unspecified
-// (0.0.0.0 / ::), and multicast addresses — in other words, any address that
-// is not a globally-routable unicast address.
+// (0.0.0.0 / ::), multicast, and all other RFC 6890 special-use ranges —
+// in other words, any address that is not publicly routable.
 func isPrivateIP(ip net.IP) bool {
 	// Reject anything that is not a global unicast address first.
 	// This covers 0.0.0.0/::, multicast (224.0.0.0/4, ff00::/8),
@@ -392,15 +395,25 @@ func isPrivateIP(ip net.IP) bool {
 		return true
 	}
 
-	// IsGlobalUnicast() is true for ULA (fc00::/7) and RFC-1918 ranges, so we
-	// must additionally check those explicitly.
+	// IsGlobalUnicast() still returns true for many RFC 6890 special-use ranges
+	// (RFC-1918 private, ULA, shared address space, benchmarking, TEST-NETs,
+	// reserved, IETF protocol assignments, etc.) so we must check those explicitly.
 	privateRanges := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"169.254.0.0/16", // link-local (belt-and-suspenders)
-		"fc00::/7",       // ULA
-		"fe80::/10",      // link-local IPv6 (belt-and-suspenders)
+		"10.0.0.0/8",      // RFC 1918 private
+		"172.16.0.0/12",   // RFC 1918 private
+		"192.168.0.0/16",  // RFC 1918 private
+		"169.254.0.0/16",  // link-local (belt-and-suspenders)
+		"100.64.0.0/10",   // RFC 6598 shared address space (CGNAT)
+		"198.18.0.0/15",   // RFC 2544 benchmarking
+		"192.0.0.0/24",    // RFC 6890 IETF protocol assignments
+		"192.0.2.0/24",    // RFC 5737 TEST-NET-1
+		"198.51.100.0/24", // RFC 5737 TEST-NET-2
+		"203.0.113.0/24",  // RFC 5737 TEST-NET-3
+		"240.0.0.0/4",     // RFC 1112 reserved (class E)
+		"fc00::/7",        // ULA
+		"fe80::/10",       // link-local IPv6 (belt-and-suspenders)
+		"2001:db8::/32",   // RFC 3849 documentation
+		"100::/64",        // RFC 6666 discard-only (IPv6)
 	}
 	for _, cidr := range privateRanges {
 		_, network, err := net.ParseCIDR(cidr)

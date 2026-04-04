@@ -3,12 +3,14 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 
 	"warehousecore/internal/repository"
 )
@@ -233,6 +235,11 @@ func CreateRentalEquipment(w http.ResponseWriter, r *http.Request) {
 	).Scan(&id)
 
 	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" { // unique_violation
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "A rental equipment item with this product name and supplier already exists"})
+			return
+		}
 		log.Printf("Failed to create rental equipment: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create rental equipment"})
 		return
@@ -345,6 +352,11 @@ func UpdateRentalEquipment(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" { // unique_violation
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "A rental equipment item with this product name and supplier already exists"})
+			return
+		}
 		log.Printf("Failed to update rental equipment: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update rental equipment"})
 		return
