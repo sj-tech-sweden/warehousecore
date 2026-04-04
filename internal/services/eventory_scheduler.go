@@ -16,10 +16,11 @@ import (
 // products from the Eventory API. It is a singleton; call GetEventoryScheduler()
 // to obtain the shared instance.
 type EventoryScheduler struct {
-	mu      sync.Mutex
-	stopCh  chan struct{}
-	wg      sync.WaitGroup // tracks goroutines running syncFn so Stop() can wait
-	running int32          // atomic flag: 1 when a sync is in progress
+	mu       sync.Mutex
+	stopCh   chan struct{}
+	tickerWg sync.WaitGroup // tracks the ticker goroutine itself
+	wg       sync.WaitGroup // tracks goroutines running syncFn so Stop() can wait
+	running  int32          // atomic flag: 1 when a sync is in progress
 	// syncFn is called by the scheduler when a sync is due. Injected so it can
 	// be overridden in tests.
 	syncFn func()
@@ -68,7 +69,9 @@ func (s *EventoryScheduler) Reset() {
 	stopCh := make(chan struct{})
 	s.stopCh = stopCh
 
+	s.tickerWg.Add(1)
 	go func() {
+		defer s.tickerWg.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -101,11 +104,20 @@ func (s *EventoryScheduler) Reset() {
 	}()
 }
 
-// Stop terminates the running scheduler goroutine if active, then waits for
+// Stop terminates the running ticker goroutine if active, then waits for
 // any in-progress sync to finish before returning. This ensures that an
 // in-flight RunEventorySync call completes (and its DB transaction is
 // committed or rolled back) before the caller proceeds with teardown such as
 // closing the database connection.
+//
+// The two-phase wait is safe because:
+//  1. tickerWg.Wait() blocks until the ticker goroutine exits, guaranteeing
+//     that no further wg.Add(1) calls will be made from the scheduled-sync path.
+//  2. wg.Wait() then blocks until any sync goroutines that were already
+//     running (and whose wg.Add(1) preceded Stop()) complete.
+//
+// Manual syncs via TryAcquireSync only occur during HTTP request handling,
+// which completes before graceful shutdown calls Stop().
 func (s *EventoryScheduler) Stop() {
 	s.mu.Lock()
 	if s.stopCh != nil {
@@ -113,7 +125,10 @@ func (s *EventoryScheduler) Stop() {
 		s.stopCh = nil
 	}
 	s.mu.Unlock()
-	// Wait outside the mutex so in-flight syncs can complete without deadlock.
+	// Phase 1: wait for the ticker goroutine to exit so it can no longer call
+	// s.wg.Add(1). This prevents the Add/Wait race described in the Go docs.
+	s.tickerWg.Wait()
+	// Phase 2: wait for any sync goroutines that were already launched.
 	s.wg.Wait()
 }
 
