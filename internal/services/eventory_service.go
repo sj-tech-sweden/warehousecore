@@ -361,16 +361,27 @@ func ValidateEventoryURL(rawURL string) error {
 	return nil
 }
 
-// isPrivateIP reports whether ip is in a private / link-local / loopback range.
+// isPrivateIP reports whether ip should be blocked from outbound SSRF checks.
+// It rejects loopback, link-local, private RFC-1918/RFC-4193, unspecified
+// (0.0.0.0 / ::), and multicast addresses — in other words, any address that
+// is not a globally-routable unicast address.
 func isPrivateIP(ip net.IP) bool {
+	// Reject anything that is not a global unicast address first.
+	// This covers 0.0.0.0/::, multicast (224.0.0.0/4, ff00::/8),
+	// and loopback / link-local in one check.
+	if !ip.IsGlobalUnicast() {
+		return true
+	}
+
+	// IsGlobalUnicast() is true for ULA (fc00::/7) and RFC-1918 ranges, so we
+	// must additionally check those explicitly.
 	privateRanges := []string{
 		"10.0.0.0/8",
 		"172.16.0.0/12",
 		"192.168.0.0/16",
-		"169.254.0.0/16", // link-local
-		"::1/128",
-		"fc00::/7",  // ULA
-		"fe80::/10", // link-local IPv6
+		"169.254.0.0/16", // link-local (belt-and-suspenders)
+		"fc00::/7",       // ULA
+		"fe80::/10",      // link-local IPv6 (belt-and-suspenders)
 	}
 	for _, cidr := range privateRanges {
 		_, network, err := net.ParseCIDR(cidr)
@@ -378,7 +389,7 @@ func isPrivateIP(ip net.IP) bool {
 			return true
 		}
 	}
-	return ip.IsLoopback() || ip.IsLinkLocalUnicast()
+	return false
 }
 
 // joinPath resolves elem as a URL reference against base using url.Parse,

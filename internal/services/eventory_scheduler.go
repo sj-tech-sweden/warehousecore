@@ -78,8 +78,15 @@ func (s *EventoryScheduler) Reset() {
 					continue
 				}
 				log.Printf("[EVENTORY] Scheduler: running scheduled sync")
-				s.syncFn()
-				atomic.StoreInt32(&s.running, 0)
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("[EVENTORY] Scheduler: sync panicked: %v", r)
+						}
+						atomic.StoreInt32(&s.running, 0)
+					}()
+					s.syncFn()
+				}()
 			case <-stopCh:
 				log.Printf("[EVENTORY] Scheduler: stopped")
 				return
@@ -96,6 +103,18 @@ func (s *EventoryScheduler) Stop() {
 		close(s.stopCh)
 		s.stopCh = nil
 	}
+}
+
+// TryAcquireSync attempts to set the in-progress flag (CAS 0→1).
+// Returns true if the caller now owns the flag and must call ReleaseSync when done.
+// Returns false if a sync is already running.
+func (s *EventoryScheduler) TryAcquireSync() bool {
+	return atomic.CompareAndSwapInt32(&s.running, 0, 1)
+}
+
+// ReleaseSync clears the in-progress flag. Must be called after TryAcquireSync returned true.
+func (s *EventoryScheduler) ReleaseSync() {
+	atomic.StoreInt32(&s.running, 0)
 }
 
 // defaultEventorySync performs the actual product sync and logs the result.

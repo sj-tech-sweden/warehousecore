@@ -603,6 +603,8 @@ export interface EventorySettings {
   password_configured: boolean;
   token_endpoint: string;
   supplier_name: string;
+  supplier_name_configured: boolean;
+  supplier_name_effective: string;
   sync_interval_minutes: number;
 }
 

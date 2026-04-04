@@ -3,8 +3,10 @@
 -- Eventory sync, and also prevents accidental duplicate rows.
 --
 -- Step 1: Remove duplicate rows, keeping the row with the highest equipment_id
--- (i.e. the most recently inserted). Uses ROW_NUMBER() to avoid a full-table
--- scan in the subquery, making it safe to run even on large datasets.
+-- (i.e. the most recently inserted). Note: this uses ROW_NUMBER() OVER to rank
+-- rows within each (product_name, supplier_name) group, but it still requires
+-- a full scan and partitioning of the entire rental_equipment table and may be
+-- slow/locking on large datasets. Run during a maintenance window if needed.
 DELETE FROM rental_equipment
 WHERE equipment_id IN (
     SELECT equipment_id

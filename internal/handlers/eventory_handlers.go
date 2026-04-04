@@ -30,15 +30,17 @@ func GetEventorySettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"api_url":               cfg.APIURL,
-		"api_key_configured":    cfg.APIKey != "",
-		"api_key_masked":        maskedKey,
-		"username":              cfg.Username,
-		"username_configured":   cfg.Username != "",
-		"password_configured":   cfg.Password != "",
-		"token_endpoint":        cfg.TokenEndpoint,
-		"supplier_name":         cfg.EffectiveSupplierName(),
-		"sync_interval_minutes": cfg.SyncIntervalMinutes,
+		"api_url":                  cfg.APIURL,
+		"api_key_configured":       cfg.APIKey != "",
+		"api_key_masked":           maskedKey,
+		"username":                 cfg.Username,
+		"username_configured":      cfg.Username != "",
+		"password_configured":      cfg.Password != "",
+		"token_endpoint":           cfg.TokenEndpoint,
+		"supplier_name":            cfg.SupplierName,
+		"supplier_name_configured": strings.TrimSpace(cfg.SupplierName) != "",
+		"supplier_name_effective":  cfg.EffectiveSupplierName(),
+		"sync_interval_minutes":    cfg.SyncIntervalMinutes,
 	})
 }
 
@@ -123,16 +125,18 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"api_url":               cfg.APIURL,
-		"api_key_configured":    cfg.APIKey != "",
-		"api_key_masked":        maskedKey,
-		"username":              cfg.Username,
-		"username_configured":   cfg.Username != "",
-		"password_configured":   cfg.Password != "",
-		"token_endpoint":        cfg.TokenEndpoint,
-		"supplier_name":         cfg.EffectiveSupplierName(),
-		"sync_interval_minutes": cfg.SyncIntervalMinutes,
-		"message":               "Eventory settings saved successfully",
+		"api_url":                  cfg.APIURL,
+		"api_key_configured":       cfg.APIKey != "",
+		"api_key_masked":           maskedKey,
+		"username":                 cfg.Username,
+		"username_configured":      cfg.Username != "",
+		"password_configured":      cfg.Password != "",
+		"token_endpoint":           cfg.TokenEndpoint,
+		"supplier_name":            cfg.SupplierName,
+		"supplier_name_configured": strings.TrimSpace(cfg.SupplierName) != "",
+		"supplier_name_effective":  cfg.EffectiveSupplierName(),
+		"sync_interval_minutes":    cfg.SyncIntervalMinutes,
+		"message":                  "Eventory settings saved successfully",
 	})
 }
 
@@ -160,8 +164,15 @@ func GetEventoryProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 // SyncEventoryProducts fetches products from Eventory and upserts them into
-// the local rental_equipment table.
+// the local rental_equipment table. Returns 409 if a sync is already running.
 func SyncEventoryProducts(w http.ResponseWriter, r *http.Request) {
+	sched := services.GetEventoryScheduler()
+	if !sched.TryAcquireSync() {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "A sync is already in progress"})
+		return
+	}
+	defer sched.ReleaseSync()
+
 	cfg, err := services.GetEventoryConfig()
 	if err != nil {
 		log.Printf("[EVENTORY] Failed to get config: %v", err)

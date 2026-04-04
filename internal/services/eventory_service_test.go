@@ -155,6 +155,20 @@ func TestValidateEventoryURL_RejectsNonHTTP(t *testing.T) {
 	}
 }
 
+func TestValidateEventoryURL_RejectsMulticast(t *testing.T) {
+	// 224.0.0.1 is a multicast address — not a valid outbound target.
+	if err := ValidateEventoryURL("http://224.0.0.1/api"); err == nil {
+		t.Error("expected error for multicast IP URL, got nil")
+	}
+}
+
+func TestValidateEventoryURL_RejectsUnspecified(t *testing.T) {
+	// 0.0.0.0 is unspecified — should be blocked.
+	if err := ValidateEventoryURL("http://0.0.0.0/api"); err == nil {
+		t.Error("expected error for unspecified (0.0.0.0) IP URL, got nil")
+	}
+}
+
 // ===========================
 // Endpoint fallback tests
 // ===========================
