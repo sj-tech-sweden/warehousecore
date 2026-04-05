@@ -74,14 +74,23 @@ const encryptedPrefix = "enc:"
 // eventoryCredentialKey returns the 32-byte AES-256 key read from the
 // EVENTORY_CREDENTIAL_KEY environment variable. It returns (nil, nil) when the
 // variable is not set (credentials are stored as plain text, with a warning).
+// The value may be either a base64-encoded 32-byte key (recommended, produced
+// by e.g. `openssl rand -base64 32`) or exactly 32 raw printable ASCII bytes.
+// Accepting base64 allows callers to use full 256-bit entropy rather than being
+// limited to printable characters.
 func eventoryCredentialKey() ([]byte, error) {
 	raw := os.Getenv("EVENTORY_CREDENTIAL_KEY")
 	if raw == "" {
 		return nil, nil
 	}
+	// Attempt base64 decoding first so operators can store a high-entropy key.
+	if decoded, err := base64.StdEncoding.DecodeString(raw); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	// Fall back to treating the raw string as bytes (legacy / simple 32-char ASCII key).
 	key := []byte(raw)
 	if len(key) != 32 {
-		return nil, fmt.Errorf("EVENTORY_CREDENTIAL_KEY must be exactly 32 bytes, got %d", len(key))
+		return nil, fmt.Errorf("EVENTORY_CREDENTIAL_KEY must decode to exactly 32 bytes (use `openssl rand -base64 32` to generate a suitable value); got %d bytes", len(key))
 	}
 	return key, nil
 }
