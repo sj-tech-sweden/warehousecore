@@ -32,6 +32,22 @@ var (
 	globalScheduler     *EventoryScheduler
 )
 
+// allowedSyncIntervals is the set of valid sync_interval_minutes values that
+// the scheduler accepts. Validating against this set prevents time.Duration
+// overflow and time.NewTicker panicking on a zero/negative duration from an
+// out-of-range value stored in the database.
+// Matches the options exposed in the admin UI: 15 min / 30 min / 1 h / 2 h /
+// 4 h / 8 h / 24 h.
+var allowedSyncIntervals = map[int]bool{
+	15:   true,
+	30:   true,
+	60:   true,
+	120:  true,
+	240:  true,
+	480:  true,
+	1440: true,
+}
+
 // GetEventoryScheduler returns the singleton scheduler instance.
 func GetEventoryScheduler() *EventoryScheduler {
 	globalSchedulerOnce.Do(func() {
@@ -88,6 +104,13 @@ func (s *EventoryScheduler) Reset() {
 	}
 	if cfg.SyncIntervalMinutes <= 0 {
 		log.Printf("[EVENTORY] Scheduler: automatic sync disabled")
+		return
+	}
+
+	// Validate against the known supported set to prevent time.Duration overflow
+	// or time.NewTicker panicking on a zero/negative duration from an invalid value.
+	if !allowedSyncIntervals[cfg.SyncIntervalMinutes] {
+		log.Printf("[EVENTORY] Scheduler: unsupported sync_interval_minutes=%d, disabling automatic sync", cfg.SyncIntervalMinutes)
 		return
 	}
 
