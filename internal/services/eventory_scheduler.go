@@ -18,6 +18,7 @@ import (
 type EventoryScheduler struct {
 	mu       sync.Mutex
 	stopCh   chan struct{}
+	stopped  bool           // set by Stop(); prevents new Add() calls on tickerWg / wg
 	tickerWg sync.WaitGroup // tracks the ticker goroutine itself
 	wg       sync.WaitGroup // tracks goroutines running syncFn so Stop() can wait
 	running  int32          // atomic flag: 1 when a sync is in progress
@@ -43,9 +44,15 @@ func GetEventoryScheduler() *EventoryScheduler {
 
 // Reset stops any running ticker, reads the current sync interval from settings,
 // and starts a new ticker if SyncIntervalMinutes > 0. Safe to call from any goroutine.
+// Reset is a no-op once Stop() has been called.
 func (s *EventoryScheduler) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Do not start a new ticker if the scheduler has been stopped.
+	if s.stopped {
+		return
+	}
 
 	// Stop any existing ticker goroutine
 	if s.stopCh != nil {
@@ -111,15 +118,19 @@ func (s *EventoryScheduler) Reset() {
 // closing the database connection.
 //
 // The two-phase wait is safe because:
-//  1. tickerWg.Wait() blocks until the ticker goroutine exits, guaranteeing
+//  1. stopped is set under s.mu before the mutex is released, so neither
+//     Reset() (tickerWg.Add) nor TryAcquireSync() (wg.Add) can call Add
+//     after Stop begins — both check stopped under s.mu and return early.
+//  2. tickerWg.Wait() blocks until the ticker goroutine exits, guaranteeing
 //     that no further wg.Add(1) calls will be made from the scheduled-sync path.
-//  2. wg.Wait() then blocks until any sync goroutines that were already
+//  3. wg.Wait() then blocks until any sync goroutines that were already
 //     running (and whose wg.Add(1) preceded Stop()) complete.
 //
 // Manual syncs via TryAcquireSync only occur during HTTP request handling,
 // which completes before graceful shutdown calls Stop().
 func (s *EventoryScheduler) Stop() {
 	s.mu.Lock()
+	s.stopped = true
 	if s.stopCh != nil {
 		close(s.stopCh)
 		s.stopCh = nil
@@ -135,8 +146,14 @@ func (s *EventoryScheduler) Stop() {
 // TryAcquireSync attempts to set the in-progress flag (CAS 0→1) and increments
 // the WaitGroup so that Stop() will wait for this manual sync too.
 // Returns true if the caller now owns the flag and must call ReleaseSync when done.
-// Returns false if a sync is already running (WaitGroup is not incremented).
+// Returns false if a sync is already running or the scheduler has been stopped
+// (WaitGroup is not incremented in either case).
 func (s *EventoryScheduler) TryAcquireSync() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return false
+	}
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
 		return false
 	}

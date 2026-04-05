@@ -101,6 +101,17 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 		password = existing.Password
 	}
 
+	// Require HTTPS for token_endpoint when username or password credentials are
+	// configured: sending OAuth credentials over cleartext HTTP would expose them
+	// on the network.
+	effectiveUsername := strings.TrimSpace(rawPayload.Username)
+	if tokenEndpoint != "" && (effectiveUsername != "" || password != "") {
+		if !strings.HasPrefix(strings.ToLower(tokenEndpoint), "https://") {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Token endpoint must use HTTPS when username or password credentials are configured"})
+			return
+		}
+	}
+
 	// Preserve existing sync interval if the field was omitted from the payload.
 	syncIntervalMinutes := existing.SyncIntervalMinutes
 	if rawPayload.SyncIntervalMinutes != nil {
@@ -110,7 +121,7 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 	cfg := &services.EventoryConfig{
 		APIURL:              rawPayload.APIURL,
 		APIKey:              apiKey,
-		Username:            strings.TrimSpace(rawPayload.Username),
+		Username:            effectiveUsername,
 		Password:            password,
 		TokenEndpoint:       tokenEndpoint,
 		SupplierName:        strings.TrimSpace(rawPayload.SupplierName),
