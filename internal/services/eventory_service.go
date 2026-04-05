@@ -532,6 +532,10 @@ func isPrivateIP(ip net.IP) bool {
 		"fe80::/10",       // link-local IPv6 (belt-and-suspenders)
 		"2001:db8::/32",   // RFC 3849 documentation
 		"100::/64",        // RFC 6666 discard-only (IPv6)
+		"2002::/16",       // RFC 3056 6to4 (embeds IPv4; can reach private ranges)
+		"2001::/32",       // RFC 4380 Teredo (tunnels IPv4 addresses)
+		"64:ff9b::/96",    // RFC 6052 well-known NAT64 prefix (maps IPv4 addresses)
+		"64:ff9b:1::/48",  // RFC 8215 local-use NAT64 prefix
 	}
 	for _, cidr := range privateRanges {
 		_, network, err := net.ParseCIDR(cidr)

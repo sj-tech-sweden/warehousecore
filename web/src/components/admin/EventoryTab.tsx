@@ -370,7 +370,7 @@ export function EventoryTab() {
         </div>
 
         <p className="text-xs text-gray-500">
-          {t('admin.eventory.syncNote', { supplier: supplierName || 'Eventory' })}
+          {t('admin.eventory.syncNote', { supplier: supplierName.trim() || 'Eventory' })}
         </p>
       </div>
 

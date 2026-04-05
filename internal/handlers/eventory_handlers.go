@@ -14,13 +14,31 @@ import (
 // EVENTORY INTEGRATION HANDLERS
 // ===========================
 
+// eventoryConfigLoadErrorMsg returns an actionable admin-facing message for
+// Eventory config load failures. Decryption / key-size errors are mapped to a
+// hint about EVENTORY_CREDENTIAL_KEY so operators can recover without digging
+// through server logs; everything else falls back to a generic message.
+func eventoryConfigLoadErrorMsg(err error) string {
+	if err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "eventory_credential_key") ||
+			strings.Contains(msg, "invalid key") ||
+			strings.Contains(msg, "crypto/aes") ||
+			strings.Contains(msg, "cipher") ||
+			strings.Contains(msg, "decrypt") {
+			return "Failed to load Eventory settings: encrypted credentials could not be decrypted — verify that EVENTORY_CREDENTIAL_KEY is set correctly"
+		}
+	}
+	return "Failed to load Eventory settings"
+}
+
 // GetEventorySettings returns the current Eventory integration configuration.
 // Secrets (API key, password) are masked so they are never exposed to the browser.
 func GetEventorySettings(w http.ResponseWriter, r *http.Request) {
 	cfg, err := services.GetEventoryConfig()
 	if err != nil {
 		log.Printf("[EVENTORY] Failed to get config: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load Eventory settings"})
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": eventoryConfigLoadErrorMsg(err)})
 		return
 	}
 

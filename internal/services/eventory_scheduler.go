@@ -17,6 +17,7 @@ import (
 // to obtain the shared instance.
 type EventoryScheduler struct {
 	mu       sync.Mutex
+	resetMu  sync.Mutex // serializes concurrent Reset() calls to prevent tickerWg Add/Wait races
 	stopCh   chan struct{}
 	stopped  bool           // set by Stop(); prevents new Add() calls on tickerWg / wg
 	tickerWg sync.WaitGroup // tracks the ticker goroutine itself
@@ -68,12 +69,22 @@ func GetEventoryScheduler() *EventoryScheduler {
 // and starts a new ticker if SyncIntervalMinutes > 0. Safe to call from any goroutine.
 // Reset is a no-op once Stop() has been called.
 //
+// resetMu serializes concurrent Reset() calls. This prevents the tickerWg
+// Add/Wait race: without serialisation, one goroutine could be returning from
+// tickerWg.Wait() (counter just hit zero) while another concurrently calls
+// tickerWg.Add(1), which the Go docs flag as "WaitGroup misuse" and can panic.
+// With resetMu held for the entire Reset, a second Reset() cannot call Add(1)
+// until the first Reset()'s Wait() has fully returned.
+//
 // After signalling the old ticker goroutine to stop, Reset releases s.mu and
 // waits for the goroutine to fully exit before starting a new one. This makes
 // the reset deterministic: Go's select is pseudo-random when both ticker.C and
 // stopCh are simultaneously ready, so without this wait the old goroutine could
 // still fire one extra sync after Reset returns.
 func (s *EventoryScheduler) Reset() {
+	s.resetMu.Lock()
+	defer s.resetMu.Unlock()
+
 	s.mu.Lock()
 
 	// Do not start a new ticker if the scheduler has been stopped.
