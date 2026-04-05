@@ -48,6 +48,12 @@ var allowedSyncIntervals = map[int]bool{
 	1440: true,
 }
 
+// IsAllowedSyncInterval returns true when n is a valid non-zero sync interval.
+// Exposed so the HTTP handler can validate user-supplied values before saving.
+func IsAllowedSyncInterval(n int) bool {
+	return allowedSyncIntervals[n]
+}
+
 // GetEventoryScheduler returns the singleton scheduler instance.
 func GetEventoryScheduler() *EventoryScheduler {
 	globalSchedulerOnce.Do(func() {
@@ -261,6 +267,7 @@ func RunEventorySync(cfg *EventoryConfig) (imported, updated, skipped, total int
 	}
 
 	supplierName := cfg.EffectiveSupplierName()
+	now := time.Now()
 
 	for _, p := range products {
 		name := strings.TrimSpace(p.Name)
@@ -271,7 +278,6 @@ func RunEventorySync(cfg *EventoryConfig) (imported, updated, skipped, total int
 
 		category := strings.TrimSpace(p.Category)
 		description := strings.TrimSpace(p.Description)
-		now := time.Now()
 
 		var inserted bool
 		upsertErr := tx.QueryRow(`

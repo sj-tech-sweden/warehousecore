@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -304,5 +305,67 @@ func TestEffectiveSupplierName_Whitespace(t *testing.T) {
 	cfg := &EventoryConfig{SupplierName: "   "}
 	if got := cfg.EffectiveSupplierName(); got != "Eventory" {
 		t.Errorf("expected 'Eventory' for whitespace, got %q", got)
+	}
+}
+
+// ===========================
+// Credential encryption tests
+// ===========================
+
+func TestEncryptDecryptCredential_Roundtrip(t *testing.T) {
+	key := []byte("12345678901234567890123456789012") // 32 bytes
+	plaintext := "super-secret-api-key"
+
+	enc, err := encryptCredential(plaintext, key)
+	if err != nil {
+		t.Fatalf("encryptCredential: %v", err)
+	}
+	if enc == plaintext {
+		t.Fatal("expected encrypted value to differ from plaintext")
+	}
+	if !strings.HasPrefix(enc, encryptedPrefix) {
+		t.Fatalf("expected encrypted prefix %q, got %q", encryptedPrefix, enc[:len(encryptedPrefix)])
+	}
+
+	dec, err := decryptCredential(enc, key)
+	if err != nil {
+		t.Fatalf("decryptCredential: %v", err)
+	}
+	if dec != plaintext {
+		t.Errorf("expected %q, got %q", plaintext, dec)
+	}
+}
+
+func TestEncryptCredential_NilKeyPassthrough(t *testing.T) {
+	plaintext := "api-key"
+	out, err := encryptCredential(plaintext, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != plaintext {
+		t.Errorf("expected passthrough without key, got %q", out)
+	}
+}
+
+func TestDecryptCredential_PlaintextPassthrough(t *testing.T) {
+	key := []byte("12345678901234567890123456789012")
+	plain := "not-encrypted"
+	out, err := decryptCredential(plain, key)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != plain {
+		t.Errorf("expected passthrough for non-prefixed value, got %q", out)
+	}
+}
+
+func TestEncryptCredential_EmptyPassthrough(t *testing.T) {
+	key := []byte("12345678901234567890123456789012")
+	out, err := encryptCredential("", key)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "" {
+		t.Errorf("expected empty string passthrough, got %q", out)
 	}
 }

@@ -124,6 +124,12 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 	if rawPayload.SyncIntervalMinutes != nil {
 		syncIntervalMinutes = *rawPayload.SyncIntervalMinutes
 	}
+	// Validate against the allowed set (0 = disabled; other values must match the
+	// supported intervals).
+	if syncIntervalMinutes != 0 && !services.IsAllowedSyncInterval(syncIntervalMinutes) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid sync_interval_minutes; allowed values: 0, 15, 30, 60, 120, 240, 480, 1440"})
+		return
+	}
 
 	cfg := &services.EventoryConfig{
 		APIURL:              rawPayload.APIURL,

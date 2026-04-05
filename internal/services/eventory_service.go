@@ -2,6 +2,10 @@ package services
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,6 +66,82 @@ type EventoryProduct struct {
 	Price       float64     `json:"price"`
 }
 
+// encryptedPrefix is prepended to credential values that have been encrypted
+// at rest so that plain-text values stored before encryption was introduced can
+// still be read transparently.
+const encryptedPrefix = "enc:"
+
+// eventoryCredentialKey returns the 32-byte AES-256 key read from the
+// EVENTORY_CREDENTIAL_KEY environment variable. It returns (nil, nil) when the
+// variable is not set (credentials are stored as plain text, with a warning).
+func eventoryCredentialKey() ([]byte, error) {
+	raw := os.Getenv("EVENTORY_CREDENTIAL_KEY")
+	if raw == "" {
+		return nil, nil
+	}
+	key := []byte(raw)
+	if len(key) != 32 {
+		return nil, fmt.Errorf("EVENTORY_CREDENTIAL_KEY must be exactly 32 bytes, got %d", len(key))
+	}
+	return key, nil
+}
+
+// encryptCredential encrypts plaintext using AES-256-GCM and returns a
+// base64url-encoded string prefixed with encryptedPrefix. If key is nil the
+// original plaintext is returned unchanged.
+func encryptCredential(plaintext string, key []byte) (string, error) {
+	if len(key) == 0 || plaintext == "" {
+		return plaintext, nil
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("aes.NewCipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("cipher.NewGCM: %w", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("rand nonce: %w", err)
+	}
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return encryptedPrefix + base64.URLEncoding.EncodeToString(ciphertext), nil
+}
+
+// decryptCredential reverses encryptCredential. Values that do not carry the
+// encryptedPrefix (i.e., plain text stored before encryption was enabled) are
+// returned as-is so that existing configurations continue to work.
+func decryptCredential(stored string, key []byte) (string, error) {
+	if !strings.HasPrefix(stored, encryptedPrefix) {
+		return stored, nil
+	}
+	if len(key) == 0 {
+		return "", fmt.Errorf("EVENTORY_CREDENTIAL_KEY is required to decrypt stored credentials")
+	}
+	data, err := base64.URLEncoding.DecodeString(stored[len(encryptedPrefix):])
+	if err != nil {
+		return "", fmt.Errorf("base64 decode: %w", err)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("aes.NewCipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("cipher.NewGCM: %w", err)
+	}
+	if len(data) < gcm.NonceSize() {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	nonce, ciphertext := data[:gcm.NonceSize()], data[gcm.NonceSize():]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("gcm.Open: %w", err)
+	}
+	return string(plaintext), nil
+}
+
 // GetEventoryConfig retrieves the Eventory API configuration from settings.
 func GetEventoryConfig() (*EventoryConfig, error) {
 	adminSvc := NewAdminService()
@@ -83,6 +163,18 @@ func GetEventoryConfig() (*EventoryConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal eventory config: %w", err)
 	}
 
+	// Decrypt credentials at rest if they were stored encrypted.
+	key, err := eventoryCredentialKey()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.APIKey, err = decryptCredential(cfg.APIKey, key); err != nil {
+		return nil, fmt.Errorf("failed to decrypt api_key: %w", err)
+	}
+	if cfg.Password, err = decryptCredential(cfg.Password, key); err != nil {
+		return nil, fmt.Errorf("failed to decrypt password: %w", err)
+	}
+
 	return &cfg, nil
 }
 
@@ -93,12 +185,29 @@ func SaveEventoryConfig(cfg *EventoryConfig) error {
 		return ErrDatabaseNotAvailable
 	}
 
+	key, err := eventoryCredentialKey()
+	if err != nil {
+		return err
+	}
+	if key == nil {
+		log.Printf("[EVENTORY] WARNING: EVENTORY_CREDENTIAL_KEY is not set; API key and password will be stored as plain text in app_settings")
+	}
+
+	encAPIKey, err := encryptCredential(cfg.APIKey, key)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt api_key: %w", err)
+	}
+	encPassword, err := encryptCredential(cfg.Password, key)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt password: %w", err)
+	}
+
 	adminSvc := NewAdminService()
 	value := models.JSONMap{
 		"api_url":               cfg.APIURL,
-		"api_key":               cfg.APIKey,
+		"api_key":               encAPIKey,
 		"username":              cfg.Username,
-		"password":              cfg.Password,
+		"password":              encPassword,
 		"token_endpoint":        cfg.TokenEndpoint,
 		"supplier_name":         cfg.SupplierName,
 		"sync_interval_minutes": cfg.SyncIntervalMinutes,
@@ -476,7 +585,11 @@ func newSSRFSafeClient() *http.Client {
 				return nil
 			}
 			prev := via[len(via)-1]
-			if !strings.EqualFold(req.URL.Host, prev.URL.Host) {
+			// Block cross-origin redirects: compare effective host (Hostname +
+			// default-port-normalised port) so that a redirect from
+			// https://example.com/a to https://example.com:443/b (explicit
+			// default port) is not incorrectly treated as cross-host.
+			if !sameEffectiveHost(prev.URL, req.URL) {
 				return http.ErrUseLastResponse
 			}
 			if strings.ToLower(prev.URL.Scheme) == "https" && strings.ToLower(req.URL.Scheme) != "https" {
@@ -505,6 +618,27 @@ func joinPath(base, elem string) (string, error) {
 		return "", err
 	}
 	return u.ResolveReference(ref).String(), nil
+}
+
+// sameEffectiveHost returns true when a and b refer to the same host after
+// normalising default ports (80 for http, 443 for https). This avoids blocking
+// same-origin redirects that explicitly include the scheme's default port, e.g.
+// https://example.com/a → https://example.com:443/b.
+func sameEffectiveHost(a, b *neturl.URL) bool {
+	effectivePort := func(u *neturl.URL) string {
+		if p := u.Port(); p != "" {
+			return p
+		}
+		switch strings.ToLower(u.Scheme) {
+		case "https":
+			return "443"
+		case "http":
+			return "80"
+		}
+		return ""
+	}
+	return strings.EqualFold(a.Hostname(), b.Hostname()) &&
+		effectivePort(a) == effectivePort(b)
 }
 
 // envOrEmpty returns os.Getenv(key).
