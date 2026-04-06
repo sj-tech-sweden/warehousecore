@@ -123,6 +123,8 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("[EVENTORY] Failed to load existing config, but proceeding because request explicitly updates/clears stored credentials: %v", err)
+		// Use zero-value config so subsequent reads of existing.* are safe.
+		existing = &services.EventoryConfig{}
 	}
 
 	if rawPayload.ClearAPIKey {
@@ -142,16 +144,24 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 	// endpoint from api_url (appending /oauth/token), so api_url must also be
 	// HTTPS in that case to avoid sending credentials over cleartext HTTP.
 	effectiveUsername := strings.TrimSpace(rawPayload.Username)
+	apiURLLower := strings.ToLower(rawPayload.APIURL)
 	if effectiveUsername != "" || password != "" {
 		if tokenEndpoint != "" {
 			if !strings.HasPrefix(strings.ToLower(tokenEndpoint), "https://") {
 				respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Token endpoint must use HTTPS when username or password credentials are configured"})
 				return
 			}
-		} else if !strings.HasPrefix(strings.ToLower(rawPayload.APIURL), "https://") {
+		} else if !strings.HasPrefix(apiURLLower, "https://") {
 			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "API URL must use HTTPS when username or password credentials are configured and no token endpoint is provided"})
 			return
 		}
+	}
+
+	// Also require HTTPS for api_url when an API key is set, since the key is
+	// transmitted in request headers on every API call and would leak over HTTP.
+	if apiKey != "" && !strings.HasPrefix(apiURLLower, "https://") {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "API URL must use HTTPS when an API key is configured"})
+		return
 	}
 
 	// Preserve existing sync interval if the field was omitted from the payload.

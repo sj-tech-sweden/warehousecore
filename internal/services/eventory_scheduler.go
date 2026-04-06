@@ -306,7 +306,7 @@ func RunEventorySync(cfg *EventoryConfig) (imported, updated, skipped, total int
 				description  = EXCLUDED.description,
 				updated_at   = EXCLUDED.updated_at
 			RETURNING (xmax = 0) AS inserted
-		`, name, supplierName, p.Price, nullableStrS(category), nullableStrS(description), now).Scan(&inserted)
+		`, name, supplierName, p.Price, nullableString(&category), nullableString(&description), now).Scan(&inserted)
 
 		if upsertErr != nil {
 			log.Printf("[EVENTORY] Failed to upsert product %q: %v", name, upsertErr)
@@ -327,12 +327,4 @@ func RunEventorySync(cfg *EventoryConfig) (imported, updated, skipped, total int
 	}
 
 	return imported, updated, skipped, total, nil
-}
-
-// nullableStrS returns nil for empty strings (for nullable DB columns).
-func nullableStrS(s string) interface{} {
-	if s == "" {
-		return nil
-	}
-	return s
 }
