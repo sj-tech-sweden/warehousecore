@@ -105,8 +105,8 @@ func eventoryCredentialKey() ([]byte, error) {
 		}
 		return decoded, nil
 	}
-	// Neither raw 32 bytes nor valid base64 — report the raw byte length.
-	return nil, fmt.Errorf("EVENTORY_CREDENTIAL_KEY must be exactly 32 bytes or a base64-encoded 32-byte key (use `openssl rand -base64 32` to generate a suitable value); got %d raw bytes", len([]byte(raw)))
+	// Neither raw 32 bytes nor valid base64 — report both failure conditions.
+	return nil, fmt.Errorf("EVENTORY_CREDENTIAL_KEY must be exactly 32 bytes or a base64 encoding of 32 bytes (use `openssl rand -base64 32` to generate a suitable value); got %d raw bytes and base64 decode failed", len([]byte(raw)))
 }
 
 // encryptCredential encrypts plaintext using AES-256-GCM and returns a
