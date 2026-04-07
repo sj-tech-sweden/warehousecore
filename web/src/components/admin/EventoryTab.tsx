@@ -31,11 +31,37 @@ export function EventoryTab() {
   const [supplierName, setSupplierName] = useState('');
   const [syncInterval, setSyncInterval] = useState(0);
 
+  // Snapshot of the last successfully loaded/saved non-secret fields.
+  // hasUnsavedChanges is derived from this rather than from a separate boolean
+  // flag so that reverting a field back to its saved value correctly re-enables
+  // the Fetch / Sync actions.
+  const [savedSettings, setSavedSettings] = useState<{
+    apiUrl: string;
+    username: string;
+    tokenEndpoint: string;
+    supplierName: string;
+    syncInterval: number;
+  } | null>(null);
+
+  // Secrets (api_key, password) are never returned by the server, so we cannot
+  // compare them to a snapshot. Instead, any typed value or explicit clear flag
+  // counts as a pending change.
+  const hasUnsavedChanges =
+    savedSettings !== null &&
+    (apiUrl !== savedSettings.apiUrl ||
+      username !== savedSettings.username ||
+      tokenEndpoint !== savedSettings.tokenEndpoint ||
+      supplierName !== savedSettings.supplierName ||
+      syncInterval !== savedSettings.syncInterval ||
+      apiKey !== '' ||
+      clearApiKey ||
+      password !== '' ||
+      clearPassword);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [products, setProducts] = useState<EventoryProduct[] | null>(null);
   const [productCount, setProductCount] = useState<number | null>(null);
@@ -55,7 +81,13 @@ export function EventoryTab() {
       setTokenEndpoint(data.token_endpoint || '');
       setSupplierName(data.supplier_name || '');
       setSyncInterval(data.sync_interval_minutes ?? 0);
-      setHasUnsavedChanges(false);
+      setSavedSettings({
+        apiUrl: data.api_url || '',
+        username: data.username || '',
+        tokenEndpoint: data.token_endpoint || '',
+        supplierName: data.supplier_name || '',
+        syncInterval: data.sync_interval_minutes ?? 0,
+      });
     } catch (err) {
       console.error('Failed to load Eventory settings:', err);
       setMessage({ type: 'error', text: t('admin.eventory.loadError') });
@@ -110,7 +142,13 @@ export function EventoryTab() {
       setTokenEndpoint(data.token_endpoint || '');
       setSupplierName(data.supplier_name || '');
       setSyncInterval(data.sync_interval_minutes ?? 0);
-      setHasUnsavedChanges(false);
+      setSavedSettings({
+        apiUrl: data.api_url || trimmedUrl,
+        username: data.username || '',
+        tokenEndpoint: data.token_endpoint || '',
+        supplierName: data.supplier_name || '',
+        syncInterval: data.sync_interval_minutes ?? 0,
+      });
       setMessage({ type: 'success', text: t('admin.eventory.settingsSaved') });
     } catch (err) {
       console.error('Failed to save Eventory settings:', err);
@@ -218,7 +256,7 @@ export function EventoryTab() {
           <input
             type="url"
             value={apiUrl}
-            onChange={e => { setApiUrl(e.target.value); setHasUnsavedChanges(true); }}
+            onChange={e => setApiUrl(e.target.value)}
             placeholder="https://api.eventory.se"
             className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
           />
@@ -234,7 +272,7 @@ export function EventoryTab() {
             <input
               type="text"
               value={username}
-              onChange={e => { setUsername(e.target.value); setHasUnsavedChanges(true); }}
+              onChange={e => setUsername(e.target.value)}
               placeholder={t('admin.eventory.usernamePlaceholder')}
               autoComplete="off"
               className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
@@ -260,7 +298,7 @@ export function EventoryTab() {
               <input
                 type="password"
                 value={password}
-                onChange={e => { setPassword(e.target.value); setClearPassword(false); setHasUnsavedChanges(true); }}
+                onChange={e => { setPassword(e.target.value); setClearPassword(false); }}
                 placeholder={passwordConfigured ? t('admin.eventory.passwordPlaceholderUpdate') : t('admin.eventory.passwordPlaceholder')}
                 autoComplete="new-password"
                 className="flex-1 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
@@ -268,7 +306,7 @@ export function EventoryTab() {
               {passwordConfigured && !clearPassword && (
                 <button
                   type="button"
-                  onClick={() => { setClearPassword(true); setPassword(''); setHasUnsavedChanges(true); }}
+                  onClick={() => { setClearPassword(true); setPassword(''); }}
                   className="px-3 py-2 text-xs text-red-400 border border-red-400/30 rounded-lg hover:bg-red-400/10 transition-colors whitespace-nowrap"
                   title={t('admin.eventory.clearPassword')}
                   aria-label={t('admin.eventory.clearPassword')}
@@ -308,14 +346,14 @@ export function EventoryTab() {
             <input
               type="password"
               value={apiKey}
-              onChange={e => { setApiKey(e.target.value); setClearApiKey(false); setHasUnsavedChanges(true); }}
+              onChange={e => { setApiKey(e.target.value); setClearApiKey(false); }}
               placeholder={apiKeyConfigured ? t('admin.eventory.keyPlaceholderUpdate') : t('admin.eventory.keyPlaceholder')}
               className="flex-1 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
             />
             {apiKeyConfigured && !clearApiKey && (
               <button
                 type="button"
-                onClick={() => { setClearApiKey(true); setApiKey(''); setHasUnsavedChanges(true); }}
+                onClick={() => { setClearApiKey(true); setApiKey(''); }}
                 className="px-3 py-2 text-xs text-red-400 border border-red-400/30 rounded-lg hover:bg-red-400/10 transition-colors whitespace-nowrap"
                 title={t('admin.eventory.clearKey')}
                 aria-label={t('admin.eventory.clearKey')}
@@ -335,7 +373,7 @@ export function EventoryTab() {
           <input
             type="url"
             value={tokenEndpoint}
-            onChange={e => { setTokenEndpoint(e.target.value); setHasUnsavedChanges(true); }}
+            onChange={e => setTokenEndpoint(e.target.value)}
             placeholder="https://api.eventory.se/oauth/token"
             className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
           />
@@ -350,7 +388,7 @@ export function EventoryTab() {
           <input
             type="text"
             value={supplierName}
-            onChange={e => { setSupplierName(e.target.value); setHasUnsavedChanges(true); }}
+            onChange={e => setSupplierName(e.target.value)}
             placeholder="Eventory"
             className="w-full sm:w-64 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
           />
@@ -365,7 +403,7 @@ export function EventoryTab() {
           </label>
           <select
             value={syncInterval}
-            onChange={e => { setSyncInterval(Number(e.target.value)); setHasUnsavedChanges(true); }}
+            onChange={e => setSyncInterval(Number(e.target.value))}
             className="w-full sm:w-64 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white focus:outline-none focus:border-accent-red transition-colors"
           >
             {SYNC_INTERVAL_OPTIONS.map(opt => (

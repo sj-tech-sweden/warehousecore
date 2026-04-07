@@ -2,12 +2,18 @@
 -- This enables INSERT ... ON CONFLICT DO UPDATE (atomic upsert) for the
 -- Eventory sync, and also prevents accidental duplicate rows.
 --
--- Both steps run inside a single transaction so that no duplicate row can slip
--- in between the DELETE and the CREATE UNIQUE INDEX. The index build will hold
--- a brief write lock on rental_equipment; on a small table this is negligible.
--- If the table is very large and write availability is critical, run during a
--- maintenance window.
+-- Both steps run inside a single transaction with an explicit table lock so
+-- that no concurrent INSERT/UPDATE can create a new duplicate row between the
+-- DELETE and the CREATE UNIQUE INDEX. The lock blocks writes briefly; on a
+-- small table this is negligible. If the table is large and write availability
+-- is critical, run during a maintenance window.
 BEGIN;
+
+-- Lock the table for the duration of this migration to prevent concurrent
+-- writes from inserting a new duplicate row between the DELETE and the index
+-- build.  SHARE ROW EXCLUSIVE blocks INSERT, UPDATE, and DELETE from other
+-- sessions while this transaction is open.
+LOCK TABLE rental_equipment IN SHARE ROW EXCLUSIVE MODE;
 
 -- Step 1: Remove duplicate rows, keeping the row with the highest equipment_id
 -- (i.e. the most recently inserted).
