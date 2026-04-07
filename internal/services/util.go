@@ -16,7 +16,7 @@ func nullableString(value *string) interface{} {
 }
 
 // nullableStringPtr is an alias for nullableString kept for backward compatibility
-// with call sites that used the name before the helpers were centralised.
+// with call sites that used the name before the helpers were centralized.
 func nullableStringPtr(value *string) interface{} {
 	return nullableString(value)
 }
