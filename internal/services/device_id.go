@@ -9,6 +9,15 @@ import (
 	"strings"
 )
 
+// deviceIDLikeEscaper escapes SQL LIKE wildcard characters (\, %, _) so that
+// a device ID prefix derived from user or DB input is treated as a literal
+// string in a LIKE predicate.
+var deviceIDLikeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// numericSuffixPattern is the PostgreSQL regular-expression used to test
+// whether the suffix after the device ID prefix is a pure decimal integer.
+const numericSuffixPattern = `^[0-9]+$`
+
 // deriveDeviceIDPrefix returns the device ID prefix for a given product.
 // If manualPrefix is non-empty it is returned verbatim (after trimming).
 // Otherwise the prefix is derived from the product's subcategory abbreviation
@@ -65,10 +74,13 @@ func deriveDeviceIDPrefix(ctx context.Context, tx *sql.Tx, productID int, manual
 func allocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int64, error) {
 	// Serialize concurrent calls for the same prefix: key the advisory lock on
 	// the FNV-64a hash of the prefix so different products that share the same
-	// prefix namespace are also correctly serialized.
+	// prefix namespace are also correctly serialized.  We mask the hash to the
+	// non-negative int64 range so the lock key is always positive and
+	// unambiguously scoped to device-ID allocation (avoiding any accidental
+	// overlap with locks that might use negative keys for other purposes).
 	h := fnv.New64a()
 	h.Write([]byte(prefix))
-	lockKey := int64(h.Sum64())
+	lockKey := int64(h.Sum64() & 0x7fffffffffffffff)
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, lockKey); err != nil {
 		return 0, fmt.Errorf("failed to acquire device creation lock: %w", err)
 	}
@@ -79,14 +91,14 @@ func allocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int6
 	// starts with the prefix. Using LIKE allows PostgreSQL to use the btree
 	// index on deviceID for a prefix scan, unlike the non-sargable
 	// LEFT(deviceID, CHAR_LENGTH(prefix)) = prefix form.
-	escapedPrefix := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix)
+	escapedPrefix := deviceIDLikeEscaper.Replace(prefix)
 	pattern := escapedPrefix + "%"
 
 	var nextCounter int64
 	err := tx.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(
 			CASE
-				WHEN SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) ~ '^[0-9]+$'
+				WHEN SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) ~ '`+numericSuffixPattern+`'
 				THEN CAST(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) AS BIGINT)
 				ELSE 0
 			END
