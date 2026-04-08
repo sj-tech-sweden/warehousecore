@@ -170,6 +170,15 @@ export function JobsPage() {
   const barcodeScanner = useBarcodeScanner({ onDetected: handleCodeDetected });
   const nfcScanner = useNFCScanner({ onDetected: handleCodeDetected });
 
+  const {
+    startScanning: startBarcodeScanning,
+    stopScanning: stopBarcodeScanning,
+  } = barcodeScanner;
+  const {
+    startScanning: startNFCScanning,
+    stopScanning: stopNFCScanning,
+  } = nfcScanner;
+
   const handleInputMethodChange = useCallback((method: InputMethod) => {
     setScanCode('');
     setScanResult(null);
@@ -181,24 +190,24 @@ export function JobsPage() {
   useEffect(() => {
     let active = true;
 
-    if (inputMethod !== 'camera') barcodeScanner.stopScanning();
-    if (inputMethod !== 'nfc') nfcScanner.stopScanning();
+    if (inputMethod !== 'camera') stopBarcodeScanning();
+    if (inputMethod !== 'nfc') stopNFCScanning();
 
     if (inputMethod === 'camera') {
-      Promise.resolve(barcodeScanner.startScanning())
+      Promise.resolve(startBarcodeScanning())
         .then(() => {
-          if (!active || inputMethod !== 'camera') {
-            barcodeScanner.stopScanning();
+          if (!active) {
+            stopBarcodeScanning();
           }
         })
         .catch((error) => {
           console.error('Failed to start barcode scanner:', error);
         });
     } else if (inputMethod === 'nfc') {
-      Promise.resolve(nfcScanner.startScanning())
+      Promise.resolve(startNFCScanning())
         .then(() => {
-          if (!active || inputMethod !== 'nfc') {
-            nfcScanner.stopScanning();
+          if (!active) {
+            stopNFCScanning();
           }
         })
         .catch((error) => {
@@ -208,34 +217,30 @@ export function JobsPage() {
 
     return () => {
       active = false;
-      barcodeScanner.stopScanning();
-      nfcScanner.stopScanning();
+      stopBarcodeScanning();
+      stopNFCScanning();
     };
-    // Intentionally not including scanner methods in deps to avoid loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputMethod]);
+  }, [inputMethod, startBarcodeScanning, stopBarcodeScanning, startNFCScanning, stopNFCScanning]);
 
   // Reset input method and stop scanners when leaving job detail view
   useEffect(() => {
     if (!selectedJob) {
-      barcodeScanner.stopScanning();
-      nfcScanner.stopScanning();
+      stopBarcodeScanning();
+      stopNFCScanning();
       setInputMethod('keyboard');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJob]);
+  }, [selectedJob, stopBarcodeScanning, stopNFCScanning]);
 
   // Stop scanners and clear pending result timeout on unmount
   useEffect(() => {
     return () => {
-      barcodeScanner.stopScanning();
-      nfcScanner.stopScanning();
+      stopBarcodeScanning();
+      stopNFCScanning();
       if (resultTimeoutRef.current !== null) {
         clearTimeout(resultTimeoutRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stopBarcodeScanning, stopNFCScanning]);
 
   // Keep ref pointing to the latest processCode so camera/NFC callbacks are never stale
   const processCode = useCallback(async (code: string) => {
