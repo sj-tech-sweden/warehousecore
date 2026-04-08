@@ -123,8 +123,15 @@ func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("[EVENTORY] Failed to load existing config, but proceeding because request explicitly updates/clears stored credentials: %v", err)
-		// Use zero-value config so subsequent reads of existing.* are safe.
-		existing = &services.EventoryConfig{}
+		// Attempt to load the non-secret fields (api_url, username, token_endpoint,
+		// supplier_name, sync_interval_minutes) without decrypting credentials so
+		// they are preserved even when EVENTORY_CREDENTIAL_KEY is missing/wrong.
+		if publicCfg, pubErr := services.GetEventoryPublicConfig(); pubErr == nil {
+			existing = publicCfg
+		} else {
+			log.Printf("[EVENTORY] Could not load public config fields during recovery, using zero-value defaults: %v", pubErr)
+			existing = &services.EventoryConfig{}
+		}
 	}
 
 	if rawPayload.ClearAPIKey {

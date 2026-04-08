@@ -267,6 +267,40 @@ func GetEventoryConfig() (*EventoryConfig, error) {
 	return &cfg, nil
 }
 
+// GetEventoryPublicConfig loads the non-secret Eventory configuration fields
+// (APIURL, Username, TokenEndpoint, SupplierName, SyncIntervalMinutes) from
+// the database without attempting to decrypt stored credentials. Use this when
+// you need to preserve non-secret settings even when EVENTORY_CREDENTIAL_KEY
+// is missing or incorrect and decryption would fail.
+func GetEventoryPublicConfig() (*EventoryConfig, error) {
+	adminSvc := NewAdminService()
+	setting, err := adminSvc.GetSetting(eventorySettingScope, eventorySettingKey)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return &EventoryConfig{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query eventory config: %w", err)
+	}
+
+	b, err := json.Marshal(setting.Value)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal eventory config: %w", err)
+	}
+
+	var cfg EventoryConfig
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal eventory config: %w", err)
+	}
+
+	// Omit the credential fields — they are encrypted and unintelligible
+	// without EVENTORY_CREDENTIAL_KEY, and callers of this function must not
+	// use them as plaintext.
+	cfg.APIKey = ""
+	cfg.Password = ""
+
+	return &cfg, nil
+}
+
 // SaveEventoryConfig persists the Eventory API configuration using the shared
 // AdminService.SetSetting helper.
 func SaveEventoryConfig(cfg *EventoryConfig) error {
