@@ -28,7 +28,17 @@ import (
 const (
 	eventorySettingScope = "warehousecore"
 	eventorySettingKey   = "eventory.config"
+
+	// inventoryRentalsConcurrency is the maximum number of concurrent
+	// GET /rentals/{id} requests issued during a single inventory sync.
+	// This bounds connection consumption and avoids overwhelming the API.
+	inventoryRentalsConcurrency = 8
 )
+
+// errInventoryRentalsNotFound is returned by fetchInventoryRentals when the
+// server responds with 404, signalling that the endpoint does not exist and
+// the caller should fall back to legacy product endpoints.
+var errInventoryRentalsNotFound = errors.New("inventory-rentals endpoint not found (404)")
 
 // privateNetworks is parsed once at startup from the list of non-routable CIDR
 // blocks used by isPrivateIP. Pre-parsing avoids repeated net.ParseCIDR calls
@@ -138,6 +148,14 @@ type eventoryRentalDetailResponse struct {
 		Description string  `json:"description"`
 		DailyRate   float64 `json:"dailyRate"`
 	} `json:"rental"`
+}
+
+// inventoryLeaf holds the parsed identity and category path of a leaf item from
+// the /inventory-rentals tree before detail enrichment via /rentals/{id}.
+type inventoryLeaf struct {
+	id       string
+	name     string
+	category string
 }
 
 // encryptedPrefix is prepended to credential values that have been encrypted
@@ -434,11 +452,17 @@ func fetchEventoryProductsWith(cfg *EventoryConfig, client *http.Client) ([]Even
 	// Try the Eventory /inventory-rentals endpoint first. This is the canonical
 	// Eventory API that returns a hierarchical category/item tree. Individual
 	// rental details (price, description) are fetched from /rentals/{id}.
-	products, err := fetchInventoryRentals(client, cfg.APIURL, oauthToken, cfg.APIKey)
-	if err == nil {
+	// Only fall back to legacy endpoints when /inventory-rentals is genuinely
+	// unavailable (404). Other errors (401, 5xx, parse failures) are returned
+	// directly to avoid masking misconfigurations and generating extra traffic.
+	products, invErr := fetchInventoryRentals(client, cfg.APIURL, oauthToken, cfg.APIKey)
+	if invErr == nil {
 		return products, nil
 	}
-	log.Printf("[EVENTORY] inventory-rentals endpoint failed: %v", err)
+	if !errors.Is(invErr, errInventoryRentalsNotFound) {
+		return nil, invErr
+	}
+	log.Printf("[EVENTORY] inventory-rentals not found, falling back to legacy endpoints")
 
 	// Fall back to legacy flat-list product endpoint paths. Paths are relative
 	// (no leading slash) so that any configured path prefix in cfg.APIURL is
@@ -584,7 +608,8 @@ func parseEventoryProductsResponse(body []byte) ([]EventoryProduct, error) {
 // fetchInventoryRentals fetches the /inventory-rentals endpoint from the Eventory
 // API, walks the returned category/item tree, and returns a flat list of
 // EventoryProduct values. Price and description are fetched from /rentals/{id}
-// for each leaf item.
+// for each leaf item using bounded concurrency (inventoryRentalsConcurrency).
+// Returns errInventoryRentalsNotFound when the server responds with 404.
 func fetchInventoryRentals(client *http.Client, baseURL, oauthToken, apiKey string) ([]EventoryProduct, error) {
 	fullURL, err := joinPath(baseURL, "inventory-rentals")
 	if err != nil {
@@ -605,7 +630,7 @@ func fetchInventoryRentals(client *http.Client, baseURL, oauthToken, apiKey stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("inventory-rentals endpoint not found (404)")
+		return nil, errInventoryRentalsNotFound
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("inventory-rentals: unauthorized – check your credentials")
@@ -624,17 +649,51 @@ func fetchInventoryRentals(client *http.Client, baseURL, oauthToken, apiKey stri
 		return nil, fmt.Errorf("failed to parse inventory-rentals response: %w", err)
 	}
 
-	var products []EventoryProduct
-	flattenInventoryNodes(rawNodes, "", &products, client, baseURL, oauthToken, apiKey)
+	// Collect all leaf items from the tree first (no network I/O), then
+	// enrich them concurrently with bounded parallelism.
+	var leaves []inventoryLeaf
+	collectLeaves(rawNodes, "", &leaves)
+
+	// Fetch /rentals/{id} for each leaf concurrently.
+	type result struct {
+		index int
+		desc  string
+		rate  float64
+	}
+
+	results := make([]result, len(leaves))
+	sem := make(chan struct{}, inventoryRentalsConcurrency)
+	var wg sync.WaitGroup
+	for i, leaf := range leaves {
+		i, leaf := i, leaf
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			desc, rate := fetchRentalDetail(client, baseURL, leaf.id, oauthToken, apiKey)
+			results[i] = result{index: i, desc: desc, rate: rate}
+		}()
+	}
+	wg.Wait()
+
+	products := make([]EventoryProduct, len(leaves))
+	for i, leaf := range leaves {
+		products[i] = EventoryProduct{
+			ID:          leaf.id,
+			Name:        leaf.name,
+			Description: results[i].desc,
+			Category:    leaf.category,
+			Price:       results[i].rate,
+		}
+	}
 	return products, nil
 }
 
-// flattenInventoryNodes recursively walks the /inventory-rentals tree and appends
-// all leaf items (InventoryItem nodes) to out. For each leaf the function fetches
-// /rentals/{id} to obtain the daily rate (price) and description.
-// categoryPath is the ">"-separated chain of ancestor category names used to
-// populate EventoryProduct.Category.
-func flattenInventoryNodes(rawNodes []json.RawMessage, categoryPath string, out *[]EventoryProduct, client *http.Client, baseURL, oauthToken, apiKey string) {
+// collectLeaves recursively walks the /inventory-rentals tree and appends all
+// leaf items (nodes without children) to out. categoryPath is the " > "-separated
+// chain of ancestor category names used to populate EventoryProduct.Category.
+func collectLeaves(rawNodes []json.RawMessage, categoryPath string, out *[]inventoryLeaf) {
 	for _, raw := range rawNodes {
 		var node eventoryInventoryNode
 		if err := json.Unmarshal(raw, &node); err != nil {
@@ -643,32 +702,26 @@ func flattenInventoryNodes(rawNodes []json.RawMessage, categoryPath string, out 
 		}
 
 		if node.Children != nil {
-			// Category node: recurse into children with updated path.
 			childPath := node.Name
 			if categoryPath != "" {
 				childPath = categoryPath + " > " + node.Name
 			}
-			flattenInventoryNodes(node.Children, childPath, out, client, baseURL, oauthToken, apiKey)
+			collectLeaves(node.Children, childPath, out)
 			continue
 		}
 
-		// Leaf item: fetch /rentals/{id} for price and description.
-		description, dailyRate := fetchRentalDetail(client, baseURL, node.ID, oauthToken, apiKey)
-		*out = append(*out, EventoryProduct{
-			ID:          node.ID,
-			Name:        node.Name,
-			Description: description,
-			Category:    categoryPath,
-			Price:       dailyRate,
-		})
+		*out = append(*out, inventoryLeaf{id: node.ID, name: node.Name, category: categoryPath})
 	}
 }
 
 // fetchRentalDetail fetches GET /rentals/{id} and returns (description, dailyRate).
 // On failure it logs the error and returns ("", 0) so that a single failed fetch
-// does not abort the entire sync.
+// does not abort the entire sync. id is treated as a single opaque path segment:
+// neturl.PathEscape encodes any embedded slashes or other special characters so
+// they cannot traverse directory boundaries or change the request host.
 func fetchRentalDetail(client *http.Client, baseURL, id, oauthToken, apiKey string) (description string, dailyRate float64) {
-	fullURL, err := joinPath(baseURL, "rentals/"+id)
+	escapedID := neturl.PathEscape(id)
+	fullURL, err := joinPath(baseURL, "rentals/"+escapedID)
 	if err != nil {
 		log.Printf("[EVENTORY] Failed to build rentals URL for %s: %v", id, err)
 		return "", 0

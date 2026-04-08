@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"strings"
 	"testing"
 )
@@ -489,6 +490,92 @@ func TestFetchInventoryRentals_FallsBackToLegacy(t *testing.T) {
 	}
 	if len(products) != 1 || products[0].Name != "Legacy Product" {
 		t.Errorf("unexpected products from legacy fallback: %+v", products)
+	}
+}
+
+// TestFetchInventoryRentals_NoFallbackOn401 verifies that a 401 from
+// /inventory-rentals is returned directly to the caller and does NOT trigger
+// the legacy endpoint fallback — preventing masked misconfigurations.
+func TestFetchInventoryRentals_NoFallbackOn401(t *testing.T) {
+	callCounts := map[string]int{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCounts[r.URL.Path]++
+		if r.URL.Path == "/inventory-rentals" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		// Legacy endpoints return products — should never be reached.
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]EventoryProduct{{Name: "Legacy Product"}}) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	_, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for 401 from inventory-rentals, got nil")
+	}
+	// Legacy endpoints must not have been tried.
+	for _, path := range []string{"/api/v1/products", "/api/products", "/products"} {
+		if callCounts[path] > 0 {
+			t.Errorf("legacy endpoint %s should not have been called on 401, but got %d calls", path, callCounts[path])
+		}
+	}
+}
+
+// TestFetchInventoryRentals_NoFallbackOn500 verifies that a 5xx from
+// /inventory-rentals is returned directly to the caller and does NOT trigger
+// the legacy endpoint fallback.
+func TestFetchInventoryRentals_NoFallbackOn500(t *testing.T) {
+	callCounts := map[string]int{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCounts[r.URL.Path]++
+		if r.URL.Path == "/inventory-rentals" {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]EventoryProduct{{Name: "Legacy Product"}}) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	_, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for 500 from inventory-rentals, got nil")
+	}
+	for _, path := range []string{"/api/v1/products", "/api/products", "/products"} {
+		if callCounts[path] > 0 {
+			t.Errorf("legacy endpoint %s should not have been called on 500, but got %d calls", path, callCounts[path])
+		}
+	}
+}
+
+// TestFetchRentalDetail_PathEscapesID verifies that a rental ID containing
+// path-special characters is properly escaped before being placed in the URL,
+// preventing path traversal or host-override attacks.
+func TestFetchRentalDetail_PathEscapesID(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.RawPath // use RawPath to see the encoded form
+		if gotPath == "" {
+			gotPath = r.URL.Path // fallback when no special chars need encoding
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"rental":{"description":"ok","dailyRate":10}}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	// An ID with slashes that, if unescaped, could traverse path boundaries.
+	id := "../../etc/passwd"
+	fetchRentalDetail(srv.Client(), srv.URL, id, "", "")
+
+	// The server should see the slashes as percent-encoded %2F, not raw /.
+	want := "/rentals/" + neturl.PathEscape(id)
+	if gotPath != want {
+		t.Errorf("expected path %q, got %q (raw slashes would indicate path traversal)", want, gotPath)
 	}
 }
 
