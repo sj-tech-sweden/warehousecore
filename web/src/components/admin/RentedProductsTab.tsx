@@ -74,7 +74,7 @@ function useDebouncedValue<T>(value: T, delay: number) {
 }
 
 export function RentedProductsTab() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const currencySymbol = useCurrencySymbol();
   const [equipment, setEquipment] = useState<RentalEquipment[]>([]);
   const [loading, setLoading] = useState(true);
