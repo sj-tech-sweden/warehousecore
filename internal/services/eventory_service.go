@@ -292,9 +292,10 @@ func GetEventoryPublicConfig() (*EventoryConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal eventory config: %w", err)
 	}
 
-	// Omit the credential fields — they are encrypted and unintelligible
-	// without EVENTORY_CREDENTIAL_KEY, and callers of this function must not
-	// use them as plaintext.
+	// Clear the credential fields before returning. The stored values are
+	// encrypted ciphertext that would be meaningless (and potentially harmful
+	// if misused) as plaintext; callers of this function must not treat them
+	// as usable credentials.
 	cfg.APIKey = ""
 	cfg.Password = ""
 
