@@ -114,10 +114,12 @@ func (s *DeviceAdminService) CreateDevices(ctx context.Context, input *models.De
 	}
 
 	// Find the highest existing 3-digit counter for this prefix to avoid collisions.
-	// Device IDs are generated as prefix + %03d, so we only consider IDs whose
-	// total length equals len(prefix)+3 and whose last 3 characters are digits.
-	// This avoids false matches when one prefix is a prefix of another (e.g. "P1"
-	// vs "P10").
+	// Device IDs are generated as prefix + %03d (exactly 3 decimal digits, see
+	// maxDeviceCounter = 999), so we only consider IDs whose total length equals
+	// len(prefix)+3 and whose last 3 characters are all digits.  The CHAR_LENGTH
+	// filter prevents false matches when one prefix is a prefix of another (e.g.
+	// "P1" vs "P10") and prevents interpreting a legacy >3-digit suffix as a
+	// valid counter for this scheme.
 	expectedLen := len(prefix) + 3
 	var nextCounter int
 	err = tx.QueryRowContext(ctx, `
