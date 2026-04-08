@@ -75,37 +75,42 @@ func GetCurrencySymbol() string {
 		return "€"
 	}
 
-	var setting models.AppSetting
-	if err := db.Where("scope = ? AND key = ?", "warehousecore", "app.currency").First(&setting).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Printf("[SETTINGS] Failed to query currency symbol: %v", err)
+	// Try global scope first (shared with RentalCore), then warehousecore scope as fallback.
+	for _, scope := range []string{"global", "warehousecore"} {
+		var setting models.AppSetting
+		if err := db.Where("scope = ? AND key = ?", scope, "app.currency").First(&setting).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				log.Printf("[SETTINGS] Failed to query currency symbol (scope=%s): %v", scope, err)
+			}
+			continue
 		}
-		return "€"
-	}
 
-	if symbol, ok := setting.Value["symbol"].(string); ok && symbol != "" {
-		return symbol
+		if symbol, ok := setting.Value["symbol"].(string); ok && symbol != "" {
+			return symbol
+		}
 	}
 
 	log.Printf("[SETTINGS] No symbol field in currency setting, using default")
 	return "€"
 }
 
-// UpdateCurrencySymbol updates the currency symbol in the database
+// UpdateCurrencySymbol updates the currency symbol in the database.
+// Writes to scope='global' so RentalCore can also read the value.
 func UpdateCurrencySymbol(symbol string) error {
 	db := repository.GetDB()
 	if db == nil {
 		return ErrDatabaseNotAvailable
 	}
 
-	var setting models.AppSetting
-	err := db.Where("scope = ? AND key = ?", "warehousecore", "app.currency").First(&setting).Error
-
 	currencyValue := models.JSONMap{"symbol": symbol}
+
+	// Write to global scope (shared with RentalCore).
+	var setting models.AppSetting
+	err := db.Where("scope = ? AND key = ?", "global", "app.currency").First(&setting).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		setting = models.AppSetting{
-			Scope: "warehousecore",
+			Scope: "global",
 			Key:   "app.currency",
 			Value: currencyValue,
 		}
