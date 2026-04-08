@@ -740,7 +740,8 @@ func collectLeaves(rawNodes []json.RawMessage, categoryPath string, out *[]inven
 	for _, raw := range rawNodes {
 		var node eventoryInventoryNode
 		if err := json.Unmarshal(raw, &node); err != nil {
-			log.Panicf("[EVENTORY] Failed to parse inventory node: %v", err)
+			log.Printf("[EVENTORY] Failed to parse inventory node: %v", err)
+			continue
 		}
 
 		if node.Children != nil {
