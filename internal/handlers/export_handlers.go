@@ -142,7 +142,7 @@ func formatNullFloat(f *float64) string {
 	return fmt.Sprintf("%.2f", *f)
 }
 
-// formatDate formats time to ISO 8601 date format
+// formatDate formats time as YYYY-MM-DD HH:MM
 func formatDate(t *time.Time) string {
 	if t == nil {
 		return ""

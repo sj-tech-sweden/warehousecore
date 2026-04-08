@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -70,7 +71,7 @@ func (j JSONMap) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner interface for GORM.
-// Handles both []byte (pgx JSONB) and string (pgx TEXT) column types.
+// Handles JSON values returned by database/sql drivers as either []byte or string.
 func (j *JSONMap) Scan(value interface{}) error {
 	if value == nil {
 		*j = make(JSONMap)
@@ -84,7 +85,7 @@ func (j *JSONMap) Scan(value interface{}) error {
 	case string:
 		data = []byte(v)
 	default:
-		return nil
+		return fmt.Errorf("JSONMap.Scan: unsupported type %T", value)
 	}
 
 	return json.Unmarshal(data, j)

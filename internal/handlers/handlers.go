@@ -1424,18 +1424,19 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(c.firstname, '') as customer_first_name,
 		       COALESCE(c.lastname, '') as customer_last_name,
 		       COUNT(DISTINCT jd.deviceid) as device_count,
-		       COALESCE((SELECT SUM(jpr.quantity) FROM job_product_requirements jpr WHERE jpr.job_id = j.jobid), 0) as requirements_count
+		       COALESCE(SUM(jpr.quantity), 0) as requirements_count
 		FROM jobs j
 		LEFT JOIN status s ON j.statusid = s.statusid
 		LEFT JOIN customers c ON j.customerid = c.customerid
 		LEFT JOIN jobdevices jd ON j.jobid = jd.jobid
+		LEFT JOIN job_product_requirements jpr ON jpr.job_id = j.jobid
 		WHERE 1=1`
 
 	args := []interface{}{}
 	if status != "" {
 		// 'open' is a legacy status value meaning any non-terminal job
 		if strings.EqualFold(status, "open") {
-			query += " AND s.status NOT IN ('Completed', 'Invoiced', 'Cancelled')"
+			query += " AND (s.status IS NULL OR s.status NOT IN ('Completed', 'Invoiced', 'Cancelled'))"
 		} else {
 			query += " AND LOWER(s.status) = LOWER(" + qb.NextPlaceholder() + ")"
 			args = append(args, status)
@@ -1599,13 +1600,16 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 
 	reqRows, err := db.Query(`
 		SELECT jpr.product_id, COALESCE(p.name, '') as product_name, jpr.quantity,
-		       COALESCE((
-		           SELECT COUNT(*) FROM jobdevices jd2
-		           LEFT JOIN devices d2 ON jd2.deviceid = d2.deviceid
-		           WHERE jd2.jobid = $1 AND d2.productid = jpr.product_id AND d2.status = 'on_job'
-		       ), 0) as assigned
+		       COALESCE(assigned_counts.assigned, 0) as assigned
 		FROM job_product_requirements jpr
 		LEFT JOIN products p ON jpr.product_id = p.productid
+		LEFT JOIN (
+			SELECT d2.productid, COUNT(*) as assigned
+			FROM jobdevices jd2
+			LEFT JOIN devices d2 ON jd2.deviceid = d2.deviceid
+			WHERE jd2.jobid = $1 AND d2.status = 'on_job'
+			GROUP BY d2.productid
+		) assigned_counts ON assigned_counts.productid = jpr.product_id
 		WHERE jpr.job_id = $1
 		ORDER BY p.name
 	`, jobID)
