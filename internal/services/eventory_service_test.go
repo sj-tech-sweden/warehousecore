@@ -570,12 +570,19 @@ func TestFetchRentalDetail_PathEscapesID(t *testing.T) {
 
 	// An ID with slashes that, if unescaped, could traverse path boundaries.
 	id := "../../etc/passwd"
-	fetchRentalDetail(srv.Client(), srv.URL, id, "", "")
+	desc, rate := fetchRentalDetail(srv.Client(), srv.URL, id, "", "")
 
 	// The server should see the slashes as percent-encoded %2F, not raw /.
 	want := "/rentals/" + neturl.PathEscape(id)
 	if gotPath != want {
 		t.Errorf("expected path %q, got %q (raw slashes would indicate path traversal)", want, gotPath)
+	}
+	// The response should still be parsed correctly.
+	if desc != "ok" {
+		t.Errorf("expected description %q, got %q", "ok", desc)
+	}
+	if rate != 10 {
+		t.Errorf("expected dailyRate 10, got %f", rate)
 	}
 }
 
