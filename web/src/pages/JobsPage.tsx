@@ -169,6 +169,8 @@ export function JobsPage() {
 
   const handleInputMethodChange = useCallback((method: InputMethod) => {
     setScanCode('');
+    setScanResult(null);
+    setScanLoading(false);
     setInputMethod(method);
   }, []);
 
