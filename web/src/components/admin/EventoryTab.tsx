@@ -213,6 +213,11 @@ export function EventoryTab() {
     );
   }
 
+  // Derive the effective supplier name for the sync note: when there are unsaved
+  // changes, Fetch/Sync use the last persisted config, so show that supplier name.
+  const effectiveSupplierName =
+    ((hasUnsavedChanges ? savedSettings?.supplierName : supplierName) || '').trim() || 'Eventory';
+
   const messageBg =
     message?.type === 'success'
       ? 'bg-green-500/10 border border-green-500/20'
@@ -462,8 +467,7 @@ export function EventoryTab() {
 
         <p className="text-xs text-gray-500">
           {t('admin.eventory.syncNote', {
-            supplier:
-              ((hasUnsavedChanges ? savedSettings?.supplierName : supplierName) || '').trim() || 'Eventory',
+            supplier: effectiveSupplierName,
           })}
         </p>
       </div>
