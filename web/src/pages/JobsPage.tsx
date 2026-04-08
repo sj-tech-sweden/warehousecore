@@ -27,6 +27,20 @@ export function JobsPage() {
   // Stable ref so camera/NFC callbacks can always reach the latest scan handler
   const processCodeRef = useRef<(code: string) => void>(() => {});
 
+  // Ref for result auto-dismiss timeout – prevents an older timeout from
+  // clearing a newer result when scans happen in quick succession.
+  const resultTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleScanResultDismiss = () => {
+    if (resultTimeoutRef.current !== null) {
+      clearTimeout(resultTimeoutRef.current);
+    }
+    resultTimeoutRef.current = setTimeout(() => {
+      setScanResult(null);
+      resultTimeoutRef.current = null;
+    }, 3000);
+  };
+
   // LED state
   const [ledActive, setLedActive] = useState(false);
   const [ledStatus, setLedStatus] = useState<LEDStatus | null>(null);
@@ -183,11 +197,14 @@ export function JobsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedJob]);
 
-  // Stop scanners on unmount
+  // Stop scanners and clear pending result timeout on unmount
   useEffect(() => {
     return () => {
       barcodeScanner.stopScanning();
       nfcScanner.stopScanning();
+      if (resultTimeoutRef.current !== null) {
+        clearTimeout(resultTimeoutRef.current);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -223,7 +240,7 @@ export function JobsPage() {
       } finally {
         setScanCode('');
         setScanLoading(false);
-        setTimeout(() => setScanResult(null), 3000);
+        scheduleScanResultDismiss();
       }
 
       return;
@@ -235,7 +252,7 @@ export function JobsPage() {
         message: t('jobsPage.selectJobFirst'),
       });
       setScanLoading(false);
-      setTimeout(() => setScanResult(null), 3000);
+      scheduleScanResultDismiss();
       return;
     }
 
@@ -245,7 +262,7 @@ export function JobsPage() {
     try {
       // Process outtake scan with job context
       const { data } = await scansApi.process({
-        scan_code: code,
+        scan_code: rawCode,
         action: 'outtake',
         job_id: selectedJob.job_id,
       });
@@ -270,7 +287,7 @@ export function JobsPage() {
     } finally {
       setScanLoading(false);
       // Clear result after 3 seconds
-      setTimeout(() => setScanResult(null), 3000);
+      scheduleScanResultDismiss();
     }
   };
 
