@@ -273,51 +273,63 @@ export default function LabelDesignerPage() {
       : undefined;
 
     // Build field map from preview device/case/zone (mirrors backend field resolution)
+    // Compute product dimensions string if individual dimensions available
+    const productDims = (() => {
+      const pw = previewDevice.product_width;
+      const ph = previewDevice.product_height;
+      const pd = previewDevice.product_depth;
+      if (pw != null && ph != null && pd != null) {
+        return `${pw.toFixed(1)}x${ph.toFixed(1)}x${pd.toFixed(1)} cm`;
+      }
+      return '';
+    })();
+
     const fieldMap: Record<string, string> = {
       // Device fields
       device_id: previewDevice.device_id,
       device_name: previewDevice.device_id,
       name: previewDevice.product_name || '',
       product_name: previewDevice.product_name || '',
-      product_description: '',
+      product_description: previewDevice.product_description || '',
       serial_number: previewDevice.serial_number || '',
       barcode: previewDevice.barcode || '',
       rfid: previewDevice.rfid || '',
       qr_code: previewDevice.qr_code || '',
       status: previewDevice.status || '',
-      zone_name: previewDevice.zone_name || '',
-      zone_code: previewDevice.zone_code || '',
+      zone_name: isZone ? (previewZone?.name || previewDevice.zone_name || '') : (previewDevice.zone_name || ''),
+      zone_code: isZone ? (previewZone?.code || previewDevice.zone_code || '') : (previewDevice.zone_code || ''),
       case_name: previewDevice.case_name || '',
       notes: previewDevice.notes || '',
       purchase_date: previewDevice.purchase_date || '',
-      subcategory: '',
-      product: '',
+      // Product metadata fields (populated from enriched device detail)
+      subcategory: previewDevice.subcategory || '',
+      product: previewDevice.product_name || '',
       category: previewDevice.product_category || '',
-      manufacturer: '',
-      manufacturer_name: '',
-      brand: '',
-      brand_name: '',
-      condition_rating: previewDevice.condition_rating !== undefined ? previewDevice.condition_rating.toFixed(1) : '',
-      usage_hours: previewDevice.usage_hours !== undefined ? `${previewDevice.usage_hours} h` : '',
-      product_weight: '',
-      product_dimensions: '',
-      maintenance_interval: '',
-      power_consumption: '',
-      // Case fields
-      case_id: previewDevice.device_id,
-      description: previewCase?.description || '',
-      dimensions: previewCase?.width != null && previewCase?.height != null && previewCase?.depth != null
+      manufacturer: previewDevice.manufacturer_name || '',
+      manufacturer_name: previewDevice.manufacturer_name || '',
+      brand: previewDevice.brand_name || '',
+      brand_name: previewDevice.brand_name || '',
+      condition_rating: previewDevice.condition_rating != null ? previewDevice.condition_rating.toFixed(1) : '',
+      usage_hours: previewDevice.usage_hours != null ? `${previewDevice.usage_hours} h` : '',
+      product_weight: previewDevice.product_weight != null ? String(previewDevice.product_weight) : '',
+      product_dimensions: productDims,
+      maintenance_interval: previewDevice.maintenance_interval != null ? String(previewDevice.maintenance_interval) : '',
+      power_consumption: previewDevice.power_consumption != null ? String(previewDevice.power_consumption) : '',
+      // Case fields — only populated when the preview entity is a case
+      case_id: isCase ? previewDevice.device_id : '',
+      description: isCase ? (previewCase?.description || '') : '',
+      dimensions: isCase ? (previewCase?.width != null && previewCase?.height != null && previewCase?.depth != null
         ? `${previewCase.width.toFixed(1)}x${previewCase.height.toFixed(1)}x${previewCase.depth.toFixed(1)} cm`
-        : '',
-      weight: previewCase?.weight != null ? `${previewCase.weight.toFixed(1)} kg` : '',
-      rfid_tag: previewDevice.rfid || '',
-      // Zone fields
-      code: isZone ? (previewZone?.code || previewDevice.zone_code || '') : (previewDevice.zone_code || ''),
-      zone_id: previewDevice.zone_id !== undefined ? String(previewDevice.zone_id) : '',
-      type: previewZone?.type || '',
-      zone_type: previewZone?.type || '',
-      location: previewZone?.location || '',
-      capacity: previewZone?.capacity !== undefined && previewZone.capacity !== null ? String(previewZone.capacity) : '',
+        : '') : '',
+      weight: isCase ? (previewCase?.weight != null ? `${previewCase.weight.toFixed(1)} kg` : '') : '',
+      rfid_tag: isCase ? (previewCase?.rfid_tag || '') : '',
+      // Zone fields — only populated when the preview entity is a zone
+      code: isZone ? (previewZone?.code || previewDevice.zone_code || '') : '',
+      zone_id: isZone && previewDevice.zone_id != null ? String(previewDevice.zone_id) : '',
+      type: isZone ? (previewZone?.type || '') : '',
+      zone_type: isZone ? (previewZone?.type || '') : '',
+      location: isZone ? (previewZone?.location || '') : '',
+      capacity: isZone && previewZone?.capacity != null ? String(previewZone.capacity) : '',
       parent_name: parentZone?.name || '',
       parent_code: parentZone?.code || '',
     };
@@ -519,7 +531,7 @@ export default function LabelDesignerPage() {
     const casesWithoutLabels = cases.filter(c => !c.label_path);
     // Only filter zones if the API returns label_path; otherwise treat all zones as needing labels
     const zonesIncludeLabelPath = zones.some(z => 'label_path' in z);
-    const zonesWithoutLabels = zonesIncludeLabelPath ? zones.filter(z => !z.label_path) : [];
+    const zonesWithoutLabels = zonesIncludeLabelPath ? zones.filter(z => !z.label_path) : zones;
     const totalMissing = devicesWithoutLabels.length + casesWithoutLabels.length + zonesWithoutLabels.length;
 
     if (totalMissing === 0) {
@@ -1078,7 +1090,7 @@ export default function LabelDesignerPage() {
               onChange={(e) => {
                 const value = e.target.value;
                 if (value.startsWith('CASE-')) {
-                  // It's a case
+                  // It's a case — use data already in the cases list (includes rfid_tag, dimensions, etc.)
                   const caseId = parseInt(value.replace('CASE-', ''));
                   const caseItem = cases.find((c) => c.case_id === caseId);
                   if (caseItem) {
@@ -1093,7 +1105,7 @@ export default function LabelDesignerPage() {
                     setPreviewDevice(caseAsDevice);
                   }
                 } else if (value.startsWith('ZONE-')) {
-                  // It's a zone
+                  // It's a zone — data already in zones list
                   const zoneId = parseInt(value.replace('ZONE-', ''));
                   const zone = zones.find((z) => z.zone_id === zoneId);
                   if (zone) {
@@ -1108,9 +1120,15 @@ export default function LabelDesignerPage() {
                     setPreviewDevice(zoneAsDevice);
                   }
                 } else {
-                  // It's a device
-                  const device = devices.find((d) => d.device_id === value);
-                  if (device) setPreviewDevice(device);
+                  // It's a device — fetch full details (product metadata, rfid, notes, etc.)
+                  devicesApi.getById(value).then(({ data }) => {
+                    setPreviewDevice(data);
+                  }).catch((err) => {
+                    // Fall back to summary data on error
+                    console.error('Failed to fetch device details for preview:', err);
+                    const device = devices.find((d) => d.device_id === value);
+                    if (device) setPreviewDevice(device);
+                  });
                 }
               }}
               className="input-select-small"

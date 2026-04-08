@@ -15,7 +15,17 @@ export interface Device {
   device_id: string;
   product_id?: number;
   product_name?: string;
+  product_description?: string;
   product_category?: string;
+  subcategory?: string;
+  manufacturer_name?: string;
+  brand_name?: string;
+  product_weight?: number;
+  product_width?: number;
+  product_height?: number;
+  product_depth?: number;
+  maintenance_interval?: number;
+  power_consumption?: number;
   barcode?: string;
   qr_code?: string;
   serial_number?: string;
@@ -103,6 +113,7 @@ export interface CaseSummary {
   height?: number;
   depth?: number;
   weight?: number;
+  rfid_tag?: string;
   zone_id?: number;
   zone_name?: string;
   zone_code?: string;
