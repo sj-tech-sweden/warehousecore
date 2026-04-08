@@ -1453,16 +1453,16 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type JobResponse struct {
-		JobID              int     `json:"job_id"`
-		JobCode            string  `json:"job_code"`
-		Description        *string `json:"description,omitempty"`
-		StartDate          *string `json:"start_date,omitempty"`
-		EndDate            *string `json:"end_date,omitempty"`
-		Status             string  `json:"status"`
-		CustomerFirstName  string  `json:"customer_first_name,omitempty"`
-		CustomerLastName   string  `json:"customer_last_name,omitempty"`
-		DeviceCount        int     `json:"device_count"`
-		RequirementsCount  int     `json:"requirements_count"`
+		JobID             int     `json:"job_id"`
+		JobCode           string  `json:"job_code"`
+		Description       *string `json:"description,omitempty"`
+		StartDate         *string `json:"start_date,omitempty"`
+		EndDate           *string `json:"end_date,omitempty"`
+		Status            string  `json:"status"`
+		CustomerFirstName string  `json:"customer_first_name,omitempty"`
+		CustomerLastName  string  `json:"customer_last_name,omitempty"`
+		DeviceCount       int     `json:"device_count"`
+		RequirementsCount int     `json:"requirements_count"`
 	}
 
 	jobs := []JobResponse{}
