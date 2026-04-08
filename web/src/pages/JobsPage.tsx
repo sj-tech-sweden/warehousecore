@@ -7,11 +7,9 @@ import type { Job, JobSummary, JobDevice, LEDStatus, ProductRequirement } from '
 import { formatDateISO } from '../lib/utils';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { useNFCScanner } from '../hooks/useNFCScanner';
-
-const JOB_CODE_PATTERN = /^JOB\d+$/i;
-
 import type { InputMethod } from '../types/scanTypes';
 
+const JOB_CODE_PATTERN = /^JOB\d+$/i;
 export function JobsPage() {
   const { t } = useTranslation();
   const { id: urlJobId } = useParams<{ id: string }>();
