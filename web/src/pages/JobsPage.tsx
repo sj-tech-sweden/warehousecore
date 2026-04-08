@@ -596,10 +596,11 @@ export function JobsPage() {
               )}
             </div>
 
-            <div className="flex gap-1 p-1 bg-white/5 rounded-xl mb-4">
+            <div role="group" aria-label={t('scan.inputMethods.label')} className="flex gap-1 p-1 bg-white/5 rounded-xl mb-4">
               <button
                 type="button"
                 onClick={() => handleInputMethodChange('keyboard')}
+                aria-pressed={inputMethod === 'keyboard'}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
                   inputMethod === 'keyboard'
                     ? 'bg-accent-red text-white'
@@ -613,6 +614,7 @@ export function JobsPage() {
                 <button
                   type="button"
                   onClick={() => handleInputMethodChange('camera')}
+                  aria-pressed={inputMethod === 'camera'}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
                     inputMethod === 'camera'
                       ? 'bg-accent-red text-white'
@@ -627,6 +629,7 @@ export function JobsPage() {
                 <button
                   type="button"
                   onClick={() => handleInputMethodChange('nfc')}
+                  aria-pressed={inputMethod === 'nfc'}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
                     inputMethod === 'nfc'
                       ? 'bg-accent-red text-white'
