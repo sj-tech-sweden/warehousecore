@@ -219,7 +219,8 @@
     },
     "previewGroups": {
       "devices": "Devices",
-      "cases": "Cases"
+      "cases": "Cases",
+      "zones": "Zones"
     },
     "fields": {
       "xPosition": "X Position (mm)",
@@ -233,8 +234,39 @@
     },
     "contentOptions": {
       "deviceId": "Device ID",
+      "deviceName": "Device name",
       "productName": "Product name",
-      "deviceName": "Device name"
+      "productDescription": "Product description",
+      "serialNumber": "Serial number",
+      "barcode": "Barcode",
+      "rfid": "RFID",
+      "qrCode": "QR code value",
+      "status": "Status",
+      "conditionRating": "Condition rating",
+      "usageHours": "Usage hours",
+      "purchaseDate": "Purchase date",
+      "notes": "Notes",
+      "subcategory": "Subcategory",
+      "category": "Category",
+      "manufacturer": "Manufacturer",
+      "brand": "Brand",
+      "productWeight": "Product weight",
+      "productDimensions": "Product dimensions",
+      "maintenanceInterval": "Maintenance interval",
+      "powerConsumption": "Power consumption",
+      "zoneName": "Zone name",
+      "zoneCode": "Zone code",
+      "zoneType": "Zone type",
+      "caseName": "Case name",
+      "caseId": "Case ID",
+      "description": "Description",
+      "rfidTag": "RFID tag",
+      "dimensions": "Dimensions",
+      "weight": "Weight",
+      "location": "Location",
+      "capacity": "Capacity",
+      "parentName": "Parent zone name",
+      "parentCode": "Parent zone code"
     },
     "fontWeight": {
       "normal": "Normal",
@@ -244,9 +276,16 @@
     "missingShort": "Missing",
     "allShort": "All",
     "generatingCount": "Generating {{count}}...",
-    "generateAllWithCount": "Generate All Labels ({{devices}} Devices + {{cases}} Cases)",
+    "generateAllWithCount": "Generate All Labels ({{devices}} Devices + {{cases}} Cases + {{zones}} Zones)",
     "exportShort": "Export",
-    "exportShortLoading": "Export..."
+    "exportShortLoading": "Export...",
+    "contentGroups": {
+      "device": "Device Fields",
+      "product": "Product Fields",
+      "location": "Location Fields",
+      "case": "Case Fields",
+      "zone": "Zone Fields"
+    }
   },
   "maintenance": {
     "title": "Maintenance",
@@ -1411,6 +1450,8 @@
     "ledToggleError": "LED control failed",
     "jobTitle": "Job {{code}}",
     "deviceCount": "{{count}} devices",
+    "requirementsCount": "{{count}} planned",
+    "productRequirements": "Product Requirements",
     "select": "Select",
     "backToList": "Back to job list",
     "date": "Date",

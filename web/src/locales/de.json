@@ -219,7 +219,8 @@
     },
     "previewGroups": {
       "devices": "Devices",
-      "cases": "Cases"
+      "cases": "Cases",
+      "zones": "Zonen"
     },
     "fields": {
       "xPosition": "X Position (mm)",
@@ -232,9 +233,40 @@
       "fontWeight": "Schriftstil"
     },
     "contentOptions": {
-      "deviceId": "Device ID",
+      "deviceId": "Geräte-ID",
+      "deviceName": "Gerätename",
       "productName": "Produktname",
-      "deviceName": "Device Name"
+      "productDescription": "Produktbeschreibung",
+      "serialNumber": "Seriennummer",
+      "barcode": "Barcode",
+      "rfid": "RFID",
+      "qrCode": "QR-Code-Wert",
+      "status": "Status",
+      "conditionRating": "Zustandsbewertung",
+      "usageHours": "Betriebsstunden",
+      "purchaseDate": "Kaufdatum",
+      "notes": "Notizen",
+      "subcategory": "Unterkategorie",
+      "category": "Kategorie",
+      "manufacturer": "Hersteller",
+      "brand": "Marke",
+      "productWeight": "Produktgewicht",
+      "productDimensions": "Produktabmessungen",
+      "maintenanceInterval": "Wartungsintervall",
+      "powerConsumption": "Stromverbrauch",
+      "zoneName": "Zonenname",
+      "zoneCode": "Zonencode",
+      "zoneType": "Zonentyp",
+      "caseName": "Case-Name",
+      "caseId": "Case-ID",
+      "description": "Beschreibung",
+      "rfidTag": "RFID-Tag",
+      "dimensions": "Abmessungen",
+      "weight": "Gewicht",
+      "location": "Standort",
+      "capacity": "Kapazität",
+      "parentName": "Übergeordnete Zone",
+      "parentCode": "Code der übergeordneten Zone"
     },
     "fontWeight": {
       "normal": "Normal",
@@ -244,9 +276,16 @@
     "missingShort": "Fehlende",
     "allShort": "Alle",
     "generatingCount": "Generiere {{count}}...",
-    "generateAllWithCount": "Alle Labels Generieren ({{devices}} Devices + {{cases}} Cases)",
+    "generateAllWithCount": "Alle Labels generieren ({{devices}} Geräte + {{cases}} Cases + {{zones}} Zonen)",
     "exportShort": "Export",
-    "exportShortLoading": "Export..."
+    "exportShortLoading": "Export...",
+    "contentGroups": {
+      "device": "Gerätefelder",
+      "product": "Produktfelder",
+      "location": "Standortfelder",
+      "case": "Casefelder",
+      "zone": "Zonenfelder"
+    }
   },
   "maintenance": {
     "title": "Wartung",
@@ -1411,6 +1450,8 @@
     "ledToggleError": "LED-Steuerung fehlgeschlagen",
     "jobTitle": "Job {{code}}",
     "deviceCount": "{{count}} Geräte",
+    "requirementsCount": "{{count}} geplant",
+    "productRequirements": "Produktanforderungen",
     "select": "Auswählen",
     "backToList": "Zurück zur Job-Liste",
     "date": "Datum",

@@ -30,6 +30,7 @@ type CaseSummary struct {
 	Height      *float64 `json:"height,omitempty"`
 	Depth       *float64 `json:"depth,omitempty"`
 	Weight      *float64 `json:"weight,omitempty"`
+	RFIDTag     *string  `json:"rfid_tag,omitempty"`
 	ZoneID      *int     `json:"zone_id,omitempty"`
 	ZoneName    *string  `json:"zone_name,omitempty"`
 	ZoneCode    *string  `json:"zone_code,omitempty"`
@@ -816,43 +817,114 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 
 	// Response struct with clean JSON types
 	type DeviceResponse struct {
-		DeviceID        string  `json:"device_id"`
-		ProductID       *int64  `json:"product_id,omitempty"`
-		ProductName     string  `json:"product_name,omitempty"`
-		SerialNumber    *string `json:"serial_number,omitempty"`
-		Barcode         *string `json:"barcode,omitempty"`
-		QRCode          *string `json:"qr_code,omitempty"`
-		Status          string  `json:"status"`
-		ZoneID          *int64  `json:"zone_id,omitempty"`
-		ZoneName        string  `json:"zone_name,omitempty"`
-		ZoneCode        string  `json:"zone_code,omitempty"`
-		CaseName        string  `json:"case_name,omitempty"`
-		JobNumber       string  `json:"job_number,omitempty"`
-		ConditionRating float64 `json:"condition_rating"`
-		UsageHours      float64 `json:"usage_hours"`
-		LabelPath       *string `json:"label_path,omitempty"`
+		DeviceID            string  `json:"device_id"`
+		ProductID           *int64  `json:"product_id,omitempty"`
+		ProductName         string  `json:"product_name,omitempty"`
+		ProductDescription  string  `json:"product_description,omitempty"`
+		ProductCategory     string  `json:"product_category,omitempty"`
+		Subcategory         string  `json:"subcategory,omitempty"`
+		ManufacturerName    string  `json:"manufacturer_name,omitempty"`
+		BrandName           string  `json:"brand_name,omitempty"`
+		ProductWeight       float64 `json:"product_weight,omitempty"`
+		ProductWidth        float64 `json:"product_width,omitempty"`
+		ProductHeight       float64 `json:"product_height,omitempty"`
+		ProductDepth        float64 `json:"product_depth,omitempty"`
+		MaintenanceInterval int     `json:"maintenance_interval,omitempty"`
+		PowerConsumption    float64 `json:"power_consumption,omitempty"`
+		SerialNumber        *string `json:"serial_number,omitempty"`
+		RFID                *string `json:"rfid,omitempty"`
+		Barcode             *string `json:"barcode,omitempty"`
+		QRCode              *string `json:"qr_code,omitempty"`
+		Status              string  `json:"status"`
+		ZoneID              *int64  `json:"zone_id,omitempty"`
+		ZoneName            string  `json:"zone_name,omitempty"`
+		ZoneCode            string  `json:"zone_code,omitempty"`
+		CaseName            string  `json:"case_name,omitempty"`
+		JobNumber           string  `json:"job_number,omitempty"`
+		ConditionRating     float64 `json:"condition_rating"`
+		UsageHours          float64 `json:"usage_hours"`
+		PurchaseDate        *string `json:"purchase_date,omitempty"`
+		Notes               *string `json:"notes,omitempty"`
+		LabelPath           *string `json:"label_path,omitempty"`
 	}
 
-	var device models.DeviceWithDetails
-	var caseName, jobNumber string
+	var (
+		productID           sql.NullInt64
+		productName         string
+		productDesc         string
+		productCategory     string
+		subcategory         string
+		manufacturerName    string
+		brandName           string
+		productWeight       float64
+		productWidth        float64
+		productHeight       float64
+		productDepth        float64
+		maintenanceInterval int
+		powerConsumption    float64
+		serialNumber        sql.NullString
+		rfid                sql.NullString
+		barcode             sql.NullString
+		qrCode              sql.NullString
+		deviceStatus        string
+		zoneID              sql.NullInt64
+		zoneName            string
+		zoneCode            string
+		caseName            string
+		jobNumber           string
+		conditionRating     float64
+		usageHours          float64
+		purchaseDate        sql.NullString
+		notes               sql.NullString
+		labelPath           sql.NullString
+		deviceIDResult      string
+	)
+
 	err := db.QueryRow(`
-		SELECT d.deviceID, d.productID, d.serialnumber, d.status, d.barcode, d.qr_code,
-		       d.zone_id, d.condition_rating, d.usage_hours, d.label_path,
+		SELECT d.deviceID,
+		       d.productID,
 		       COALESCE(p.name, '') as product_name,
+		       COALESCE(p.description, '') as product_description,
+		       COALESCE(cat.name, '') as product_category,
+		       COALESCE(sb.name, '') as subcategory,
+		       COALESCE(m.name, '') as manufacturer_name,
+		       COALESCE(b.name, '') as brand_name,
+		       COALESCE(p.weight, 0) as product_weight,
+		       COALESCE(p.width, 0) as product_width,
+		       COALESCE(p.height, 0) as product_height,
+		       COALESCE(p.depth, 0) as product_depth,
+		       COALESCE(p.maintenanceInterval, 0) as maintenance_interval,
+		       COALESCE(p.powerconsumption, 0) as power_consumption,
+		       d.serialnumber, d.rfid, d.barcode, d.qr_code,
+		       d.status, d.zone_id, d.condition_rating, d.usage_hours, d.label_path,
+		       COALESCE(TO_CHAR(d.purchaseDate, 'YYYY-MM-DD'), '') as purchase_date,
+		       COALESCE(d.notes, '') as notes,
 		       COALESCE(z.name, '') as zone_name,
 		       COALESCE(z.code, '') as zone_code,
 		       COALESCE(c.name, '') as case_name,
 		       COALESCE(CAST(jd.jobID AS TEXT), '') as job_number
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
+		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
+		LEFT JOIN subbiercategories sb ON p.subbiercategoryID = sb.subbiercategoryID
+		LEFT JOIN manufacturer m ON p.manufacturerID = m.manufacturerID
+		LEFT JOIN brands b ON p.brandID = b.brandID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
 		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID AND jd.pack_status IN ('packed', 'issued')
 		WHERE d.deviceID = $1
-	`, deviceID).Scan(&device.DeviceID, &device.ProductID, &device.SerialNumber, &device.Status,
-		&device.Barcode, &device.QRCode, &device.ZoneID, &device.ConditionRating, &device.UsageHours, &device.LabelPath,
-		&device.ProductName, &device.ZoneName, &device.ZoneCode, &caseName, &jobNumber)
+	`, deviceID).Scan(
+		&deviceIDResult, &productID,
+		&productName, &productDesc, &productCategory, &subcategory,
+		&manufacturerName, &brandName,
+		&productWeight, &productWidth, &productHeight, &productDepth,
+		&maintenanceInterval, &powerConsumption,
+		&serialNumber, &rfid, &barcode, &qrCode,
+		&deviceStatus, &zoneID, &conditionRating, &usageHours, &labelPath,
+		&purchaseDate, &notes,
+		&zoneName, &zoneCode, &caseName, &jobNumber,
+	)
 
 	if err == sql.ErrNoRows {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Device not found"})
@@ -865,34 +937,54 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 
 	// Convert to clean response format
 	resp := DeviceResponse{
-		DeviceID:        device.DeviceID,
-		ProductName:     device.ProductName,
-		Status:          device.Status,
-		ZoneName:        device.ZoneName,
-		ZoneCode:        device.ZoneCode,
-		CaseName:        caseName,
-		JobNumber:       jobNumber,
-		ConditionRating: device.ConditionRating,
-		UsageHours:      device.UsageHours,
+		DeviceID:            deviceIDResult,
+		ProductName:         productName,
+		ProductDescription:  productDesc,
+		ProductCategory:     productCategory,
+		Subcategory:         subcategory,
+		ManufacturerName:    manufacturerName,
+		BrandName:           brandName,
+		ProductWeight:       productWeight,
+		ProductWidth:        productWidth,
+		ProductHeight:       productHeight,
+		ProductDepth:        productDepth,
+		MaintenanceInterval: maintenanceInterval,
+		PowerConsumption:    powerConsumption,
+		Status:              deviceStatus,
+		ZoneName:            zoneName,
+		ZoneCode:            zoneCode,
+		CaseName:            caseName,
+		JobNumber:           jobNumber,
+		ConditionRating:     conditionRating,
+		UsageHours:          usageHours,
 	}
 
-	if device.ProductID.Valid {
-		resp.ProductID = &device.ProductID.Int64
+	if productID.Valid {
+		resp.ProductID = &productID.Int64
 	}
-	if device.SerialNumber.Valid {
-		resp.SerialNumber = &device.SerialNumber.String
+	if serialNumber.Valid {
+		resp.SerialNumber = &serialNumber.String
 	}
-	if device.Barcode.Valid {
-		resp.Barcode = &device.Barcode.String
+	if rfid.Valid && rfid.String != "" {
+		resp.RFID = &rfid.String
 	}
-	if device.QRCode.Valid {
-		resp.QRCode = &device.QRCode.String
+	if barcode.Valid {
+		resp.Barcode = &barcode.String
 	}
-	if device.ZoneID.Valid {
-		resp.ZoneID = &device.ZoneID.Int64
+	if qrCode.Valid {
+		resp.QRCode = &qrCode.String
 	}
-	if device.LabelPath.Valid {
-		resp.LabelPath = &device.LabelPath.String
+	if zoneID.Valid {
+		resp.ZoneID = &zoneID.Int64
+	}
+	if purchaseDate.Valid && purchaseDate.String != "" {
+		resp.PurchaseDate = &purchaseDate.String
+	}
+	if notes.Valid && notes.String != "" {
+		resp.Notes = &notes.String
+	}
+	if labelPath.Valid {
+		resp.LabelPath = &labelPath.String
 	}
 
 	respondJSON(w, http.StatusOK, resp)
@@ -954,7 +1046,7 @@ func GetDeviceMovements(w http.ResponseWriter, r *http.Request) {
 func GetZones(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 	rows, err := db.Query(`
-		SELECT z.zone_id, z.code, z.barcode, z.name, z.type, z.description, z.parent_zone_id, z.capacity, z.is_active
+		SELECT z.zone_id, z.code, z.barcode, z.name, z.type, z.description, z.parent_zone_id, z.capacity, z.is_active, z.label_path
 		FROM storage_zones z
 		LEFT JOIN storage_zones parent ON parent.zone_id = z.parent_zone_id
 		WHERE z.is_active = TRUE
@@ -978,12 +1070,13 @@ func GetZones(w http.ResponseWriter, r *http.Request) {
 		ParentZoneID *int64  `json:"parent_zone_id,omitempty"`
 		Capacity     *int64  `json:"capacity,omitempty"`
 		IsActive     bool    `json:"is_active"`
+		LabelPath    *string `json:"label_path,omitempty"`
 	}
 
 	zones := []ZoneResponse{}
 	for rows.Next() {
 		var z models.Zone
-		if err := rows.Scan(&z.ZoneID, &z.Code, &z.Barcode, &z.Name, &z.Type, &z.Description, &z.ParentZoneID, &z.Capacity, &z.IsActive); err != nil {
+		if err := rows.Scan(&z.ZoneID, &z.Code, &z.Barcode, &z.Name, &z.Type, &z.Description, &z.ParentZoneID, &z.Capacity, &z.IsActive, &z.LabelPath); err != nil {
 			log.Printf("Error scanning zone row: %v", err)
 			continue
 		}
@@ -1008,6 +1101,9 @@ func GetZones(w http.ResponseWriter, r *http.Request) {
 		}
 		if z.Capacity.Valid {
 			resp.Capacity = &z.Capacity.Int64
+		}
+		if z.LabelPath.Valid {
+			resp.LabelPath = &z.LabelPath.String
 		}
 
 		zones = append(zones, resp)
@@ -1418,24 +1514,40 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 	qb := NewQueryBuilder()
 	query := `
-		SELECT j.jobID,
-		       CONCAT('JOB', LPAD(CAST(j.jobID AS TEXT), 6, '0')) AS job_code,
-		       j.description, j.startDate, j.endDate, j.status,
-		       COALESCE(c.firstName, '') as customer_first_name,
-		       COALESCE(c.lastName, '') as customer_last_name,
-		       COUNT(DISTINCT jd.deviceID) as device_count
+		SELECT j.jobid,
+		       COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.jobid AS TEXT), 6, '0'))) AS job_code,
+		       j.description, j.startdate, j.enddate, COALESCE(s.status, 'open') AS status,
+		       COALESCE(c.firstname, '') as customer_first_name,
+		       COALESCE(c.lastname, '') as customer_last_name,
+		       COALESCE(dc.device_count, 0) as device_count,
+		       COALESCE(rc.requirements_count, 0) as requirements_count
 		FROM jobs j
-		LEFT JOIN customers c ON j.customerID = c.customerID
-		LEFT JOIN jobdevices jd ON j.jobID = jd.jobID
+		LEFT JOIN status s ON j.statusid = s.statusid
+		LEFT JOIN customers c ON j.customerid = c.customerid
+		LEFT JOIN (
+		    SELECT jobid, COUNT(DISTINCT deviceid) as device_count
+		    FROM jobdevices
+		    GROUP BY jobid
+		) dc ON dc.jobid = j.jobid
+		LEFT JOIN (
+		    SELECT job_id, SUM(quantity) as requirements_count
+		    FROM job_product_requirements
+		    GROUP BY job_id
+		) rc ON rc.job_id = j.jobid
 		WHERE 1=1`
 
 	args := []interface{}{}
 	if status != "" {
-		query += " AND LOWER(j.status) = LOWER(" + qb.NextPlaceholder() + ")"
-		args = append(args, status)
+		// 'open' is a legacy status value meaning any non-terminal job
+		if strings.EqualFold(status, "open") {
+			query += " AND (s.status IS NULL OR s.status NOT IN ('Completed', 'Invoiced', 'Cancelled'))"
+		} else {
+			query += " AND LOWER(s.status) = LOWER(" + qb.NextPlaceholder() + ")"
+			args = append(args, status)
+		}
 	}
 
-	query += " GROUP BY j.jobID, j.description, j.startDate, j.endDate, j.status, c.firstName, c.lastName ORDER BY j.startDate ASC"
+	query += " ORDER BY j.startdate ASC"
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -1455,6 +1567,7 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		CustomerFirstName string  `json:"customer_first_name,omitempty"`
 		CustomerLastName  string  `json:"customer_last_name,omitempty"`
 		DeviceCount       int     `json:"device_count"`
+		RequirementsCount int     `json:"requirements_count"`
 	}
 
 	jobs := []JobResponse{}
@@ -1463,7 +1576,7 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		var description, startDate, endDate sql.NullString
 
 		if err := rows.Scan(&j.JobID, &j.JobCode, &description, &startDate, &endDate, &j.Status,
-			&j.CustomerFirstName, &j.CustomerLastName, &j.DeviceCount); err != nil {
+			&j.CustomerFirstName, &j.CustomerLastName, &j.DeviceCount, &j.RequirementsCount); err != nil {
 			log.Printf("Error scanning job row: %v", err)
 			continue
 		}
@@ -1504,12 +1617,14 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 	)
 
 	err = db.QueryRow(`
-		SELECT CONCAT('JOB', LPAD(CAST(j.jobID AS TEXT), 6, '0')), j.description, j.startDate, j.endDate, j.status,
-		       COALESCE(c.firstName, '') as customer_first_name,
-		       COALESCE(c.lastName, '') as customer_last_name
+		SELECT COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.jobid AS TEXT), 6, '0'))),
+		       j.description, j.startdate, j.enddate, COALESCE(s.status, 'open') AS status,
+		       COALESCE(c.firstname, '') as customer_first_name,
+		       COALESCE(c.lastname, '') as customer_last_name
 		FROM jobs j
-		LEFT JOIN customers c ON j.customerID = c.customerID
-		WHERE j.jobID = $1
+		LEFT JOIN status s ON j.statusid = s.statusid
+		LEFT JOIN customers c ON j.customerid = c.customerid
+		WHERE j.jobid = $1
 	`, jobID).Scan(&jobCode, &description, &startDate, &endDate, &status, &customerFirstName, &customerLastName)
 
 	if err == sql.ErrNoRows {
@@ -1579,18 +1694,58 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		devices = append(devices, jd)
 	}
 
+	// Get product requirements for this job
+	type ProductRequirement struct {
+		ProductID   int    `json:"product_id"`
+		ProductName string `json:"product_name"`
+		Required    int    `json:"required"`
+		Assigned    int    `json:"assigned"` // devices of this product currently on_job
+	}
+
+	reqRows, err := db.Query(`
+		SELECT jpr.product_id, COALESCE(p.name, '') as product_name, jpr.quantity,
+		       COALESCE(assigned_counts.assigned, 0) as assigned
+		FROM job_product_requirements jpr
+		LEFT JOIN products p ON jpr.product_id = p.productid
+		LEFT JOIN (
+			SELECT d2.productid, COUNT(*) as assigned
+			FROM jobdevices jd2
+			LEFT JOIN devices d2 ON jd2.deviceid = d2.deviceid
+			WHERE jd2.jobid = $1 AND d2.status = 'on_job'
+			GROUP BY d2.productid
+		) assigned_counts ON assigned_counts.productid = jpr.product_id
+		WHERE jpr.job_id = $1
+		ORDER BY COALESCE(p.name, ''), jpr.product_id
+	`, jobID)
+
+	productRequirements := []ProductRequirement{}
+	if err == nil {
+		defer reqRows.Close()
+		for reqRows.Next() {
+			var req ProductRequirement
+			if err := reqRows.Scan(&req.ProductID, &req.ProductName, &req.Required, &req.Assigned); err != nil {
+				log.Printf("Error scanning requirement row: %v", err)
+				continue
+			}
+			productRequirements = append(productRequirements, req)
+		}
+	} else {
+		log.Printf("Error getting product requirements: %v", err)
+	}
+
 	jobCodeValue := fmt.Sprintf("JOB%06d", jobID)
 	if jobCode.Valid && jobCode.String != "" {
 		jobCodeValue = jobCode.String
 	}
 
 	response := map[string]interface{}{
-		"job_id":              jobID,
-		"job_code":            jobCodeValue,
-		"status":              status,
-		"customer_first_name": customerFirstName,
-		"customer_last_name":  customerLastName,
-		"devices":             devices,
+		"job_id":               jobID,
+		"job_code":             jobCodeValue,
+		"status":               status,
+		"customer_first_name":  customerFirstName,
+		"customer_last_name":   customerLastName,
+		"devices":              devices,
+		"product_requirements": productRequirements,
 	}
 
 	if description.Valid {
@@ -1629,6 +1784,7 @@ func GetCases(w http.ResponseWriter, r *http.Request) {
 			c.height,
 			c.depth,
 			c.weight,
+			c.rfid_tag,
 			c.zone_id,
 			c.label_path,
 			COALESCE(z.name, '') AS zone_name,
@@ -1654,7 +1810,7 @@ func GetCases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query += `
-		GROUP BY c.caseID, c.name, c.description, c.status, c.width, c.height, c.depth, c.weight, c.zone_id, c.label_path, zone_name, zone_code
+		GROUP BY c.caseID, c.name, c.description, c.status, c.width, c.height, c.depth, c.weight, c.rfid_tag, c.zone_id, c.label_path, zone_name, zone_code
 		ORDER BY c.name ASC
 		LIMIT ` + qb.NextPlaceholder() + `
 	`
@@ -1674,6 +1830,7 @@ func GetCases(w http.ResponseWriter, r *http.Request) {
 		var item CaseSummary
 		var description sql.NullString
 		var width, height, depth, weight sql.NullFloat64
+		var rfidTag sql.NullString
 		var zoneID sql.NullInt64
 		var labelPath sql.NullString
 		var zoneName, zoneCode sql.NullString
@@ -1688,6 +1845,7 @@ func GetCases(w http.ResponseWriter, r *http.Request) {
 			&height,
 			&depth,
 			&weight,
+			&rfidTag,
 			&zoneID,
 			&labelPath,
 			&zoneName,
@@ -1708,6 +1866,7 @@ func GetCases(w http.ResponseWriter, r *http.Request) {
 		item.Height = ptrFloat64(height)
 		item.Depth = ptrFloat64(depth)
 		item.Weight = ptrFloat64(weight)
+		item.RFIDTag = ptrString(rfidTag)
 		item.ZoneID = ptrInt(zoneID)
 		item.LabelPath = ptrString(labelPath)
 
@@ -1747,6 +1906,7 @@ func GetCase(w http.ResponseWriter, r *http.Request) {
 			c.height,
 			c.depth,
 			c.weight,
+			c.rfid_tag,
 			c.zone_id,
 			c.label_path,
 			COALESCE(z.name, '') AS zone_name,
@@ -1756,11 +1916,12 @@ func GetCase(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN devicescases dc ON c.caseID = dc.caseID
 		LEFT JOIN storage_zones z ON c.zone_id = z.zone_id
 		WHERE c.caseID = $1
-		GROUP BY c.caseID, c.name, c.description, c.status, c.width, c.height, c.depth, c.weight, c.zone_id, c.label_path, zone_name, zone_code
+		GROUP BY c.caseID, c.name, c.description, c.status, c.width, c.height, c.depth, c.weight, c.rfid_tag, c.zone_id, c.label_path, zone_name, zone_code
 	`
 
 	var description sql.NullString
 	var width, height, depth, weight sql.NullFloat64
+	var rfidTag sql.NullString
 	var zoneID sql.NullInt64
 	var labelPath sql.NullString
 	var zoneName, zoneCode sql.NullString
@@ -1775,6 +1936,7 @@ func GetCase(w http.ResponseWriter, r *http.Request) {
 		Height      *float64 `json:"height,omitempty"`
 		Depth       *float64 `json:"depth,omitempty"`
 		Weight      *float64 `json:"weight,omitempty"`
+		RFIDTag     *string  `json:"rfid_tag,omitempty"`
 		ZoneID      *int     `json:"zone_id,omitempty"`
 		ZoneName    *string  `json:"zone_name,omitempty"`
 		ZoneCode    *string  `json:"zone_code,omitempty"`
@@ -1793,6 +1955,7 @@ func GetCase(w http.ResponseWriter, r *http.Request) {
 		&height,
 		&depth,
 		&weight,
+		&rfidTag,
 		&zoneID,
 		&labelPath,
 		&zoneName,
@@ -1827,6 +1990,10 @@ func GetCase(w http.ResponseWriter, r *http.Request) {
 	if weight.Valid {
 		value := weight.Float64
 		item.Weight = &value
+	}
+	if rfidTag.Valid && rfidTag.String != "" {
+		val := rfidTag.String
+		item.RFIDTag = &val
 	}
 	if zoneID.Valid {
 		value := int(zoneID.Int64)

@@ -31,6 +31,7 @@ type Zone struct {
 	CurrentCount int            `json:"current_count" db:"current_count"`
 	Location     sql.NullString `json:"location" db:"location"`
 	Metadata     sql.NullString `json:"metadata" db:"metadata"` // JSON field for flexible attributes
+	LabelPath    sql.NullString `json:"label_path" db:"label_path"`
 	IsActive     bool           `json:"is_active" db:"is_active"`
 	CreatedAt    time.Time      `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at" db:"updated_at"`

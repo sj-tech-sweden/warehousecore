@@ -15,7 +15,17 @@ export interface Device {
   device_id: string;
   product_id?: number;
   product_name?: string;
+  product_description?: string;
   product_category?: string;
+  subcategory?: string;
+  manufacturer_name?: string;
+  brand_name?: string;
+  product_weight?: number;
+  product_width?: number;
+  product_height?: number;
+  product_depth?: number;
+  maintenance_interval?: number;
+  power_consumption?: number;
   barcode?: string;
   qr_code?: string;
   serial_number?: string;
@@ -103,6 +113,7 @@ export interface CaseSummary {
   height?: number;
   depth?: number;
   weight?: number;
+  rfid_tag?: string;
   zone_id?: number;
   zone_name?: string;
   zone_code?: string;
@@ -138,7 +149,9 @@ export interface Zone {
   description?: string | null;
   parent_zone_id?: number | null;
   capacity?: number | null;
+  location?: string | null;
   is_active: boolean;
+  label_path?: string | null;
 }
 
 export interface ZoneTypeDefinition {
@@ -212,6 +225,7 @@ export interface Job {
   customer_first_name?: string;
   customer_last_name?: string;
   device_count: number;
+  requirements_count: number;
 }
 
 export interface JobDevice {
@@ -225,6 +239,13 @@ export interface JobDevice {
   scanned: boolean;
 }
 
+export interface ProductRequirement {
+  product_id: number;
+  product_name: string;
+  required: number;
+  assigned: number;
+}
+
 export interface JobSummary {
   job_id: number;
   job_code: string;
@@ -235,6 +256,7 @@ export interface JobSummary {
   customer_first_name?: string;
   customer_last_name?: string;
   devices: JobDevice[];
+  product_requirements: ProductRequirement[];
 }
 
 // API Functions
@@ -563,10 +585,14 @@ export const labelsApi = {
     api.post(`/labels/device/${deviceId}`, { template_id: templateId }),
   generateCaseLabel: (caseId: number, templateId: number) =>
     api.post(`/labels/case/${caseId}`, { template_id: templateId }),
+  generateZoneLabel: (zoneId: number, templateId: number) =>
+    api.post(`/labels/zone/${zoneId}`, { template_id: templateId }),
   saveLabel: (deviceId: string, imageData: string) =>
     api.post<{ label_path: string; message: string }>('/labels/save', { device_id: deviceId, image_data: imageData }),
   saveCaseLabel: (caseId: number, imageData: string) =>
     api.post<{ label_path: string; message: string }>('/labels/save-case', { case_id: caseId, image_data: imageData }),
+  saveZoneLabel: (zoneId: number, imageData: string) =>
+    api.post<{ label_path: string; message: string }>('/labels/save-zone', { zone_id: zoneId, image_data: imageData }),
 };
 
 // Admin Settings API

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { maintenanceApi } from '../lib/api';
 import type { Defect, Inspection, MaintenanceStats } from '../lib/api';
+import { formatDateISO } from '../lib/utils';
 
 type TabView = 'overview' | 'defects' | 'inspections';
 type DefectFilter = 'all' | 'open' | 'in_progress' | 'repaired' | 'closed';
@@ -140,13 +141,7 @@ export function MaintenancePage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('de-DE', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  const formatDate = (dateString: string) => formatDateISO(dateString);
 
   const isOverdue = (dateString?: string) => {
     if (!dateString) return false;

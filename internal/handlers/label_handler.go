@@ -316,3 +316,72 @@ func SaveCaseLabel(w http.ResponseWriter, r *http.Request) {
 		"message":    "Case label saved successfully",
 	})
 }
+
+// GenerateZoneLabel generates a complete label for a zone
+// POST /api/v1/labels/zone/{zone_id}
+// Body: {"template_id": 1}
+func GenerateZoneLabel(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	zoneIDStr := vars["zone_id"]
+
+	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid zone ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		TemplateID int `json:"template_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.TemplateID == 0 {
+		http.Error(w, "Template ID is required", http.StatusBadRequest)
+		return
+	}
+
+	labelData, err := labelService.GenerateLabelForZone(zoneID, req.TemplateID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(labelData)
+}
+
+// SaveZoneLabel saves a generated label image for a zone
+// POST /api/v1/labels/save-zone
+// Body: {"zone_id": 1, "image_data": "data:image/png;base64,..."}
+func SaveZoneLabel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ZoneID    int64  `json:"zone_id"`
+		ImageData string `json:"image_data"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.ZoneID == 0 || req.ImageData == "" {
+		http.Error(w, "Zone ID and image data are required", http.StatusBadRequest)
+		return
+	}
+
+	labelPath, err := labelService.SaveZoneLabelImage(req.ZoneID, req.ImageData)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"label_path": labelPath,
+		"message":    "Zone label saved successfully",
+	})
+}

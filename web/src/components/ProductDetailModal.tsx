@@ -7,6 +7,7 @@ import { productPicturesApi, productWebsiteApi } from '../lib/api';
 import type { ChangeEvent } from 'react';
 import type { ProductPicture } from '../lib/api';
 import { useCurrencySymbol } from '../hooks/useCurrencySymbol';
+import { formatLocalDateTime } from '../lib/utils';
 
 export interface ProductDetail {
   product_id: number;
@@ -244,10 +245,9 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   }, [previewIndex, pictures]);
 
   const formatDate = (iso: string) => {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '—';
-    const locale = i18n.language?.startsWith('de') ? 'de-DE' : 'en-US';
-    return date.toLocaleString(locale);
+    if (!iso) return '—';
+    const result = formatLocalDateTime(iso);
+    return result || '—';
   };
 
   if (!isOpen || !product) return null;
