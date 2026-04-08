@@ -256,14 +256,20 @@ export function EventoryTab() {
 
         {/* API URL */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label htmlFor="eventory-api-url" className="block text-sm font-medium text-gray-300 mb-2">
             {t('admin.eventory.apiUrl')}
           </label>
           <input
+            id="eventory-api-url"
+            name="eventoryApiUrl"
             type="url"
             value={apiUrl}
             onChange={e => setApiUrl(e.target.value)}
             placeholder="https://api.eventory.se"
+            autoComplete="off"
+            data-bwignore="true"
+            data-1p-ignore="true"
+            data-lpignore="true"
             className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
           />
           <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.apiUrlDesc')}</p>
@@ -272,20 +278,26 @@ export function EventoryTab() {
         {/* Username / Password (OAuth2 password grant) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="eventory-username" className="block text-sm font-medium text-gray-300 mb-2">
               {t('admin.eventory.username')}
             </label>
             <input
+              id="eventory-username"
+              name="eventoryUsername"
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
               placeholder={t('admin.eventory.usernamePlaceholder')}
               autoComplete="off"
+              spellCheck={false}
+              data-bwignore="true"
+              data-1p-ignore="true"
+              data-lpignore="true"
               className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="eventory-password" className="block text-sm font-medium text-gray-300 mb-2">
               {t('admin.eventory.password')}
               {passwordConfigured && !clearPassword && (
                 <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-400">
@@ -302,11 +314,16 @@ export function EventoryTab() {
             </label>
             <div className="flex gap-2">
               <input
+                id="eventory-password"
+                name="eventoryPassword"
                 type="password"
                 value={password}
                 onChange={e => { setPassword(e.target.value); setClearPassword(false); }}
                 placeholder={passwordConfigured ? t('admin.eventory.passwordPlaceholderUpdate') : t('admin.eventory.passwordPlaceholder')}
                 autoComplete="new-password"
+                data-bwignore="true"
+                data-1p-ignore="true"
+                data-lpignore="true"
                 className="flex-1 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
               />
               {passwordConfigured && !clearPassword && (
@@ -327,7 +344,7 @@ export function EventoryTab() {
 
         {/* API Key (alternative to username/password) */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label htmlFor="eventory-api-key" className="block text-sm font-medium text-gray-300 mb-2">
             {t('admin.eventory.apiKey')}
             {apiKeyConfigured && !clearApiKey && (
               <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-400">
@@ -350,10 +367,16 @@ export function EventoryTab() {
           </label>
           <div className="flex gap-2">
             <input
+              id="eventory-api-key"
+              name="eventoryApiKey"
               type="password"
               value={apiKey}
               onChange={e => { setApiKey(e.target.value); setClearApiKey(false); }}
               placeholder={apiKeyConfigured ? t('admin.eventory.keyPlaceholderUpdate') : t('admin.eventory.keyPlaceholder')}
+              autoComplete="off"
+              data-bwignore="true"
+              data-1p-ignore="true"
+              data-lpignore="true"
               className="flex-1 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
             />
             {apiKeyConfigured && !clearApiKey && (
@@ -373,14 +396,20 @@ export function EventoryTab() {
 
         {/* Optional: token endpoint override */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label htmlFor="eventory-token-endpoint" className="block text-sm font-medium text-gray-300 mb-2">
             {t('admin.eventory.tokenEndpoint')}
           </label>
           <input
+            id="eventory-token-endpoint"
+            name="eventoryTokenEndpoint"
             type="url"
             value={tokenEndpoint}
             onChange={e => setTokenEndpoint(e.target.value)}
             placeholder="https://api.eventory.se/oauth/token"
+            autoComplete="off"
+            data-bwignore="true"
+            data-1p-ignore="true"
+            data-lpignore="true"
             className="w-full px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
           />
           <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.tokenEndpointDesc')}</p>
@@ -388,14 +417,21 @@ export function EventoryTab() {
 
         {/* Supplier name */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label htmlFor="eventory-supplier-name" className="block text-sm font-medium text-gray-300 mb-2">
             {t('admin.eventory.supplierName')}
           </label>
           <input
+            id="eventory-supplier-name"
+            name="eventorySupplierName"
             type="text"
             value={supplierName}
             onChange={e => setSupplierName(e.target.value)}
             placeholder="Eventory"
+            autoComplete="off"
+            spellCheck={false}
+            data-bwignore="true"
+            data-1p-ignore="true"
+            data-lpignore="true"
             className="w-full sm:w-64 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
           />
           <p className="mt-1 text-xs text-gray-500">{t('admin.eventory.supplierNameDesc')}</p>

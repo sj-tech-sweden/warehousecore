@@ -8,6 +8,7 @@ import (
 	"warehousecore/internal/repository"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // AdminService handles admin-related operations
@@ -75,9 +76,12 @@ func (s *AdminService) DeleteZoneType(id int) error {
 // GetSetting retrieves a setting by scope and key
 func (s *AdminService) GetSetting(scope, key string) (*models.AppSetting, error) {
 	var setting models.AppSetting
-	err := s.db.Where("scope = ? AND key = ?", scope, key).First(&setting).Error
-	if err != nil {
-		return nil, err
+	tx := s.db.Where("scope = ? AND key = ?", scope, key).Limit(1).Find(&setting)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &setting, nil
 }
@@ -102,25 +106,19 @@ func (s *AdminService) SetSetting(scope, key string, value interface{}) error {
 		}
 	}
 
-	// Upsert setting
-	var setting models.AppSetting
-	err := s.db.Where("scope = ? AND key = ?", scope, key).First(&setting).Error
-
-	if err == gorm.ErrRecordNotFound {
-		// Create new
-		setting = models.AppSetting{
-			Scope: scope,
-			Key:   key,
-			Value: jsonValue,
-		}
-		return s.db.Create(&setting).Error
-	} else if err != nil {
-		return err
+	setting := models.AppSetting{
+		Scope: scope,
+		Key:   key,
+		Value: jsonValue,
 	}
 
-	// Update existing
-	setting.Value = jsonValue
-	return s.db.Save(&setting).Error
+	return s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "scope"}, {Name: "key"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"value":      jsonValue,
+			"updated_at": gorm.Expr("NOW()"),
+		}),
+	}).Create(&setting).Error
 }
 
 // GetLEDSingleBinDefault retrieves LED defaults for single bin highlight

@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strconv"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GetAPILimit retrieves the configured API limit from settings
@@ -20,39 +22,50 @@ func GetAPILimit(settingKey string, defaultLimit int) int {
 		return defaultLimit
 	}
 
-	var setting models.AppSetting
-	if err := db.Where("scope = ? AND key = ?", "warehousecore", settingKey).First(&setting).Error; err != nil {
+	// Read raw JSON to tolerate legacy rows where value is a JSON number,
+	// e.g. 50000, instead of an object like {"limit": 50000}.
+	var row struct {
+		Value json.RawMessage `gorm:"column:value"`
+	}
+	if err := db.Table("app_settings").
+		Select("value").
+		Where("scope = ? AND key = ?", "warehousecore", settingKey).
+		Limit(1).
+		Take(&row).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("[SETTINGS] Failed to query %s: %v", settingKey, err)
+		}
 		log.Printf("[SETTINGS] Setting %s not found, using default limit: %d", settingKey, defaultLimit)
 		return defaultLimit
 	}
 
-	// Parse JSON to get limit value
-	bytes, err := json.Marshal(setting.Value)
-	if err != nil {
-		log.Printf("[SETTINGS] Failed to marshal setting %s, using default limit: %d", settingKey, defaultLimit)
+	var parsed interface{}
+	if err := json.Unmarshal(row.Value, &parsed); err != nil {
+		log.Printf("[SETTINGS] Failed to parse setting %s, using default limit: %d", settingKey, defaultLimit)
 		return defaultLimit
 	}
 
-	var limitConfig map[string]interface{}
-	if err := json.Unmarshal(bytes, &limitConfig); err != nil {
-		log.Printf("[SETTINGS] Failed to unmarshal setting %s, using default limit: %d", settingKey, defaultLimit)
-		return defaultLimit
-	}
-
-	// Extract limit value
-	if limitVal, ok := limitConfig["limit"]; ok {
-		switch v := limitVal.(type) {
-		case float64:
-			return int(v)
-		case int:
-			return v
-		default:
-			log.Printf("[SETTINGS] Invalid limit type in %s, using default limit: %d", settingKey, defaultLimit)
-			return defaultLimit
+	switch v := parsed.(type) {
+	case float64:
+		return int(v)
+	case string:
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	case map[string]interface{}:
+		if limitVal, ok := v["limit"]; ok {
+			switch lv := limitVal.(type) {
+			case float64:
+				return int(lv)
+			case string:
+				if n, err := strconv.Atoi(lv); err == nil {
+					return n
+				}
+			}
 		}
 	}
 
-	log.Printf("[SETTINGS] No limit field in %s, using default limit: %d", settingKey, defaultLimit)
+	log.Printf("[SETTINGS] Invalid limit value in %s, using default limit: %d", settingKey, defaultLimit)
 	return defaultLimit
 }
 
@@ -130,25 +143,20 @@ func UpdateAPILimit(settingKey string, limit int) error {
 		return ErrDatabaseNotAvailable
 	}
 
-	// Check if setting exists
-	var setting models.AppSetting
-	err := db.Where("scope = ? AND key = ?", "warehousecore", settingKey).First(&setting).Error
-
 	limitValue := models.JSONMap{"limit": limit}
-
-	if err != nil {
-		// Create new setting
-		setting = models.AppSetting{
-			Scope: "warehousecore",
-			Key:   settingKey,
-			Value: limitValue,
-		}
-		return db.Create(&setting).Error
+	setting := models.AppSetting{
+		Scope: "warehousecore",
+		Key:   settingKey,
+		Value: limitValue,
 	}
 
-	// Update existing setting
-	setting.Value = limitValue
-	return db.Save(&setting).Error
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "scope"}, {Name: "key"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"value":      limitValue,
+			"updated_at": gorm.Expr("NOW()"),
+		}),
+	}).Create(&setting).Error
 }
 
 var ErrDatabaseNotAvailable = &SettingsError{Message: "Database not available"}
