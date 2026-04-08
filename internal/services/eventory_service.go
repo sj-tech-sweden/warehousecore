@@ -133,8 +133,10 @@ type EventoryProduct struct {
 // InventoryCategoryNode (has "children") or an InventoryItem (has "articleNumber").
 // We decode everything into this struct and distinguish the two cases by checking
 // whether Children is non-nil (category) or nil (leaf item).
+// ID is typed as interface{} because some Eventory deployments return numeric IDs;
+// callers must normalize it to a string via fmt.Sprintf("%v", node.ID).
 type eventoryInventoryNode struct {
-	ID            string            `json:"id"`
+	ID            interface{}       `json:"id"`
 	Name          string            `json:"name"`
 	Children      []json.RawMessage `json:"children"`      // non-nil → category node
 	ArticleNumber *string           `json:"articleNumber"` // present in leaf items
@@ -699,7 +701,9 @@ func fetchInventoryRentals(client *http.Client, baseURL, oauthToken, apiKey stri
 	// Collect all leaf items from the tree first (no network I/O), then
 	// enrich them concurrently with bounded parallelism.
 	var leaves []inventoryLeaf
-	collectLeaves(rawNodes, "", &leaves)
+	if err := collectLeaves(rawNodes, "", &leaves); err != nil {
+		return nil, fmt.Errorf("failed to collect inventory leaves: %w", err)
+	}
 
 	// Fetch /rentals/{id} for each leaf concurrently.
 	type result struct {
@@ -739,12 +743,13 @@ func fetchInventoryRentals(client *http.Client, baseURL, oauthToken, apiKey stri
 // collectLeaves recursively walks the /inventory-rentals tree and appends all
 // leaf items (nodes without children) to out. categoryPath is the " > "-separated
 // chain of ancestor category names used to populate EventoryProduct.Category.
-func collectLeaves(rawNodes []json.RawMessage, categoryPath string, out *[]inventoryLeaf) {
+// An error is returned if any node fails to parse so that callers cannot silently
+// succeed with a partial or empty product list.
+func collectLeaves(rawNodes []json.RawMessage, categoryPath string, out *[]inventoryLeaf) error {
 	for _, raw := range rawNodes {
 		var node eventoryInventoryNode
 		if err := json.Unmarshal(raw, &node); err != nil {
-			log.Printf("[EVENTORY] Failed to parse inventory node: %v", err)
-			continue
+			return fmt.Errorf("failed to parse inventory node: %w", err)
 		}
 
 		if node.Children != nil {
@@ -752,22 +757,25 @@ func collectLeaves(rawNodes []json.RawMessage, categoryPath string, out *[]inven
 			if categoryPath != "" {
 				childPath = categoryPath + " > " + node.Name
 			}
-			collectLeaves(node.Children, childPath, out)
+			if err := collectLeaves(node.Children, childPath, out); err != nil {
+				return err
+			}
 			continue
 		}
 
-		*out = append(*out, inventoryLeaf{id: node.ID, name: node.Name, category: categoryPath})
+		*out = append(*out, inventoryLeaf{id: fmt.Sprintf("%v", node.ID), name: node.Name, category: categoryPath})
 	}
+	return nil
 }
 
 // fetchRentalDetail fetches GET /rentals/{id} and returns (description, dailyRate).
 // On failure it logs the error and returns ("", 0) so that a single failed fetch
-// does not abort the entire sync. id is validated to be a non-empty, non-dot-segment
-// string; empty and dot-segment IDs (".", "..") are rejected up front because
-// PathEscape leaves them unchanged and ResolveReference would path-clean them
-// (e.g. "rentals/.." collapses to the parent path). Non-dot special characters
-// are encoded by neturl.PathEscape so they cannot traverse directory boundaries
-// or change the request host.
+// does not abort the entire sync. id is validated to be non-empty, and the exact
+// dot-segment IDs "." and ".." are rejected up front because PathEscape leaves
+// them unchanged and ResolveReference would path-clean them (e.g. "rentals/.."
+// collapses to the parent path). Other special characters in id are encoded by
+// neturl.PathEscape so they cannot traverse directory boundaries or change the
+// request host.
 func fetchRentalDetail(client *http.Client, baseURL, id, oauthToken, apiKey string) (description string, dailyRate float64) {
 	if id == "" || id == "." || id == ".." {
 		log.Printf("[EVENTORY] Rental ID must be non-empty and cannot be a dot-segment (. or ..): got %q", id)

@@ -470,6 +470,70 @@ func TestFetchInventoryRentals_AuthHeadersForwarded(t *testing.T) {
 	}
 }
 
+// TestFetchInventoryRentals_MalformedNodeReturnsError verifies that a malformed
+// JSON node in the /inventory-rentals tree causes fetchInventoryRentals to return
+// an error instead of silently succeeding with an empty product list.
+func TestFetchInventoryRentals_MalformedNodeReturnsError(t *testing.T) {
+	// Array with a structurally invalid entry (mismatched type for "name" field).
+	inventoryBody := `[{"id": "item-1", "name": 42, "articleNumber": "X001", "is_pack": false}]`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/inventory-rentals" {
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	_, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for malformed inventory node, got nil")
+	}
+}
+
+// TestFetchInventoryRentals_NumericID verifies that leaf items with numeric IDs
+// (e.g. 42) are correctly stringified and used for both the product ID and the
+// /rentals/{id} detail request.
+func TestFetchInventoryRentals_NumericID(t *testing.T) {
+	inventoryBody := `[{"id": 42, "name": "Widget", "articleNumber": "W001", "is_pack": false}]`
+
+	var gotDetailPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/inventory-rentals":
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+		case "/rentals/42":
+			gotDetailPath = r.URL.Path
+			w.Write([]byte(`{"rental":{"description":"numeric-id item","dailyRate":25}}`)) //nolint:errcheck
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	products, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(products))
+	}
+	if gotDetailPath != "/rentals/42" {
+		t.Errorf("expected detail request to /rentals/42, got %q", gotDetailPath)
+	}
+	if products[0].Description != "numeric-id item" {
+		t.Errorf("expected description %q, got %q", "numeric-id item", products[0].Description)
+	}
+	if products[0].Price != 25 {
+		t.Errorf("expected price 25, got %f", products[0].Price)
+	}
+}
+
 // TestFetchInventoryRentals_FallsBackToLegacy verifies that when /inventory-rentals
 // returns 404 the legacy flat-list endpoints are tried.
 func TestFetchInventoryRentals_FallsBackToLegacy(t *testing.T) {
