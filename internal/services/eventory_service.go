@@ -16,6 +16,7 @@ import (
 	neturl "net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"warehousecore/internal/models"
@@ -33,6 +34,22 @@ const (
 // blocks used by isPrivateIP. Pre-parsing avoids repeated net.ParseCIDR calls
 // inside DialContext, which is invoked on every outbound connection.
 var privateNetworks []*net.IPNet
+
+// ssrfClientOnce and ssrfClientSingleton hold the lazily-initialised
+// package-level SSRF-safe HTTP client. Building the client once allows the
+// transport's idle-connection pool and TLS session cache to be reused across
+// all FetchEventoryProducts calls (manual and scheduled).
+var (
+	ssrfClientOnce      sync.Once
+	ssrfClientSingleton *http.Client
+)
+
+func getSSRFSafeClient() *http.Client {
+	ssrfClientOnce.Do(func() {
+		ssrfClientSingleton = newSSRFSafeClient()
+	})
+	return ssrfClientSingleton
+}
 
 func init() {
 	for _, cidr := range []string{
@@ -334,7 +351,7 @@ func BootstrapEventoryFromEnv() {
 // a custom transport that rejects connections to private/reserved IPs at dial
 // time, preventing DNS rebinding attacks.
 func FetchEventoryProducts(cfg *EventoryConfig) ([]EventoryProduct, error) {
-	return fetchEventoryProductsWith(cfg, newSSRFSafeClient())
+	return fetchEventoryProductsWith(cfg, getSSRFSafeClient())
 }
 
 // fetchEventoryProductsWith is the testable core of FetchEventoryProducts.
