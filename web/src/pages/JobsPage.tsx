@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff, ClipboardList } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { jobsApi, scansApi, ledApi } from '../lib/api';
-import type { Job, JobSummary, JobDevice, LEDStatus } from '../lib/api';
+import type { Job, JobSummary, JobDevice, LEDStatus, ProductRequirement } from '../lib/api';
 
 const JOB_CODE_PATTERN = /^JOB\d+$/i;
 
@@ -332,6 +332,12 @@ export function JobsPage() {
                       <Package className="w-4 h-4" />
                       <span>{t('jobsPage.deviceCount', { count: job.device_count })}</span>
                     </div>
+                    {job.requirements_count > 0 && (
+                      <div className="flex items-center gap-2 text-yellow-400 font-semibold">
+                        <ClipboardList className="w-4 h-4" />
+                        <span>{t('jobsPage.requirementsCount', { count: job.requirements_count })}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 flex items-center gap-2 text-accent-red group-hover:gap-3 transition-all">
@@ -428,6 +434,39 @@ export function JobsPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Product Requirements */}
+          {selectedJob.product_requirements && selectedJob.product_requirements.length > 0 && (
+            <div className="lg:col-span-2 glass-dark rounded-2xl p-6 border-2 border-white/10">
+              <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                <ClipboardList className="w-6 h-6" />
+                {t('jobsPage.productRequirements')}
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {selectedJob.product_requirements.map((req: ProductRequirement) => {
+                  const fulfilled = req.assigned >= req.required;
+                  return (
+                    <div
+                      key={req.product_id}
+                      className={`p-3 rounded-xl border-2 ${fulfilled ? 'bg-green-500/10 border-green-500/50' : 'bg-white/5 border-white/10'}`}
+                    >
+                      <p className="font-semibold text-white text-sm line-clamp-2">{req.product_name}</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className={`text-lg font-bold ${fulfilled ? 'text-green-400' : 'text-accent-red'}`}>
+                          {req.assigned}/{req.required}
+                        </span>
+                        {fulfilled ? (
+                          <CheckCircle className="w-5 h-5 text-green-500" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-gray-600" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Scan Interface */}
           <div className="glass-dark rounded-2xl p-6 border-2 border-white/10">
             <div className="flex items-center justify-between mb-4">

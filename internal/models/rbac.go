@@ -69,19 +69,25 @@ func (j JSONMap) Value() (driver.Value, error) {
 	return json.Marshal(j)
 }
 
-// Scan implements sql.Scanner interface for GORM
+// Scan implements sql.Scanner interface for GORM.
+// Handles both []byte (pgx JSONB) and string (pgx TEXT) column types.
 func (j *JSONMap) Scan(value interface{}) error {
 	if value == nil {
 		*j = make(JSONMap)
 		return nil
 	}
 
-	bytes, ok := value.([]byte)
-	if !ok {
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
 		return nil
 	}
 
-	return json.Unmarshal(bytes, j)
+	return json.Unmarshal(data, j)
 }
 
 // AppSetting represents a global application setting
