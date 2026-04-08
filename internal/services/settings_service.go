@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strconv"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GetAPILimit retrieves the configured API limit from settings
@@ -20,39 +22,51 @@ func GetAPILimit(settingKey string, defaultLimit int) int {
 		return defaultLimit
 	}
 
-	var setting models.AppSetting
-	if err := db.Where("scope = ? AND key = ?", "warehousecore", settingKey).First(&setting).Error; err != nil {
-		log.Printf("[SETTINGS] Setting %s not found, using default limit: %d", settingKey, defaultLimit)
-		return defaultLimit
+	// Read raw JSON to tolerate legacy rows where value is a JSON number,
+	// e.g. 50000, instead of an object like {"limit": 50000}.
+	var row struct {
+		Value json.RawMessage `gorm:"column:value"`
 	}
-
-	// Parse JSON to get limit value
-	bytes, err := json.Marshal(setting.Value)
-	if err != nil {
-		log.Printf("[SETTINGS] Failed to marshal setting %s, using default limit: %d", settingKey, defaultLimit)
-		return defaultLimit
-	}
-
-	var limitConfig map[string]interface{}
-	if err := json.Unmarshal(bytes, &limitConfig); err != nil {
-		log.Printf("[SETTINGS] Failed to unmarshal setting %s, using default limit: %d", settingKey, defaultLimit)
-		return defaultLimit
-	}
-
-	// Extract limit value
-	if limitVal, ok := limitConfig["limit"]; ok {
-		switch v := limitVal.(type) {
-		case float64:
-			return int(v)
-		case int:
-			return v
-		default:
-			log.Printf("[SETTINGS] Invalid limit type in %s, using default limit: %d", settingKey, defaultLimit)
+	if err := db.Table("app_settings").
+		Select("value").
+		Where("scope = ? AND key = ?", "warehousecore", settingKey).
+		Limit(1).
+		Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("[SETTINGS] Setting %s not found, using default limit: %d", settingKey, defaultLimit)
 			return defaultLimit
+		}
+		log.Printf("[SETTINGS] Failed to query %s: %v; using default limit: %d", settingKey, err, defaultLimit)
+		return defaultLimit
+	}
+
+	var parsed interface{}
+	if err := json.Unmarshal(row.Value, &parsed); err != nil {
+		log.Printf("[SETTINGS] Failed to parse setting %s, using default limit: %d", settingKey, defaultLimit)
+		return defaultLimit
+	}
+
+	switch v := parsed.(type) {
+	case float64:
+		return int(v)
+	case string:
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	case map[string]interface{}:
+		if limitVal, ok := v["limit"]; ok {
+			switch lv := limitVal.(type) {
+			case float64:
+				return int(lv)
+			case string:
+				if n, err := strconv.Atoi(lv); err == nil {
+					return n
+				}
+			}
 		}
 	}
 
-	log.Printf("[SETTINGS] No limit field in %s, using default limit: %d", settingKey, defaultLimit)
+	log.Printf("[SETTINGS] Invalid limit value in %s, using default limit: %d", settingKey, defaultLimit)
 	return defaultLimit
 }
 
@@ -75,37 +89,42 @@ func GetCurrencySymbol() string {
 		return "€"
 	}
 
-	var setting models.AppSetting
-	if err := db.Where("scope = ? AND key = ?", "warehousecore", "app.currency").First(&setting).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Printf("[SETTINGS] Failed to query currency symbol: %v", err)
+	// Try global scope first (shared with RentalCore), then warehousecore scope as fallback.
+	for _, scope := range []string{"global", "warehousecore"} {
+		var setting models.AppSetting
+		if err := db.Where("scope = ? AND key = ?", scope, "app.currency").First(&setting).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				log.Printf("[SETTINGS] Failed to query currency symbol (scope=%s): %v", scope, err)
+			}
+			continue
 		}
-		return "€"
-	}
 
-	if symbol, ok := setting.Value["symbol"].(string); ok && symbol != "" {
-		return symbol
+		if symbol, ok := setting.Value["symbol"].(string); ok && symbol != "" {
+			return symbol
+		}
 	}
 
 	log.Printf("[SETTINGS] No symbol field in currency setting, using default")
 	return "€"
 }
 
-// UpdateCurrencySymbol updates the currency symbol in the database
+// UpdateCurrencySymbol updates the currency symbol in the database.
+// Writes to scope='global' so RentalCore can also read the value.
 func UpdateCurrencySymbol(symbol string) error {
 	db := repository.GetDB()
 	if db == nil {
 		return ErrDatabaseNotAvailable
 	}
 
-	var setting models.AppSetting
-	err := db.Where("scope = ? AND key = ?", "warehousecore", "app.currency").First(&setting).Error
-
 	currencyValue := models.JSONMap{"symbol": symbol}
+
+	// Write to global scope (shared with RentalCore).
+	var setting models.AppSetting
+	err := db.Where("scope = ? AND key = ?", "global", "app.currency").First(&setting).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		setting = models.AppSetting{
-			Scope: "warehousecore",
+			Scope: "global",
 			Key:   "app.currency",
 			Value: currencyValue,
 		}
@@ -125,25 +144,20 @@ func UpdateAPILimit(settingKey string, limit int) error {
 		return ErrDatabaseNotAvailable
 	}
 
-	// Check if setting exists
-	var setting models.AppSetting
-	err := db.Where("scope = ? AND key = ?", "warehousecore", settingKey).First(&setting).Error
-
 	limitValue := models.JSONMap{"limit": limit}
-
-	if err != nil {
-		// Create new setting
-		setting = models.AppSetting{
-			Scope: "warehousecore",
-			Key:   settingKey,
-			Value: limitValue,
-		}
-		return db.Create(&setting).Error
+	setting := models.AppSetting{
+		Scope: "warehousecore",
+		Key:   settingKey,
+		Value: limitValue,
 	}
 
-	// Update existing setting
-	setting.Value = limitValue
-	return db.Save(&setting).Error
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "scope"}, {Name: "key"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"value":      limitValue,
+			"updated_at": gorm.Expr("NOW()"),
+		}),
+	}).Create(&setting).Error
 }
 
 var ErrDatabaseNotAvailable = &SettingsError{Message: "Database not available"}

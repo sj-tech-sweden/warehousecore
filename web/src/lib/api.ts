@@ -212,6 +212,7 @@ export interface Job {
   customer_first_name?: string;
   customer_last_name?: string;
   device_count: number;
+  requirements_count: number;
 }
 
 export interface JobDevice {
@@ -225,6 +226,13 @@ export interface JobDevice {
   scanned: boolean;
 }
 
+export interface ProductRequirement {
+  product_id: number;
+  product_name: string;
+  required: number;
+  assigned: number;
+}
+
 export interface JobSummary {
   job_id: number;
   job_code: string;
@@ -235,6 +243,7 @@ export interface JobSummary {
   customer_first_name?: string;
   customer_last_name?: string;
   devices: JobDevice[];
+  product_requirements: ProductRequirement[];
 }
 
 // API Functions

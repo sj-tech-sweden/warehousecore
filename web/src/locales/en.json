@@ -1411,6 +1411,8 @@
     "ledToggleError": "LED control failed",
     "jobTitle": "Job {{code}}",
     "deviceCount": "{{count}} devices",
+    "requirementsCount": "{{count}} planned",
+    "productRequirements": "Product Requirements",
     "select": "Select",
     "backToList": "Back to job list",
     "date": "Date",
