@@ -133,7 +133,7 @@ func (s *Service) getJobHighlightSettings() *models.LEDJobHighlightSettings {
 	}
 
 	var setting models.AppSetting
-	if err := gormDB.Where("scope = ? AND k = ?", "warehousecore", "led.job.highlight").First(&setting).Error; err != nil {
+	if err := gormDB.Where("scope = ? AND key = ?", "warehousecore", "led.job.highlight").First(&setting).Error; err != nil {
 		return defaults
 	}
 
@@ -511,7 +511,7 @@ func (s *Service) LocateBin(binCode string) error {
 	gormDB := repository.GetDB()
 	if gormDB != nil {
 		var setting models.AppSetting
-		if err := gormDB.Where("scope = ? AND k = ?", "warehousecore", "led.single_bin.default").First(&setting).Error; err == nil {
+		if err := gormDB.Where("scope = ? AND key = ?", "warehousecore", "led.single_bin.default").First(&setting).Error; err == nil {
 			// Parse JSON to defaults
 			bytes, _ := json.Marshal(setting.Value)
 			var defaults map[string]interface{}

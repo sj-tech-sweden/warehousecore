@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ledApi, api, type LEDController, type LEDControllerPayload, type ZoneTypeDefinition } from '../../lib/api';
 import { Plus, Save, X, RefreshCcw, Trash2, Cpu, Settings, RotateCw } from 'lucide-react';
 import { useBlockBodyScroll } from '../../hooks/useBlockBodyScroll';
+import { formatLocalDateTime } from '../../lib/utils';
 
 type EditorTarget = number | 'new' | null;
 
@@ -573,7 +574,7 @@ export function LEDControllersTab() {
                         </p>
                       )}
                       {controller.last_seen && (
-                        <p className="text-xs text-gray-500">{t('admin.ledControllers.lastSeen')}: {new Date(controller.last_seen).toLocaleString()}</p>
+                        <p className="text-xs text-gray-500">{t('admin.ledControllers.lastSeen')}: {formatLocalDateTime(controller.last_seen)}</p>
                       )}
                       <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-y-1 text-xs text-gray-400 break-all">
                         {controller.hostname && <span className="truncate">{t('admin.ledControllers.hostname')}: <span className="font-mono text-gray-300">{controller.hostname}</span></span>}

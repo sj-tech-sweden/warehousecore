@@ -1514,24 +1514,40 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 	qb := NewQueryBuilder()
 	query := `
-		SELECT j.jobID,
-		       CONCAT('JOB', LPAD(CAST(j.jobID AS TEXT), 6, '0')) AS job_code,
-		       j.description, j.startDate, j.endDate, j.status,
-		       COALESCE(c.firstName, '') as customer_first_name,
-		       COALESCE(c.lastName, '') as customer_last_name,
-		       COUNT(DISTINCT jd.deviceID) as device_count
+		SELECT j.jobid,
+		       COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.jobid AS TEXT), 6, '0'))) AS job_code,
+		       j.description, j.startdate, j.enddate, COALESCE(s.status, 'open') AS status,
+		       COALESCE(c.firstname, '') as customer_first_name,
+		       COALESCE(c.lastname, '') as customer_last_name,
+		       COALESCE(dc.device_count, 0) as device_count,
+		       COALESCE(rc.requirements_count, 0) as requirements_count
 		FROM jobs j
-		LEFT JOIN customers c ON j.customerID = c.customerID
-		LEFT JOIN jobdevices jd ON j.jobID = jd.jobID
+		LEFT JOIN status s ON j.statusid = s.statusid
+		LEFT JOIN customers c ON j.customerid = c.customerid
+		LEFT JOIN (
+		    SELECT jobid, COUNT(DISTINCT deviceid) as device_count
+		    FROM jobdevices
+		    GROUP BY jobid
+		) dc ON dc.jobid = j.jobid
+		LEFT JOIN (
+		    SELECT job_id, SUM(quantity) as requirements_count
+		    FROM job_product_requirements
+		    GROUP BY job_id
+		) rc ON rc.job_id = j.jobid
 		WHERE 1=1`
 
 	args := []interface{}{}
 	if status != "" {
-		query += " AND LOWER(j.status) = LOWER(" + qb.NextPlaceholder() + ")"
-		args = append(args, status)
+		// 'open' is a legacy status value meaning any non-terminal job
+		if strings.EqualFold(status, "open") {
+			query += " AND (s.status IS NULL OR s.status NOT IN ('Completed', 'Invoiced', 'Cancelled'))"
+		} else {
+			query += " AND LOWER(s.status) = LOWER(" + qb.NextPlaceholder() + ")"
+			args = append(args, status)
+		}
 	}
 
-	query += " GROUP BY j.jobID, j.description, j.startDate, j.endDate, j.status, c.firstName, c.lastName ORDER BY j.startDate ASC"
+	query += " ORDER BY j.startdate ASC"
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -1551,6 +1567,7 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		CustomerFirstName string  `json:"customer_first_name,omitempty"`
 		CustomerLastName  string  `json:"customer_last_name,omitempty"`
 		DeviceCount       int     `json:"device_count"`
+		RequirementsCount int     `json:"requirements_count"`
 	}
 
 	jobs := []JobResponse{}
@@ -1559,7 +1576,7 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		var description, startDate, endDate sql.NullString
 
 		if err := rows.Scan(&j.JobID, &j.JobCode, &description, &startDate, &endDate, &j.Status,
-			&j.CustomerFirstName, &j.CustomerLastName, &j.DeviceCount); err != nil {
+			&j.CustomerFirstName, &j.CustomerLastName, &j.DeviceCount, &j.RequirementsCount); err != nil {
 			log.Printf("Error scanning job row: %v", err)
 			continue
 		}
@@ -1600,12 +1617,14 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 	)
 
 	err = db.QueryRow(`
-		SELECT CONCAT('JOB', LPAD(CAST(j.jobID AS TEXT), 6, '0')), j.description, j.startDate, j.endDate, j.status,
-		       COALESCE(c.firstName, '') as customer_first_name,
-		       COALESCE(c.lastName, '') as customer_last_name
+		SELECT COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.jobid AS TEXT), 6, '0'))),
+		       j.description, j.startdate, j.enddate, COALESCE(s.status, 'open') AS status,
+		       COALESCE(c.firstname, '') as customer_first_name,
+		       COALESCE(c.lastname, '') as customer_last_name
 		FROM jobs j
-		LEFT JOIN customers c ON j.customerID = c.customerID
-		WHERE j.jobID = $1
+		LEFT JOIN status s ON j.statusid = s.statusid
+		LEFT JOIN customers c ON j.customerid = c.customerid
+		WHERE j.jobid = $1
 	`, jobID).Scan(&jobCode, &description, &startDate, &endDate, &status, &customerFirstName, &customerLastName)
 
 	if err == sql.ErrNoRows {
@@ -1675,18 +1694,58 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		devices = append(devices, jd)
 	}
 
+	// Get product requirements for this job
+	type ProductRequirement struct {
+		ProductID   int    `json:"product_id"`
+		ProductName string `json:"product_name"`
+		Required    int    `json:"required"`
+		Assigned    int    `json:"assigned"` // devices of this product currently on_job
+	}
+
+	reqRows, err := db.Query(`
+		SELECT jpr.product_id, COALESCE(p.name, '') as product_name, jpr.quantity,
+		       COALESCE(assigned_counts.assigned, 0) as assigned
+		FROM job_product_requirements jpr
+		LEFT JOIN products p ON jpr.product_id = p.productid
+		LEFT JOIN (
+			SELECT d2.productid, COUNT(*) as assigned
+			FROM jobdevices jd2
+			LEFT JOIN devices d2 ON jd2.deviceid = d2.deviceid
+			WHERE jd2.jobid = $1 AND d2.status = 'on_job'
+			GROUP BY d2.productid
+		) assigned_counts ON assigned_counts.productid = jpr.product_id
+		WHERE jpr.job_id = $1
+		ORDER BY COALESCE(p.name, ''), jpr.product_id
+	`, jobID)
+
+	productRequirements := []ProductRequirement{}
+	if err == nil {
+		defer reqRows.Close()
+		for reqRows.Next() {
+			var req ProductRequirement
+			if err := reqRows.Scan(&req.ProductID, &req.ProductName, &req.Required, &req.Assigned); err != nil {
+				log.Printf("Error scanning requirement row: %v", err)
+				continue
+			}
+			productRequirements = append(productRequirements, req)
+		}
+	} else {
+		log.Printf("Error getting product requirements: %v", err)
+	}
+
 	jobCodeValue := fmt.Sprintf("JOB%06d", jobID)
 	if jobCode.Valid && jobCode.String != "" {
 		jobCodeValue = jobCode.String
 	}
 
 	response := map[string]interface{}{
-		"job_id":              jobID,
-		"job_code":            jobCodeValue,
-		"status":              status,
-		"customer_first_name": customerFirstName,
-		"customer_last_name":  customerLastName,
-		"devices":             devices,
+		"job_id":               jobID,
+		"job_code":             jobCodeValue,
+		"status":               status,
+		"customer_first_name":  customerFirstName,
+		"customer_last_name":   customerLastName,
+		"devices":              devices,
+		"product_requirements": productRequirements,
 	}
 
 	if description.Valid {

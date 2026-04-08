@@ -1450,6 +1450,8 @@
     "ledToggleError": "LED-Steuerung fehlgeschlagen",
     "jobTitle": "Job {{code}}",
     "deviceCount": "{{count}} Geräte",
+    "requirementsCount": "{{count}} geplant",
+    "productRequirements": "Produktanforderungen",
     "select": "Auswählen",
     "backToList": "Zurück zur Job-Liste",
     "date": "Datum",

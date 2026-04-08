@@ -404,9 +404,13 @@ func fetchEventoryProductsWith(cfg *EventoryConfig, client *http.Client) ([]Even
 	if cfg.Username != "" && cfg.Password != "" {
 		token, err := fetchOAuthToken(client, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to obtain Eventory access token: %w", err)
+			if strings.TrimSpace(cfg.APIKey) == "" {
+				return nil, fmt.Errorf("failed to obtain Eventory access token: %w", err)
+			}
+			log.Printf("[EVENTORY] OAuth token fetch failed (%v); falling back to API key authentication", err)
+		} else {
+			oauthToken = token
 		}
-		oauthToken = token
 	}
 
 	// Try common product endpoint paths. Paths are relative (no leading slash)
@@ -434,19 +438,51 @@ func fetchEventoryProductsWith(cfg *EventoryConfig, client *http.Client) ([]Even
 // fetchOAuthToken performs an OAuth2 Resource Owner Password Credentials grant
 // and returns the access token string.
 func fetchOAuthToken(client *http.Client, cfg *EventoryConfig) (string, error) {
-	tokenEndpoint := strings.TrimSpace(cfg.TokenEndpoint)
-	if tokenEndpoint == "" {
-		u, err := joinPath(cfg.APIURL, "oauth/token")
-		if err != nil {
-			return "", fmt.Errorf("failed to construct token endpoint URL: %w", err)
-		}
-		tokenEndpoint = u
+	customEndpoint := strings.TrimSpace(cfg.TokenEndpoint)
+	var endpointPaths []string
+	if customEndpoint != "" {
+		endpointPaths = []string{customEndpoint}
+	} else {
+		// Try modern login endpoints first, then keep oauth/token for backward compatibility.
+		endpointPaths = []string{"login-json", "login", "oauth/token"}
 	}
 
+	var lastErr error
+	for _, endpointPath := range endpointPaths {
+		tokenEndpoint := endpointPath
+		if !strings.HasPrefix(endpointPath, "http://") && !strings.HasPrefix(endpointPath, "https://") {
+			u, err := joinPath(cfg.APIURL, endpointPath)
+			if err != nil {
+				lastErr = fmt.Errorf("failed to construct token endpoint URL: %w", err)
+				continue
+			}
+			tokenEndpoint = u
+		}
+
+		token, err := fetchOAuthTokenFromEndpoint(client, tokenEndpoint, cfg.Username, cfg.Password)
+		if err == nil {
+			return token, nil
+		}
+		lastErr = err
+
+		// If a custom endpoint is explicitly configured, fail fast.
+		if customEndpoint != "" {
+			break
+		}
+		log.Printf("[EVENTORY] Token endpoint %s failed: %v", tokenEndpoint, err)
+	}
+
+	if lastErr == nil {
+		lastErr = errors.New("no token endpoint candidates configured")
+	}
+	return "", lastErr
+}
+
+func fetchOAuthTokenFromEndpoint(client *http.Client, tokenEndpoint, username, password string) (string, error) {
 	form := neturl.Values{
 		"grant_type": {"password"},
-		"username":   {cfg.Username},
-		"password":   {cfg.Password},
+		"username":   {username},
+		"password":   {password},
 	}
 
 	req, err := http.NewRequest(http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
@@ -471,18 +507,26 @@ func fetchOAuthToken(client *http.Client, cfg *EventoryConfig) (string, error) {
 		return "", fmt.Errorf("failed to read token response: %w", err)
 	}
 
-	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
-	}
+	// Support common token response shapes used by login-json/login APIs.
+	var tokenResp map[string]interface{}
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return "", fmt.Errorf("failed to parse token response: %w", err)
 	}
-	if tokenResp.AccessToken == "" {
-		return "", errors.New("token response contained no access_token")
+
+	for _, key := range []string{"access_token", "token", "jwt", "id_token"} {
+		if v, ok := tokenResp[key].(string); ok && strings.TrimSpace(v) != "" {
+			return v, nil
+		}
+	}
+	if data, ok := tokenResp["data"].(map[string]interface{}); ok {
+		for _, key := range []string{"access_token", "token", "jwt", "id_token"} {
+			if v, ok := data[key].(string); ok && strings.TrimSpace(v) != "" {
+				return v, nil
+			}
+		}
 	}
 
-	return tokenResp.AccessToken, nil
+	return "", errors.New("token response contained no supported token field")
 }
 
 // fetchFromEndpoint fetches products from a single endpoint path.
