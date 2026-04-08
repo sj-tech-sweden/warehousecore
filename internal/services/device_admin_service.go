@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,8 +18,6 @@ import (
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 )
-
-const maxDeviceCounter = 999
 
 type DeviceAdminService struct {
 	db           *sql.DB
@@ -107,38 +106,40 @@ func (s *DeviceAdminService) CreateDevices(ctx context.Context, input *models.De
 		prefix = fmt.Sprintf("P%d", input.ProductID)
 	}
 
-	// Serialize concurrent CreateDevices calls for the same product so that
+	// Serialize concurrent CreateDevices calls that share the same prefix so that
 	// two transactions cannot read the same max counter and produce duplicate IDs.
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, input.ProductID); err != nil {
+	// The lock key is derived from the prefix (not productID) because two different
+	// products can share the same prefix (same abbreviation + pos_in_category), and
+	// the counter scan below is scoped to the prefix across the whole devices table.
+	h := fnv.New64a()
+	h.Write([]byte(prefix))
+	lockKey := int64(h.Sum64())
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, lockKey); err != nil {
 		return nil, fmt.Errorf("failed to acquire device creation lock: %w", err)
 	}
 
-	// Find the highest existing 3-digit counter for this prefix to avoid collisions.
-	// Device IDs are generated as prefix + %03d (exactly 3 decimal digits, see
-	// maxDeviceCounter = 999), so we only consider IDs whose total length equals
-	// len(prefix)+3 and whose last 3 characters are all digits.  The CHAR_LENGTH
-	// filter prevents false matches when one prefix is a prefix of another (e.g.
-	// "P1" vs "P10") and prevents interpreting a legacy >3-digit suffix as a
-	// valid counter for this scheme.
-	expectedLen := len(prefix) + 3
-	var nextCounter int
+	// Find the highest existing counter for this prefix to avoid collisions.
+	// The prefix is matched literally via LEFT(deviceID, CHAR_LENGTH(prefix)) = prefix
+	// (rather than LIKE) to avoid misinterpreting SQL wildcard characters that may
+	// appear in the abbreviation.
+	// The numeric suffix after the prefix can be any length; we extract it with
+	// SUBSTRING and cast to BIGINT so counters above 999 are handled naturally.
+	// New IDs are formatted with %03d (minimum 3 digits) to preserve leading zeros
+	// for counters below 1000, matching the DB trigger's LPAD(..., 3, '0') behaviour.
+	var nextCounter int64
 	err = tx.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(
 			CASE
-				WHEN RIGHT(deviceID, 3) ~ '^[0-9]{3}$'
-				THEN CAST(RIGHT(deviceID, 3) AS INTEGER)
+				WHEN SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) ~ '^[0-9]+$'
+				THEN CAST(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) AS BIGINT)
 				ELSE 0
 			END
 		), 0) + 1
 		FROM devices
-		WHERE deviceID LIKE $1
-		  AND CHAR_LENGTH(deviceID) = $2
-	`, prefix+"%", expectedLen).Scan(&nextCounter)
+		WHERE LEFT(deviceID, CHAR_LENGTH($1)) = $1
+	`, prefix).Scan(&nextCounter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine next device counter: %w", err)
-	}
-	if nextCounter+input.Quantity-1 > maxDeviceCounter {
-		return nil, fmt.Errorf("device ID counter would exceed 3-digit limit (%d) for prefix %q", maxDeviceCounter, prefix)
 	}
 
 	createdIDs := make([]string, 0, input.Quantity)
@@ -146,7 +147,7 @@ func (s *DeviceAdminService) CreateDevices(ctx context.Context, input *models.De
 	providedQRCode := input.QRCode != nil && strings.TrimSpace(*input.QRCode) != ""
 
 	for i := 0; i < input.Quantity; i++ {
-		deviceID := fmt.Sprintf("%s%03d", prefix, nextCounter+i)
+		deviceID := fmt.Sprintf("%s%03d", prefix, nextCounter+int64(i))
 		serialValue := serialForIndex(input.SerialNumber, input.StartingSerial, input.IncrementSerial, i)
 
 		_, err := tx.ExecContext(ctx, `
