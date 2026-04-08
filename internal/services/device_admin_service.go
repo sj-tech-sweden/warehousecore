@@ -71,39 +71,45 @@ func (s *DeviceAdminService) CreateDevices(ctx context.Context, input *models.De
 		_ = tx.Rollback()
 	}()
 
-	// Determine the device ID prefix from the product's subcategory abbreviation
-	// and pos_in_category.  This diverges from the DB trigger (migration 030)
-	// in two intentional ways:
+	// Determine the device ID prefix.  If the caller supplies a non-empty
+	// device_prefix it is used verbatim (after trimming whitespace), giving the
+	// web admin UI full control over the prefix.  Otherwise the prefix is derived
+	// from the product's subcategory abbreviation + pos_in_category, mirroring the
+	// DB trigger (migration 030) with two intentional divergences:
 	//   1. When no subcategory abbreviation is found the trigger raises an error;
 	//      here we fall back to "P{productID}" to support legacy products.
 	//   2. The trigger has a special-case for pre-set "PKG_*" IDs (used for
 	//      virtual package devices).  That case is not needed here because
 	//      DeviceCreateInput has no deviceID field -- PKG_ devices are created
 	//      through a separate code path that supplies the ID explicitly.
-	var abbreviation sql.NullString
-	var posInCategory sql.NullInt64
-	err = tx.QueryRowContext(ctx, `
-		SELECT s.abbreviation, p.pos_in_category
-		FROM products p
-		LEFT JOIN subcategories s ON p.subcategoryID = s.subcategoryID
-		WHERE p.productID = $1
-	`, input.ProductID).Scan(&abbreviation, &posInCategory)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("product %d not found", input.ProductID)
-		}
-		return nil, fmt.Errorf("failed to fetch product info: %w", err)
-	}
-
 	var prefix string
-	if abbreviation.Valid && abbreviation.String != "" {
-		posStr := "0"
-		if posInCategory.Valid {
-			posStr = fmt.Sprintf("%d", posInCategory.Int64)
-		}
-		prefix = abbreviation.String + posStr
+	if input.DevicePrefix != nil && strings.TrimSpace(*input.DevicePrefix) != "" {
+		prefix = strings.TrimSpace(*input.DevicePrefix)
 	} else {
-		prefix = fmt.Sprintf("P%d", input.ProductID)
+		var abbreviation sql.NullString
+		var posInCategory sql.NullInt64
+		err = tx.QueryRowContext(ctx, `
+			SELECT s.abbreviation, p.pos_in_category
+			FROM products p
+			LEFT JOIN subcategories s ON p.subcategoryID = s.subcategoryID
+			WHERE p.productID = $1
+		`, input.ProductID).Scan(&abbreviation, &posInCategory)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("product %d not found", input.ProductID)
+			}
+			return nil, fmt.Errorf("failed to fetch product info: %w", err)
+		}
+
+		if abbreviation.Valid && abbreviation.String != "" {
+			posStr := "0"
+			if posInCategory.Valid {
+				posStr = fmt.Sprintf("%d", posInCategory.Int64)
+			}
+			prefix = abbreviation.String + posStr
+		} else {
+			prefix = fmt.Sprintf("P%d", input.ProductID)
+		}
 	}
 
 	// Serialize concurrent CreateDevices calls that share the same prefix so that
