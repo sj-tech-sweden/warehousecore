@@ -277,7 +277,7 @@ export function ScanPage() {
       else if (action !== 'case') {
         // For consumables with intake/outtake, ask for quantity first.
         // Also, regular (non-consumable) device outtake requires a job to be selected.
-        let quantity = undefined;
+        let quantity: number | undefined = undefined;
         if (action === 'intake' || action === 'outtake') {
           // Check scan to determine whether this is a consumable/accessory
           const checkResponse = await scansApi.process({
@@ -291,8 +291,8 @@ export function ScanPage() {
           if (isConsumable) {
             // Consumable/accessory: ask for quantity
             const promptText = action === 'intake'
-              ? t('scan.prompts.intakeQuantity', { unit: product!.unit })
-              : t('scan.prompts.outtakeQuantity', { unit: product!.unit });
+              ? t('scan.prompts.intakeQuantity', { unit: product?.unit })
+              : t('scan.prompts.outtakeQuantity', { unit: product?.unit });
             const quantityStr = window.prompt(promptText);
 
             if (!quantityStr || isNaN(Number(quantityStr)) || Number(quantityStr) <= 0) {
