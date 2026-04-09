@@ -8,8 +8,9 @@
 -- small table this is negligible. If the table is large and write availability
 -- is critical, run during a maintenance window.
 --
--- The jobdevices table is shared with RentalCore; we use IF NOT EXISTS guards so
--- the migration is safe to re-run and does not break existing data.
+-- The jobdevices table is shared with RentalCore; the constraint addition is
+-- guarded by a column-based check (any existing UNIQUE on (deviceID, jobID),
+-- regardless of constraint name) so the migration is safe to re-run.
 BEGIN;
 
 -- Lock the table for the duration of this migration to prevent concurrent
@@ -35,14 +36,21 @@ WHERE ctid IN (
   WHERE rn > 1
 );
 
--- Step 2: Add the unique constraint (idempotent via IF NOT EXISTS guard on pg_constraint).
+-- Step 2: Add the unique constraint (idempotent: skip if any unique constraint
+-- already covers (deviceID, jobID) on jobdevices, regardless of constraint name).
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
-    FROM   pg_constraint
-    WHERE  conname = 'uq_jobdevices_device_job'
-      AND  conrelid = 'jobdevices'::regclass
+    FROM   pg_constraint c
+    WHERE  c.contype    = 'u'
+      AND  c.conrelid   = 'jobdevices'::regclass
+      AND  (
+        SELECT array_agg(a.attname ORDER BY a.attname)
+        FROM   pg_attribute a
+        WHERE  a.attrelid = c.conrelid
+          AND  a.attnum   = ANY(c.conkey)
+      ) = ARRAY['deviceid', 'jobid']
   ) THEN
     ALTER TABLE jobdevices
       ADD CONSTRAINT uq_jobdevices_device_job UNIQUE (deviceID, jobID);
