@@ -285,6 +285,13 @@ export function ScanPage() {
             action: 'check',
           });
 
+          if (!checkResponse.data.success) {
+            setResult(checkResponse.data);
+            setScanCode('');
+            setLoading(false);
+            return;
+          }
+
           const product = checkResponse.data.product;
           const isConsumable = !!(product && product.unit);
 
@@ -294,8 +301,9 @@ export function ScanPage() {
               ? t('scan.prompts.intakeQuantity', { unit: product?.unit })
               : t('scan.prompts.outtakeQuantity', { unit: product?.unit });
             const quantityStr = window.prompt(promptText);
+            const quantityNum = Number(quantityStr);
 
-            if (!quantityStr || isNaN(Number(quantityStr)) || Number(quantityStr) <= 0) {
+            if (!quantityStr || !Number.isInteger(quantityNum) || quantityNum <= 0) {
               setResult({
                 success: false,
                 message: t('scan.invalidQuantity'),
@@ -305,8 +313,8 @@ export function ScanPage() {
               setLoading(false);
               return;
             }
-            quantity = Number(quantityStr);
-          } else if (action === 'outtake' && !scannedJobId) {
+            quantity = quantityNum;
+          } else if (action === 'outtake' && checkResponse.data.device && !scannedJobId) {
             // Regular device outtake requires a job to be selected first
             setResult({
               success: false,
