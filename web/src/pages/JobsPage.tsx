@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff, ClipboardList } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff, ClipboardList, Camera, Nfc, Keyboard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { jobsApi, scansApi, ledApi } from '../lib/api';
 import type { Job, JobSummary, JobDevice, LEDStatus, ProductRequirement } from '../lib/api';
 import { formatDateISO } from '../lib/utils';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
+import { useNFCScanner } from '../hooks/useNFCScanner';
+import type { InputMethod } from '../types/scanTypes';
 
 const JOB_CODE_PATTERN = /^JOB\d+$/i;
-
 export function JobsPage() {
   const { t } = useTranslation();
   const { id: urlJobId } = useParams<{ id: string }>();
@@ -18,10 +20,65 @@ export function JobsPage() {
   const [scanLoading, setScanLoading] = useState(false);
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Input method for the scan card: keyboard (default), camera, or nfc
+  const [inputMethod, setInputMethod] = useState<InputMethod>('keyboard');
+
+  // Stable ref so camera/NFC callbacks can always reach the latest scan handler
+  const processCodeRef = useRef<(code: string) => void>(() => {});
+
+  // Ref for result auto-dismiss timeout – prevents an older timeout from
+  // clearing a newer result when scans happen in quick succession.
+  const resultTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-entrancy guard – prevents overlapping async scan requests
+  const inFlightRef = useRef(false);
+
+  const scheduleScanResultDismiss = useCallback(() => {
+    if (resultTimeoutRef.current !== null) {
+      clearTimeout(resultTimeoutRef.current);
+    }
+    resultTimeoutRef.current = setTimeout(() => {
+      setScanResult(null);
+      resultTimeoutRef.current = null;
+    }, 3000);
+  }, []);
+
   // LED state
   const [ledActive, setLedActive] = useState(false);
   const [ledStatus, setLedStatus] = useState<LEDStatus | null>(null);
   const [ledLoading, setLedLoading] = useState(false);
+
+  const loadJobDetails = useCallback(async (jobId: number, options: { highlight?: boolean } = {}) => {
+    try {
+      setLoading(true);
+      const { data } = await jobsApi.getById(jobId);
+      setSelectedJob(data);
+
+      if (options.highlight !== false) {
+        setLedActive(false);
+        try {
+          await ledApi.highlightJob(jobId);
+          setLedActive(true);
+        } catch (error) {
+          console.error('Failed to highlight job LEDs:', error);
+          setLedActive(false);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load job details:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const refreshJobDetails = useCallback(async (jobId: number) => {
+    try {
+      const { data } = await jobsApi.getById(jobId);
+      setSelectedJob(data);
+    } catch (error) {
+      console.error('Failed to refresh job:', error);
+    }
+  }, []);
 
   // Load open jobs and LED status on mount
   useEffect(() => {
@@ -37,7 +94,7 @@ export function JobsPage() {
         loadJobDetails(jobId, { highlight: true });
       }
     }
-  }, [urlJobId]);
+  }, [urlJobId, loadJobDetails]);
 
   const loadLEDStatus = async () => {
     try {
@@ -57,7 +114,7 @@ export function JobsPage() {
 
       return () => clearInterval(interval);
     }
-  }, [selectedJob]);
+  }, [selectedJob, refreshJobDetails]);
 
   // Cleanup LEDs when leaving the page or unmounting
   useEffect(() => {
@@ -106,41 +163,91 @@ export function JobsPage() {
     }
   };
 
-  const loadJobDetails = async (jobId: number, options: { highlight?: boolean } = {}) => {
-    try {
-      setLoading(true);
-      const { data } = await jobsApi.getById(jobId);
-      setSelectedJob(data);
+  const handleCodeDetected = useCallback((code: string) => {
+    processCodeRef.current(code);
+  }, []);
 
-      if (options.highlight !== false) {
-        setLedActive(false);
-        try {
-          await ledApi.highlightJob(jobId);
-          setLedActive(true);
-        } catch (error) {
-          console.error('Failed to highlight job LEDs:', error);
-          setLedActive(false);
-        }
+  const barcodeScanner = useBarcodeScanner({ onDetected: handleCodeDetected });
+  const nfcScanner = useNFCScanner({ onDetected: handleCodeDetected });
+
+  const {
+    startScanning: startBarcodeScanning,
+    stopScanning: stopBarcodeScanning,
+  } = barcodeScanner;
+  const {
+    startScanning: startNFCScanning,
+    stopScanning: stopNFCScanning,
+  } = nfcScanner;
+
+  const handleInputMethodChange = useCallback((method: InputMethod) => {
+    setScanCode('');
+    setScanResult(null);
+    setScanLoading(false);
+    setInputMethod(method);
+  }, []);
+
+  // Start/stop scanners when input method changes
+  useEffect(() => {
+    let active = true;
+
+    if (inputMethod !== 'camera') stopBarcodeScanning();
+    if (inputMethod !== 'nfc') stopNFCScanning();
+
+    if (inputMethod === 'camera') {
+      Promise.resolve(startBarcodeScanning())
+        .then(() => {
+          if (!active) {
+            stopBarcodeScanning();
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to start barcode scanner:', error);
+        });
+    } else if (inputMethod === 'nfc') {
+      Promise.resolve(startNFCScanning())
+        .then(() => {
+          if (!active) {
+            stopNFCScanning();
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to start NFC scanner:', error);
+        });
+    }
+
+    return () => {
+      active = false;
+      stopBarcodeScanning();
+      stopNFCScanning();
+    };
+  }, [inputMethod, startBarcodeScanning, stopBarcodeScanning, startNFCScanning, stopNFCScanning]);
+
+  // Reset input method and stop scanners when leaving job detail view
+  useEffect(() => {
+    if (!selectedJob) {
+      stopBarcodeScanning();
+      stopNFCScanning();
+      setInputMethod('keyboard');
+    }
+  }, [selectedJob, stopBarcodeScanning, stopNFCScanning]);
+
+  // Stop scanners and clear pending result timeout on unmount
+  useEffect(() => {
+    return () => {
+      stopBarcodeScanning();
+      stopNFCScanning();
+      if (resultTimeoutRef.current !== null) {
+        clearTimeout(resultTimeoutRef.current);
       }
-    } catch (error) {
-      console.error('Failed to load job details:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+  }, [stopBarcodeScanning, stopNFCScanning]);
 
-  const refreshJobDetails = async (jobId: number) => {
-    try {
-      const { data } = await jobsApi.getById(jobId);
-      setSelectedJob(data);
-    } catch (error) {
-      console.error('Failed to refresh job:', error);
-    }
-  };
+  // Keep ref pointing to the latest processCode so camera/NFC callbacks are never stale
+  const processCode = useCallback(async (code: string) => {
+    // Re-entrancy guard: ignore new detections while a scan is already in-flight
+    if (inFlightRef.current) return;
 
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const rawCode = scanCode.trim();
+    const rawCode = code.trim();
     if (!rawCode) {
       return;
     }
@@ -149,6 +256,7 @@ export function JobsPage() {
 
     // Detect job code scans (e.g., JOB0001)
     if (JOB_CODE_PATTERN.test(normalizedCode)) {
+      inFlightRef.current = true;
       setScanLoading(true);
       setScanResult(null);
 
@@ -169,7 +277,8 @@ export function JobsPage() {
       } finally {
         setScanCode('');
         setScanLoading(false);
-        setTimeout(() => setScanResult(null), 3000);
+        inFlightRef.current = false;
+        scheduleScanResultDismiss();
       }
 
       return;
@@ -181,17 +290,18 @@ export function JobsPage() {
         message: t('jobsPage.selectJobFirst'),
       });
       setScanLoading(false);
-      setTimeout(() => setScanResult(null), 3000);
+      scheduleScanResultDismiss();
       return;
     }
 
+    inFlightRef.current = true;
     setScanLoading(true);
     setScanResult(null);
 
     try {
       // Process outtake scan with job context
       const { data } = await scansApi.process({
-        scan_code: scanCode,
+        scan_code: rawCode,
         action: 'outtake',
         job_id: selectedJob.job_id,
       });
@@ -215,9 +325,21 @@ export function JobsPage() {
       });
     } finally {
       setScanLoading(false);
+      inFlightRef.current = false;
       // Clear result after 3 seconds
-      setTimeout(() => setScanResult(null), 3000);
+      scheduleScanResultDismiss();
     }
+  }, [t, selectedJob, loadJobDetails, refreshJobDetails, scheduleScanResultDismiss]);
+
+  // Keep submitCodeRef in sync with the latest processCode so scanner callbacks
+  // (which are memoised on mount) can always reach the current state closure.
+  useEffect(() => {
+    processCodeRef.current = processCode;
+  }, [processCode]);
+
+  const handleScan = (e: React.FormEvent) => {
+    e.preventDefault();
+    processCode(scanCode);
   };
 
   const handleBackToList = async () => {
@@ -516,13 +638,111 @@ export function JobsPage() {
               )}
             </div>
 
+            <div role="group" aria-label={t('scan.inputMethods.label')} className="flex gap-1 p-1 bg-white/5 rounded-xl mb-4">
+              <button
+                type="button"
+                onClick={() => handleInputMethodChange('keyboard')}
+                aria-pressed={inputMethod === 'keyboard'}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                  inputMethod === 'keyboard'
+                    ? 'bg-accent-red text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Keyboard className="w-4 h-4" />
+                {t('scan.inputMethods.keyboard')}
+              </button>
+              {barcodeScanner.isSupported && (
+                <button
+                  type="button"
+                  onClick={() => handleInputMethodChange('camera')}
+                  aria-pressed={inputMethod === 'camera'}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                    inputMethod === 'camera'
+                      ? 'bg-accent-red text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Camera className="w-4 h-4" />
+                  {t('scan.inputMethods.camera')}
+                </button>
+              )}
+              {nfcScanner.isSupported && (
+                <button
+                  type="button"
+                  onClick={() => handleInputMethodChange('nfc')}
+                  aria-pressed={inputMethod === 'nfc'}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                    inputMethod === 'nfc'
+                      ? 'bg-accent-red text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Nfc className="w-4 h-4" />
+                  {t('scan.inputMethods.nfc')}
+                </button>
+              )}
+            </div>
+
+            {/* Camera Preview */}
+            {inputMethod === 'camera' && (
+              <div className="mb-4">
+                {barcodeScanner.error ? (
+                  <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                    <XCircle className="w-5 h-5 flex-shrink-0" />
+                    {t(barcodeScanner.error)}
+                  </div>
+                ) : (
+                  <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+                    <video
+                      ref={barcodeScanner.videoRef}
+                      className="w-full h-full object-cover"
+                      playsInline
+                      muted
+                    />
+                    {!barcodeScanner.isScanning && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                        <p className="text-white text-sm">{t('scan.camera.starting')}</p>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-2/3 h-2/3 border-2 border-accent-red/70 rounded-lg" />
+                    </div>
+                  </div>
+                )}
+                <p className="text-center text-gray-400 text-xs mt-2">{t('scan.camera.hint')}</p>
+              </div>
+            )}
+
+            {/* NFC Waiting State */}
+            {inputMethod === 'nfc' && (
+              <div className="mb-4">
+                {nfcScanner.error ? (
+                  <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                    <XCircle className="w-5 h-5 flex-shrink-0" />
+                    {t(nfcScanner.error)}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/5 border border-white/10">
+                    <div className={`p-4 rounded-full ${nfcScanner.isScanning ? 'bg-accent-red/20 animate-pulse' : 'bg-white/10'}`}>
+                      <Nfc className={`w-12 h-12 ${nfcScanner.isScanning ? 'text-accent-red' : 'text-gray-500'}`} />
+                    </div>
+                    <p className="text-white text-sm font-semibold">
+                      {nfcScanner.isScanning ? t('scan.nfc.ready') : t('scan.nfc.starting')}
+                    </p>
+                    <p className="text-gray-400 text-xs text-center">{t('scan.nfc.hint')}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <form onSubmit={handleScan} className="space-y-4">
               <input
                 type="text"
                 value={scanCode}
                 onChange={(e) => setScanCode(e.target.value)}
                 placeholder={t('jobsPage.scanPlaceholder')}
-                autoFocus
+                autoFocus={inputMethod === 'keyboard'}
                 className="w-full px-6 py-4 bg-white/10 backdrop-blur-md border-2 border-white/20 rounded-xl text-white text-xl placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
               />
 

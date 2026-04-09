@@ -9,7 +9,7 @@ import { DeviceInfoModal } from '../components/DeviceInfoModal';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { useNFCScanner } from '../hooks/useNFCScanner';
 
-type InputMethod = 'keyboard' | 'camera' | 'nfc';
+import type { InputMethod } from '../types/scanTypes';
 type ScanStep = 'device' | 'zone' | 'case' | 'device-for-case';
 
 export function ScanPage() {

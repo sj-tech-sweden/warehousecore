@@ -5,7 +5,7 @@ import { ModalPortal } from './ModalPortal';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { useNFCScanner } from '../hooks/useNFCScanner';
 
-type InputMethod = 'keyboard' | 'camera' | 'nfc';
+import type { InputMethod } from '../types/scanTypes';
 
 interface ScanFieldModalProps {
   isOpen: boolean;

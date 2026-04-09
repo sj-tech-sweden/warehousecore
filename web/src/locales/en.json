@@ -1178,6 +1178,7 @@
       "successDescription": "The issue has been logged and the device marked accordingly."
     },
     "inputMethods": {
+      "label": "Input method",
       "keyboard": "Keyboard",
       "camera": "Camera",
       "nfc": "NFC"

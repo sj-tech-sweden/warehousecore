@@ -1178,6 +1178,7 @@
       "successDescription": "Das Problem wurde protokolliert und das Gerät entsprechend markiert."
     },
     "inputMethods": {
+      "label": "Eingabemethode",
       "keyboard": "Tastatur",
       "camera": "Kamera",
       "nfc": "NFC"
