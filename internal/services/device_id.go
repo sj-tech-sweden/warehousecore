@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"unicode"
 )
 
 // deviceIDLikeEscaper escapes SQL LIKE wildcard characters (\, %, _) so that
@@ -24,16 +25,30 @@ const numericSuffixPattern = `^[0-9]+$`
 // accidentally collide with advisory locks taken by other subsystems.
 const deviceIDLockNamespace int32 = 1
 
+// normalizeDeviceIDPrefix uppercases p and strips every character that is not
+// an ASCII letter or digit, matching the normalization applied to
+// caller-supplied prefixes in internal/handlers/product_handlers.go.
+func normalizeDeviceIDPrefix(p string) string {
+	return strings.Map(func(r rune) rune {
+		r = unicode.ToUpper(r)
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return -1
+	}, p)
+}
+
 // DeriveDeviceIDPrefix returns the device ID prefix for a given product.
-// If manualPrefix is non-empty it is returned verbatim (after trimming).
-// Otherwise the prefix is derived from the product's subcategory abbreviation
-// + pos_in_category (e.g. "LED1"). If no abbreviation is found the function
-// falls back to "P{productID}" rather than raising an error, intentionally
-// diverging from the DB trigger (migration 030) which raises in that case.
+// If manualPrefix is non-empty after trimming it is normalized (uppercased,
+// stripped to [A-Z0-9]) and returned. Otherwise the prefix is derived from
+// the product's subcategory abbreviation + pos_in_category (e.g. "LED1"). If
+// no abbreviation is found the function falls back to "P{productID}" rather
+// than raising an error, intentionally diverging from the DB trigger
+// (migration 030) which raises in that case.
 //
 // The caller must hold an open transaction (tx).
 func DeriveDeviceIDPrefix(ctx context.Context, tx *sql.Tx, productID int, manualPrefix string) (string, error) {
-	if p := strings.TrimSpace(manualPrefix); p != "" {
+	if p := normalizeDeviceIDPrefix(strings.TrimSpace(manualPrefix)); p != "" {
 		return p, nil
 	}
 
@@ -78,6 +93,15 @@ func DeriveDeviceIDPrefix(ctx context.Context, tx *sql.Tx, productID int, manual
 // the prefix are escaped before building the LIKE pattern so they are treated
 // as literals. The numeric suffix after the prefix can be any length; counters
 // above 999 are handled naturally.
+//
+// Note: the DB trigger in migration 030 (generate_device_id) computes the
+// counter from only the last 3 characters of existing deviceIDs, so it will
+// produce duplicate IDs once counters exceed 999 for any given prefix. The
+// trigger only fires when deviceID IS NULL on INSERT. All device inserts that
+// go through CreateDevices or any caller of AllocateDeviceCounter always
+// supply an explicit deviceID, so the trigger does not fire for those paths.
+// Any other code path that INSERTs without a deviceID should be updated to
+// use AllocateDeviceCounter to avoid this inconsistency.
 //
 // New IDs should be formatted with fmt.Sprintf("%s%03d", prefix, counter+i)
 // to preserve three-digit leading zeros for counters below 1000, matching
