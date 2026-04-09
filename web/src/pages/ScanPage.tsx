@@ -114,6 +114,19 @@ export function ScanPage() {
       // First, verify job exists
       await jobsApi.getById(jobId);
 
+      // When action is outtake: stay on the scan page and keep the job context
+      // so the user can immediately scan the device to check out.
+      if (action === 'outtake') {
+        setScannedJobId(jobId);
+        setResult({
+          success: true,
+          message: t('scan.outtake.jobSelected', { id: jobId }),
+          action: 'outtake',
+          duplicate: false,
+        });
+        return;
+      }
+
       // Check LED status
       const { data: ledStatus } = await ledApi.getStatus();
 
@@ -137,7 +150,7 @@ export function ScanPage() {
     } finally {
       setLoading(false);
     }
-  }, [navigate, t]);
+  }, [action, navigate, t]);
 
   const processCode = useCallback(async (code: string) => {
     if (!code.trim()) return;
@@ -262,23 +275,35 @@ export function ScanPage() {
       }
       // All other actions (outtake, check) - single step
       else if (action !== 'case') {
-        // For consumables with intake/outtake, ask for quantity first
-        let quantity = undefined;
-        if ((action === 'intake' || action === 'outtake')) {
-          // First check if this might be a consumable (quick check without committing)
+        // For consumables with intake/outtake, ask for quantity first.
+        // Also, regular (non-consumable) device outtake requires a job to be selected.
+        let quantity: number | undefined = undefined;
+        if (action === 'intake' || action === 'outtake') {
+          // Check scan to determine whether this is a consumable/accessory
           const checkResponse = await scansApi.process({
             scan_code: code,
             action: 'check',
           });
 
-          // If the response includes product info with a unit, it's an accessory/consumable
-          if (checkResponse.data.product && checkResponse.data.product.unit) {
-            const promptText = action === 'intake'
-              ? t('scan.prompts.intakeQuantity', { unit: checkResponse.data.product.unit })
-              : t('scan.prompts.outtakeQuantity', { unit: checkResponse.data.product.unit });
-            const quantityStr = window.prompt(promptText);
+          if (!checkResponse.data.success) {
+            setResult(checkResponse.data);
+            setScanCode('');
+            setLoading(false);
+            return;
+          }
 
-            if (!quantityStr || isNaN(Number(quantityStr)) || Number(quantityStr) <= 0) {
+          const product = checkResponse.data.product;
+          const isConsumable = !!(product && product.unit);
+
+          if (isConsumable) {
+            // Consumable/accessory: ask for quantity
+            const promptText = action === 'intake'
+              ? t('scan.prompts.intakeQuantity', { unit: product?.unit })
+              : t('scan.prompts.outtakeQuantity', { unit: product?.unit });
+            const quantityStr = window.prompt(promptText);
+            const quantityNum = Number(quantityStr);
+
+            if (!quantityStr || !Number.isInteger(quantityNum) || quantityNum <= 0) {
               setResult({
                 success: false,
                 message: t('scan.invalidQuantity'),
@@ -288,18 +313,37 @@ export function ScanPage() {
               setLoading(false);
               return;
             }
-            quantity = Number(quantityStr);
+            quantity = quantityNum;
+          } else if (action === 'outtake' && checkResponse.data.device && !scannedJobId) {
+            // Regular device outtake requires a job to be selected first
+            setResult({
+              success: false,
+              message: t('scan.outtake.noJobSelected'),
+              action,
+              duplicate: false,
+            });
+            setScanCode('');
+            setLoading(false);
+            return;
           }
         }
 
-        // Now do the actual scan with quantity if provided
+        // For outtake of a regular device, pass the selected job id.
+        // For consumables, pass the quantity via job_id (backend workaround).
+        const jobIdOrQuantity = action === 'outtake' && quantity === undefined
+          ? scannedJobId ?? undefined
+          : quantity;
+
+        // Now do the actual scan with quantity/job_id if provided
         const { data } = await scansApi.process({
           scan_code: code,
           action: action,
-          job_id: quantity, // Pass quantity via job_id field (backend expects this)
+          job_id: jobIdOrQuantity,
         });
         setResult(data);
         setScanCode('');
+        // After a successful device outtake, keep the job selected so the user
+        // can continue scanning more devices for the same job.
       }
     } catch (error: any) {
       console.error('Scan failed:', error);
@@ -330,7 +374,7 @@ export function ScanPage() {
     } finally {
       setLoading(false);
     }
-  }, [action, step, deviceScanCode, consumableQuantity, scannedCase, caseDeviceIds, t, handleJobCodeScan, scheduleCaseActionDismiss]);
+  }, [action, step, deviceScanCode, consumableQuantity, scannedCase, caseDeviceIds, scannedJobId, t, handleJobCodeScan, scheduleCaseActionDismiss]);
 
   // Keep submitCodeRef in sync with the latest processCode so scanner callbacks
   // (which are memoised on mount) can always reach the current state closure.
@@ -353,6 +397,9 @@ export function ScanPage() {
     } else {
       setStep('device');
     }
+    // Clear any previously scanned job context on action changes so a job used
+    // for LED modal/navigation flow cannot be reused implicitly in outtake mode.
+    setScannedJobId(null);
     setDeviceScanCode('');
     setConsumableQuantity(undefined);
     setScanCode('');
@@ -558,6 +605,29 @@ export function ScanPage() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Active Job Info Panel (outtake mode) */}
+          {action === 'outtake' && scannedJobId && (
+            <div className="mb-4 p-4 rounded-xl bg-accent-red/10 border border-accent-red/30">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                  <span className="font-semibold text-white text-sm">
+                    {t('scan.outtake.jobSelected', { id: scannedJobId })}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => setScannedJobId(null)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-gray-300 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <X className="w-3 h-3" />
+                  {t('scan.outtake.clearJob')}
+                </button>
+              </div>
             </div>
           )}
 
