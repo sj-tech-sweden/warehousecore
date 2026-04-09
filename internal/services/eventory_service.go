@@ -265,7 +265,7 @@ func GetEventoryCredentialKeyStatus() EventoryCredentialKeyStatus {
 	if raw := strings.TrimSpace(os.Getenv("EVENTORY_CREDENTIAL_KEY")); raw != "" {
 		if _, err := parseCredentialKey(raw, "EVENTORY_CREDENTIAL_KEY"); err != nil {
 			log.Printf("[EVENTORY] EVENTORY_CREDENTIAL_KEY env var is set but invalid: %v", err)
-			return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceNone}
+			return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceEnv}
 		}
 		return EventoryCredentialKeyStatus{Configured: true, Source: CredentialKeySourceEnv}
 	}
@@ -288,7 +288,7 @@ func GetEventoryCredentialKeyStatus() EventoryCredentialKeyStatus {
 			log.Printf("[EVENTORY] invalid credential key stored in database (scope=%q key=%q): %v",
 				eventorySettingScope, eventoryCredentialKeySettingKey, err)
 		}
-		return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceNone}
+		return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceDatabase}
 	}
 	return EventoryCredentialKeyStatus{Configured: true, Source: CredentialKeySourceDatabase}
 }

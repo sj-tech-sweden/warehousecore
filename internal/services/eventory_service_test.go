@@ -1017,15 +1017,16 @@ func TestGetEventoryCredentialKeyStatus_NoneWhenEnvEmpty(t *testing.T) {
 }
 
 // TestGetEventoryCredentialKeyStatus_InvalidEnvKey verifies that an invalid
-// (non-32-byte, non-base64) env var value is reported as Configured=false.
+// (non-32-byte, non-base64) env var value is reported as Configured=false with
+// Source="env" so the UI can distinguish "env var present but invalid" from "not set".
 func TestGetEventoryCredentialKeyStatus_InvalidEnvKey(t *testing.T) {
 	t.Setenv("EVENTORY_CREDENTIAL_KEY", "not-a-valid-key")
 	status := GetEventoryCredentialKeyStatus()
 	if status.Configured {
 		t.Error("expected Configured=false for an invalid env var key")
 	}
-	if status.Source == CredentialKeySourceEnv {
-		t.Errorf("expected source != %q for an invalid env var key", CredentialKeySourceEnv)
+	if status.Source != CredentialKeySourceEnv {
+		t.Errorf("expected source=%q for an invalid env var key, got %q", CredentialKeySourceEnv, status.Source)
 	}
 }
 
