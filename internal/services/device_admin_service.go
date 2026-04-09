@@ -116,8 +116,8 @@ func (s *DeviceAdminService) CreateDevices(ctx context.Context, input *models.De
 			status,
 			nullableString(trimPtr(input.CurrentLocation)),
 			nullableInt(input.ZoneID),
-			nullableFloat(input.ConditionRating),
-			nullableFloat(input.UsageHours),
+			derefFloatOr(input.ConditionRating, 0),
+			derefFloatOr(input.UsageHours, 0),
 			parseDatePtr(input.PurchaseDate),
 			parseDatePtr(input.RetireDate),
 			parseDatePtr(input.WarrantyEndDate),
@@ -261,7 +261,7 @@ func (s *DeviceAdminService) UpdateDevice(ctx context.Context, deviceID string, 
 		if input.ConditionRating.Valid {
 			addArg("condition_rating = $%d", input.ConditionRating.Value)
 		} else {
-			addArg("condition_rating = $%d", nil)
+			addArg("condition_rating = $%d", 0.0)
 		}
 	}
 
@@ -269,7 +269,7 @@ func (s *DeviceAdminService) UpdateDevice(ctx context.Context, deviceID string, 
 		if input.UsageHours.Valid {
 			addArg("usage_hours = $%d", input.UsageHours.Value)
 		} else {
-			addArg("usage_hours = $%d", nil)
+			addArg("usage_hours = $%d", 0.0)
 		}
 	}
 

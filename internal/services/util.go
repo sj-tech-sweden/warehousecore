@@ -48,3 +48,13 @@ func nullableFloat(value *float64) interface{} {
 	}
 	return *value
 }
+
+// derefFloatOr returns the dereferenced value of v, or def when v is nil.
+// Use this when the DB column is NOT NULL (e.g. condition_rating, usage_hours)
+// so that a missing optional field is stored as the default rather than NULL.
+func derefFloatOr(v *float64, def float64) float64 {
+	if v == nil {
+		return def
+	}
+	return *v
+}
