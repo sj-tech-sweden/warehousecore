@@ -10,10 +10,10 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func registerDynamicDocs(router *mux.Router) {
+func registerDynamicDocs(router *mux.Router, mainRouter *mux.Router) {
 	router.HandleFunc("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(buildMuxOpenAPISpec(router))
+		_ = json.NewEncoder(w).Encode(buildMuxOpenAPISpec(mainRouter))
 	}).Methods("GET")
 
 	router.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
