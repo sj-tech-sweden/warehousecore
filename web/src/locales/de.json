@@ -1179,6 +1179,11 @@
       "id": "ID:",
       "status": "Status:"
     },
+    "outtake": {
+      "jobSelected": "Job #{{id}} ausgewählt – jetzt das Gerät scannen zum Ausgeben.",
+      "noJobSelected": "Zuerst einen Job-Barcode (JOB######) scannen, dann das Gerät.",
+      "clearJob": "Job löschen"
+    },
     "ledModal": {
       "title": "LED-Licht aktivieren?",
       "description": "Das LED-Licht ist aktuell ausgeschaltet. Möchtest du es aktivieren, um die Job-Geräte zu markieren?",
