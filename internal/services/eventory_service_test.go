@@ -744,7 +744,7 @@ func TestFetchEventoryProducts_OAuthPasswordGrant(t *testing.T) {
 		default:
 			gotProductAuth = r.Header.Get("Authorization")
 			gotProductAPIKey = r.Header.Get("X-API-Key")
-			json.NewEncoder(w).Encode([]EventoryProduct{{Name: "Widget"}})
+			json.NewEncoder(w).Encode([]EventoryProduct{{ID: "widget-1", Name: "Widget"}})
 		}
 	}))
 	defer srv.Close()
@@ -940,5 +940,100 @@ func TestEventoryCredentialKey_Base64WrongLength(t *testing.T) {
 	// Error should mention the decoded byte count (16), not the raw string length.
 	if !strings.Contains(err.Error(), "16") {
 		t.Errorf("expected error to mention decoded length 16, got: %v", err)
+	}
+}
+
+// TestParseCredentialKey covers valid and invalid inputs to parseCredentialKey.
+func TestParseCredentialKey_Valid(t *testing.T) {
+	// Raw 32-byte ASCII key
+	raw32 := strings.Repeat("x", 32)
+	key, err := parseCredentialKey(raw32, "test")
+	if err != nil {
+		t.Fatalf("unexpected error for raw 32-byte key: %v", err)
+	}
+	if len(key) != 32 {
+		t.Errorf("expected 32-byte key, got %d", len(key))
+	}
+
+	// base64-encoded 32-byte key
+	b64Key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	key, err = parseCredentialKey(b64Key, "test")
+	if err != nil {
+		t.Fatalf("unexpected error for base64 key: %v", err)
+	}
+	if len(key) != 32 {
+		t.Errorf("expected 32-byte key, got %d", len(key))
+	}
+}
+
+func TestParseCredentialKey_InvalidRawLength(t *testing.T) {
+	_, err := parseCredentialKey("tooshort", "test")
+	if err == nil {
+		t.Fatal("expected error for short raw key, got nil")
+	}
+}
+
+func TestParseCredentialKey_InvalidBase64WrongDecodedLength(t *testing.T) {
+	// base64 of 16 bytes decodes to 16, not 32
+	b64Short := base64.StdEncoding.EncodeToString(make([]byte, 16))
+	_, err := parseCredentialKey(b64Short, "test")
+	if err == nil {
+		t.Fatal("expected error for base64 key with wrong decoded length, got nil")
+	}
+	if !strings.Contains(err.Error(), "16") {
+		t.Errorf("expected error to mention decoded length 16, got: %v", err)
+	}
+}
+
+func TestParseCredentialKey_InvalidBase64String(t *testing.T) {
+	_, err := parseCredentialKey("not-valid-base64!!!", "test")
+	if err == nil {
+		t.Fatal("expected error for invalid base64 string, got nil")
+	}
+}
+
+// TestGetEventoryCredentialKeyStatus_EnvPrecedence verifies the env var takes
+// precedence over a (hypothetical) database value.
+func TestGetEventoryCredentialKeyStatus_EnvPrecedence(t *testing.T) {
+	// Any non-empty env value should report env source.
+	t.Setenv("EVENTORY_CREDENTIAL_KEY", strings.Repeat("k", 32))
+	status := GetEventoryCredentialKeyStatus()
+	if !status.Configured {
+		t.Error("expected Configured=true when env var is set")
+	}
+	if status.Source != CredentialKeySourceEnv {
+		t.Errorf("expected source=%q, got %q", CredentialKeySourceEnv, status.Source)
+	}
+}
+
+func TestGetEventoryCredentialKeyStatus_NoneWhenEnvEmpty(t *testing.T) {
+	t.Setenv("EVENTORY_CREDENTIAL_KEY", "")
+	// No DB available in unit tests — should return none without panic.
+	status := GetEventoryCredentialKeyStatus()
+	if status.Source == CredentialKeySourceEnv {
+		t.Error("env source should not be reported when env var is empty")
+	}
+	// Configured may be false when no DB is available; just check no panic.
+}
+
+// TestCollectLeaves_NilIDSkipped verifies that a leaf node with a null ID is
+// skipped with a log message and does not produce a "<nil>" inventory item.
+func TestCollectLeaves_NilIDSkipped(t *testing.T) {
+	raw := []json.RawMessage{
+		json.RawMessage(`{"id": null, "name": "Null-ID Item"}`),
+		json.RawMessage(`{"id": "valid-1", "name": "Valid Item"}`),
+	}
+	var leaves []inventoryLeaf
+	if err := collectLeaves(raw, "", &leaves); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(leaves) != 1 {
+		t.Fatalf("expected 1 leaf (null-ID skipped), got %d", len(leaves))
+	}
+	if leaves[0].id == "<nil>" {
+		t.Error("null ID leaf should have been skipped, not appended as <nil>")
+	}
+	if leaves[0].id != "valid-1" {
+		t.Errorf("expected valid-1, got %q", leaves[0].id)
 	}
 }

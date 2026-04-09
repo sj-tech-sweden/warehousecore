@@ -878,7 +878,16 @@ func collectLeaves(rawNodes []json.RawMessage, categoryPath string, out *[]inven
 			continue
 		}
 
-		*out = append(*out, inventoryLeaf{id: fmt.Sprintf("%v", node.ID), name: node.Name, category: categoryPath})
+		if node.ID == nil {
+			log.Printf("[EVENTORY] Skipping leaf node %q: missing or null ID", node.Name)
+			continue
+		}
+		id := fmt.Sprintf("%v", node.ID)
+		if id == "" {
+			log.Printf("[EVENTORY] Skipping leaf node %q: empty ID", node.Name)
+			continue
+		}
+		*out = append(*out, inventoryLeaf{id: id, name: node.Name, category: categoryPath})
 	}
 	return nil
 }

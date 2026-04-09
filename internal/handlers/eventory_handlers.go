@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -298,8 +299,9 @@ func GetEventoryCredentialKeyStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateEventoryCredentialKey sets or clears the credential key stored in the
-// database. Pass {"key": "<base64>"} to set it, or {"key": ""} to clear it.
-// Has no effect on the env-var source, which always takes precedence.
+// database. Pass {"key": "<base64>"} or {"key": "<raw-32-byte-key>"} to set it,
+// or {"key": ""} to clear it. Has no effect on the env-var source, which
+// always takes precedence.
 func UpdateEventoryCredentialKey(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Key string `json:"key"`
@@ -331,8 +333,11 @@ func GenerateEventoryCredentialKey(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Save bool `json:"save"`
 	}
-	// Ignore decode errors — an empty body means save=false.
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	// Allow an empty body (save=false), but reject malformed JSON.
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
 
 	generated, err := services.GenerateCredentialKey()
 	if err != nil {
