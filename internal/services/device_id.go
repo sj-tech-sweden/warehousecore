@@ -25,6 +25,12 @@ const numericSuffixPattern = `^[0-9]+$`
 // accidentally collide with advisory locks taken by other subsystems.
 const deviceIDLockNamespace int32 = 1
 
+// bigIntMaxStr is the string representation of math.MaxInt64 (9223372036854775807).
+// It is used by AllocateDeviceCounter as an upper-bound guard in the SQL CASE
+// expression to prevent a PostgreSQL "bigint out of range" error when casting
+// an extremely large numeric device ID suffix.
+const bigIntMaxStr = "9223372036854775807"
+
 // normalizeDeviceIDPrefix uppercases p and strips every character that is not
 // an ASCII letter or digit, matching the normalization applied to
 // caller-supplied prefixes in internal/handlers/product_handlers.go.
@@ -147,7 +153,8 @@ func AllocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int6
 	pattern := buildDeviceIDLikePattern(prefix)
 
 	var nextCounter int64
-	err := tx.QueryRowContext(ctx, `
+	//nolint:gosec // bigIntMaxStr is a compile-time constant; not user input.
+	err := tx.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT COALESCE(MAX(
 			CASE
 				WHEN SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) ~ $3
@@ -155,7 +162,7 @@ func AllocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int6
 						CHAR_LENGTH(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1)) < 19
 						OR (
 							CHAR_LENGTH(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1)) = 19
-							AND SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) <= '9223372036854775807'
+							AND SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) <= '%s'
 						)
 					)
 				THEN CAST(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) AS BIGINT)
@@ -164,7 +171,7 @@ func AllocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int6
 		), 0) + 1
 		FROM devices
 		WHERE deviceID LIKE $2 ESCAPE '\'
-	`, prefix, pattern, numericSuffixPattern).Scan(&nextCounter)
+	`, bigIntMaxStr), prefix, pattern, numericSuffixPattern).Scan(&nextCounter)
 	if err != nil {
 		return 0, fmt.Errorf("failed to determine next device counter: %w", err)
 	}
