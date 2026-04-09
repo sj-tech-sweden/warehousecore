@@ -398,7 +398,7 @@ func main() {
 	// Docs endpoints - always available but require authentication
 	docsRouter := router.PathPrefix("").Subrouter()
 	docsRouter.Use(middleware.AuthMiddleware)
-	registerDynamicDocs(docsRouter)
+	registerDynamicDocs(docsRouter, router)
 
 	// Serve static frontend files with SPA fallback
 	router.PathPrefix("/").HandlerFunc(spaHandler)
