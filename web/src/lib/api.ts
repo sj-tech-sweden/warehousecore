@@ -662,12 +662,22 @@ export interface EventorySettingsPayload {
   sync_interval_minutes: number;
 }
 
+export interface EventoryCredentialKeyStatus {
+  configured: boolean;
+  source: 'none' | 'env' | 'database';
+}
+
 export const eventoryApi = {
   getSettings: () => api.get<EventorySettings>('/admin/eventory/settings'),
   updateSettings: (payload: EventorySettingsPayload) =>
     api.put<EventorySettings & { message: string }>('/admin/eventory/settings', payload),
   getProducts: () => api.get<{ products: EventoryProduct[]; count: number }>('/admin/eventory/products'),
   sync: () => api.post<EventorySyncResult>('/admin/eventory/sync', {}),
+  getCredentialKeyStatus: () => api.get<EventoryCredentialKeyStatus>('/admin/eventory/credential-key'),
+  updateCredentialKey: (key: string) =>
+    api.put<EventoryCredentialKeyStatus>('/admin/eventory/credential-key', { key }),
+  generateCredentialKey: (save: boolean) =>
+    api.post<{ key: string; saved: boolean }>('/admin/eventory/credential-key/generate', { save }),
 };
 
 // API Keys

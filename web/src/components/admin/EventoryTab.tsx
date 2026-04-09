@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Save, RefreshCcw, AlertCircle, Link2, Package, CheckCircle2, XCircle, Clock } from 'lucide-react';
-import { eventoryApi, type EventoryProduct, type EventorySettingsPayload } from '../../lib/api';
+import { Save, RefreshCcw, AlertCircle, Link2, Package, CheckCircle2, XCircle, Clock, Key, Eye, EyeOff } from 'lucide-react';
+import { eventoryApi, type EventoryProduct, type EventorySettingsPayload, type EventoryCredentialKeyStatus } from '../../lib/api';
 import { useTranslation } from 'react-i18next';
 
 const SYNC_INTERVAL_OPTIONS = [
@@ -30,6 +30,14 @@ export function EventoryTab() {
   const [tokenEndpoint, setTokenEndpoint] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [syncInterval, setSyncInterval] = useState(0);
+
+  // Credential key state
+  const [credKeyStatus, setCredKeyStatus] = useState<EventoryCredentialKeyStatus | null>(null);
+  const [credKeyInput, setCredKeyInput] = useState('');
+  const [credKeyVisible, setCredKeyVisible] = useState(false);
+  const [credKeyMessage, setCredKeyMessage] = useState<{ type: 'success' | 'error' | 'info' | 'warning'; text: string } | null>(null);
+  const [credKeySaving, setCredKeySaving] = useState(false);
+  const [credKeyGenerating, setCredKeyGenerating] = useState(false);
 
   // Snapshot of the last successfully loaded/saved non-secret fields.
   // hasUnsavedChanges is derived from this rather than from a separate boolean
@@ -70,7 +78,11 @@ export function EventoryTab() {
 
   const loadSettings = useCallback(async () => {
     try {
-      const { data } = await eventoryApi.getSettings();
+      const [settingsRes, credKeyRes] = await Promise.all([
+        eventoryApi.getSettings(),
+        eventoryApi.getCredentialKeyStatus(),
+      ]);
+      const { data } = settingsRes;
       setApiUrl(data.api_url || '');
       setApiKeyConfigured(data.api_key_configured);
       setApiKeyMasked(data.api_key_masked || '');
@@ -88,6 +100,7 @@ export function EventoryTab() {
         supplierName: data.supplier_name || '',
         syncInterval: data.sync_interval_minutes ?? 0,
       });
+      setCredKeyStatus(credKeyRes.data);
     } catch (err) {
       console.error('Failed to load Eventory settings:', err);
       setMessage({ type: 'error', text: t('admin.eventory.loadError') });
@@ -202,6 +215,67 @@ export function EventoryTab() {
       setMessage({ type: 'error', text: detail });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleCredKeySave = async () => {
+    setCredKeySaving(true);
+    setCredKeyMessage(null);
+    try {
+      const { data } = await eventoryApi.updateCredentialKey(credKeyInput.trim());
+      setCredKeyStatus(data);
+      setCredKeyInput('');
+      setCredKeyVisible(false);
+      setCredKeyMessage({ type: 'success', text: t('admin.eventory.keySaved') });
+    } catch (err: any) {
+      console.error('Failed to save credential key:', err);
+      const detail = err?.response?.data?.error || t('admin.eventory.keyError');
+      setCredKeyMessage({ type: 'error', text: detail });
+    } finally {
+      setCredKeySaving(false);
+    }
+  };
+
+  const handleCredKeyClear = async () => {
+    setCredKeySaving(true);
+    setCredKeyMessage(null);
+    try {
+      const { data } = await eventoryApi.updateCredentialKey('');
+      setCredKeyStatus(data);
+      setCredKeyInput('');
+      setCredKeyMessage({ type: 'success', text: t('admin.eventory.keyCleared') });
+    } catch (err: any) {
+      console.error('Failed to clear credential key:', err);
+      setCredKeyMessage({ type: 'error', text: t('admin.eventory.keyError') });
+    } finally {
+      setCredKeySaving(false);
+    }
+  };
+
+  const handleCredKeyGenerate = async (saveImmediately: boolean) => {
+    setCredKeyGenerating(true);
+    setCredKeyMessage(null);
+    try {
+      const { data } = await eventoryApi.generateCredentialKey(saveImmediately);
+      setCredKeyInput(data.key);
+      setCredKeyVisible(true);
+      if (saveImmediately) {
+        try {
+          const statusRes = await eventoryApi.getCredentialKeyStatus();
+          setCredKeyStatus(statusRes.data);
+        } catch (statusErr) {
+          console.error('Failed to refresh credential key status:', statusErr);
+          setCredKeyStatus({ configured: true, source: 'database' });
+        }
+        setCredKeyMessage({ type: 'success', text: t('admin.eventory.keyGeneratedSaved') });
+      } else {
+        setCredKeyMessage({ type: 'warning', text: t('admin.eventory.keyGenerated') });
+      }
+    } catch (err: any) {
+      console.error('Failed to generate credential key:', err);
+      setCredKeyMessage({ type: 'error', text: t('admin.eventory.keyError') });
+    } finally {
+      setCredKeyGenerating(false);
     }
   };
 
@@ -470,6 +544,144 @@ export function EventoryTab() {
             {saving ? t('admin.eventory.saving') : t('admin.eventory.saveSettings')}
           </button>
         </div>
+      </div>
+
+      {/* Credential key card */}
+      <div className="bg-white/5 rounded-xl p-6 border border-white/10 space-y-5">
+        <div className="flex items-center gap-2">
+          <Key className="w-5 h-5 text-accent-red" />
+          <h3 className="text-lg font-semibold text-white">{t('admin.eventory.credentialKeySection')}</h3>
+        </div>
+        <p className="text-sm text-gray-400">{t('admin.eventory.credentialKeyDesc')}</p>
+
+        {/* Active key status badge */}
+        {credKeyStatus?.source === 'env' && credKeyStatus.configured && (
+          <div className="flex items-center gap-2 text-sm text-blue-300 bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-2">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            {t('admin.eventory.credentialKeyEnvActive')}
+          </div>
+        )}
+        {credKeyStatus?.source === 'env' && !credKeyStatus.configured && (
+          <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2">
+            <XCircle className="w-4 h-4 flex-shrink-0" />
+            {t('admin.eventory.credentialKeyEnvInvalid')}
+          </div>
+        )}
+        {credKeyStatus?.source === 'database' && credKeyStatus.configured && (
+          <div className="flex items-center gap-2 text-sm text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-2">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            {t('admin.eventory.credentialKeyDbActive')}
+          </div>
+        )}
+        {credKeyStatus?.source === 'database' && !credKeyStatus.configured && (
+          <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2">
+            <XCircle className="w-4 h-4 flex-shrink-0" />
+            {t('admin.eventory.credentialKeyDbInvalid')}
+          </div>
+        )}
+        {credKeyStatus?.source === 'none' && (
+          <div className="flex items-center gap-2 text-sm text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {t('admin.eventory.credentialKeyNotSet')}
+          </div>
+        )}
+
+        {/* Key-change warning */}
+        {(credKeyStatus?.configured) && (
+          <p className="text-xs text-yellow-500">{t('admin.eventory.keyWarning')}</p>
+        )}
+
+        {/* Credential key message */}
+        {credKeyMessage && (
+          <div className={`p-3 rounded-lg flex items-center gap-2 text-sm ${
+            credKeyMessage.type === 'success'
+              ? 'bg-green-500/10 border border-green-500/20 text-green-400'
+              : credKeyMessage.type === 'warning'
+                ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-400'
+                : credKeyMessage.type === 'info'
+                  ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400'
+                  : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          }`}>
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {credKeyMessage.text}
+          </div>
+        )}
+
+        {/* Disabled when env var is active or status not yet loaded */}
+        {credKeyStatus && credKeyStatus.source !== 'env' && (
+          <>
+            <div>
+              <label htmlFor="eventory-cred-key" className="block text-sm font-medium text-gray-300 mb-2">
+                {t('admin.eventory.credentialKeyLabel')}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="eventory-cred-key"
+                  name="eventoryCredKey"
+                  type={credKeyVisible ? 'text' : 'password'}
+                  value={credKeyInput}
+                  onChange={e => setCredKeyInput(e.target.value)}
+                  placeholder={t('admin.eventory.credentialKeyPlaceholder')}
+                  autoComplete="off"
+                  data-bwignore="true"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  className="flex-1 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCredKeyVisible(v => !v)}
+                  className="px-3 py-2 border border-white/20 rounded-lg text-gray-400 hover:text-white hover:border-white/40 transition-colors"
+                  title={credKeyVisible ? t('admin.eventory.hideKey') : t('admin.eventory.showKey')}
+                  aria-label={credKeyVisible ? t('admin.eventory.hideKey') : t('admin.eventory.showKey')}
+                >
+                  {credKeyVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleCredKeyGenerate(false)}
+                disabled={credKeyGenerating || credKeySaving}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-white/10 hover:bg-white/20 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              >
+                <RefreshCcw className={`w-4 h-4 ${credKeyGenerating ? 'animate-spin' : ''}`} />
+                {t('admin.eventory.generateKey')}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCredKeyGenerate(true)}
+                disabled={credKeyGenerating || credKeySaving}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-white/10 hover:bg-white/20 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              >
+                <RefreshCcw className={`w-4 h-4 ${credKeyGenerating ? 'animate-spin' : ''}`} />
+                {t('admin.eventory.generateAndSave')}
+              </button>
+              <button
+                type="button"
+                onClick={handleCredKeySave}
+                disabled={credKeySaving || credKeyGenerating || !credKeyInput.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-accent-red hover:bg-accent-red/80 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                {t('admin.eventory.saveKey')}
+              </button>
+              {credKeyStatus?.source === 'database' && (
+                <button
+                  type="button"
+                  onClick={handleCredKeyClear}
+                  disabled={credKeySaving || credKeyGenerating}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-red-400 border border-red-400/30 hover:bg-red-400/10 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                  {t('admin.eventory.clearCredentialKey')}
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Actions card */}

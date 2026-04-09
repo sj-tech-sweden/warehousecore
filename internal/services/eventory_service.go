@@ -26,9 +26,24 @@ import (
 )
 
 const (
-	eventorySettingScope = "warehousecore"
-	eventorySettingKey   = "eventory.config"
+	eventorySettingScope            = "warehousecore"
+	eventorySettingKey              = "eventory.config"
+	eventoryCredentialKeySettingKey = "eventory.credential_key"
+
+	// inventoryRentalsConcurrency is the maximum number of concurrent
+	// GET /rentals/{id} requests issued during a single inventory sync.
+	// This bounds connection consumption and avoids overwhelming the API.
+	inventoryRentalsConcurrency = 8
 )
+
+// errInventoryRentalsNotFound is returned by fetchInventoryRentals when the
+// server responds with 404, signalling that the endpoint does not exist and
+// the caller should fall back to legacy product endpoints.
+var errInventoryRentalsNotFound = errors.New("inventory-rentals endpoint not found (404)")
+
+// ErrCredentialKeyInvalid is returned by SetEventoryCredentialKey when the
+// supplied key fails validation (bad base64 encoding or wrong length).
+var ErrCredentialKeyInvalid = errors.New("invalid credential key")
 
 // privateNetworks is parsed once at startup from the list of non-routable CIDR
 // blocks used by isPrivateIP. Pre-parsing avoids repeated net.ParseCIDR calls
@@ -118,6 +133,38 @@ type EventoryProduct struct {
 	Price       float64     `json:"price"`
 }
 
+// eventoryInventoryNode is a raw node from the /inventory-rentals tree.
+// The Eventory API returns a polymorphic array: each element is either an
+// InventoryCategoryNode (has "children") or an InventoryItem (has "articleNumber").
+// We decode everything into this struct and distinguish the two cases by checking
+// whether Children is non-nil (category) or nil (leaf item).
+// ID is typed as interface{} because some Eventory deployments return numeric IDs;
+// callers must normalize it to a string via fmt.Sprintf("%v", node.ID).
+type eventoryInventoryNode struct {
+	ID            interface{}       `json:"id"`
+	Name          string            `json:"name"`
+	Children      []json.RawMessage `json:"children"`      // non-nil → category node
+	ArticleNumber *string           `json:"articleNumber"` // present in leaf items
+	StockLevel    *float64          `json:"stockLevel"`
+	IsPack        bool              `json:"is_pack"`
+}
+
+// eventoryRentalDetailResponse is the response shape from GET /rentals/{id}.
+type eventoryRentalDetailResponse struct {
+	Rental struct {
+		Description string  `json:"description"`
+		DailyRate   float64 `json:"dailyRate"`
+	} `json:"rental"`
+}
+
+// inventoryLeaf holds the parsed identity and category path of a leaf item from
+// the /inventory-rentals tree before detail enrichment via /rentals/{id}.
+type inventoryLeaf struct {
+	id       string
+	name     string
+	category string
+}
+
 // encryptedPrefix is prepended to credential values that have been encrypted
 // at rest so that plain-text values stored before encryption was introduced can
 // still be read transparently.
@@ -130,18 +177,31 @@ const encryptedPrefix = "enc:"
 // treated as an encrypted blob and fail to decrypt.
 const rawEscapePrefix = "raw:"
 
-// eventoryCredentialKey returns the 32-byte AES-256 key read from the
-// EVENTORY_CREDENTIAL_KEY environment variable. It returns (nil, nil) when the
-// variable is not set (credentials are stored as plain text, with a warning).
-// The value may be either a base64-encoded 32-byte key (recommended, produced
-// by e.g. `openssl rand -base64 32`) or exactly 32 raw printable ASCII bytes.
-// Accepting base64 allows callers to use full 256-bit entropy rather than being
-// limited to printable characters.
+// eventoryCredentialKey returns the 32-byte AES-256 key used to encrypt stored
+// Eventory credentials. It checks, in order:
+//  1. The EVENTORY_CREDENTIAL_KEY environment variable (recommended for
+//     production; takes precedence over the database value).
+//  2. The eventory.credential_key setting in app_settings (set via the admin UI).
+//
+// Returns (nil, nil) when neither source is available, which causes credentials
+// to be stored as plain text with a warning.
 func eventoryCredentialKey() ([]byte, error) {
 	raw := strings.TrimSpace(os.Getenv("EVENTORY_CREDENTIAL_KEY"))
-	if raw == "" {
-		return nil, nil
+	if raw != "" {
+		return parseCredentialKey(raw, "EVENTORY_CREDENTIAL_KEY")
 	}
+	// Env var not set — try the value stored in the database via the admin UI.
+	if key, err := eventoryCredentialKeyFromDB(); err != nil {
+		return nil, fmt.Errorf("failed to read credential key from database: %w", err)
+	} else if key != nil {
+		return key, nil
+	}
+	return nil, nil
+}
+
+// parseCredentialKey decodes a credential key string (raw 32 bytes or base64)
+// and returns the 32-byte key. source is used only in error messages.
+func parseCredentialKey(raw, source string) ([]byte, error) {
 	// Prefer a raw 32-byte key to avoid ambiguity: a 32-character ASCII string
 	// is always a multiple of 4 and may be valid base64, so attempting base64
 	// first would silently decode it to 24 bytes and reject a legitimate key.
@@ -153,12 +213,116 @@ func eventoryCredentialKey() ([]byte, error) {
 	decoded, err := base64.StdEncoding.DecodeString(raw)
 	if err == nil {
 		if len(decoded) != 32 {
-			return nil, fmt.Errorf("EVENTORY_CREDENTIAL_KEY base64-decoded to %d bytes; expected exactly 32 (use `openssl rand -base64 32` to generate a suitable value)", len(decoded))
+			return nil, fmt.Errorf("%s base64-decoded to %d bytes; expected exactly 32 (use `openssl rand -base64 32` to generate a suitable value)", source, len(decoded))
 		}
 		return decoded, nil
 	}
 	// Neither raw 32 bytes nor valid base64 — report both failure conditions.
-	return nil, fmt.Errorf("EVENTORY_CREDENTIAL_KEY must be exactly 32 bytes or a base64 encoding of 32 bytes (use `openssl rand -base64 32` to generate a suitable value); got %d raw bytes and base64 decode failed", len([]byte(raw)))
+	return nil, fmt.Errorf("%s must be exactly 32 bytes or a base64 encoding of 32 bytes (use `openssl rand -base64 32` to generate a suitable value); got %d raw bytes and base64 decode failed", source, len([]byte(raw)))
+}
+
+// eventoryCredentialKeyFromDB reads the credential key stored in app_settings
+// by the admin UI. Returns (nil, nil) when the setting is absent.
+func eventoryCredentialKeyFromDB() ([]byte, error) {
+	db := repository.GetDB()
+	if db == nil {
+		return nil, nil
+	}
+	adminSvc := NewAdminService()
+	setting, err := adminSvc.GetSetting(eventorySettingScope, eventoryCredentialKeySettingKey)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	raw, _ := setting.Value["key"].(string)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	return parseCredentialKey(raw, "admin UI credential key")
+}
+
+// CredentialKeySource describes where the active credential key comes from.
+type CredentialKeySource string
+
+const (
+	CredentialKeySourceNone     CredentialKeySource = "none"
+	CredentialKeySourceEnv      CredentialKeySource = "env"
+	CredentialKeySourceDatabase CredentialKeySource = "database"
+)
+
+// EventoryCredentialKeyStatus describes the state of the Eventory credential key.
+type EventoryCredentialKeyStatus struct {
+	Configured bool                `json:"configured"`
+	Source     CredentialKeySource `json:"source"`
+}
+
+// GetEventoryCredentialKeyStatus returns whether a credential key is configured
+// and where it comes from (env var takes precedence over the database).
+func GetEventoryCredentialKeyStatus() EventoryCredentialKeyStatus {
+	if raw := strings.TrimSpace(os.Getenv("EVENTORY_CREDENTIAL_KEY")); raw != "" {
+		if _, err := parseCredentialKey(raw, "EVENTORY_CREDENTIAL_KEY"); err != nil {
+			log.Printf("[EVENTORY] EVENTORY_CREDENTIAL_KEY env var is set but invalid: %v", err)
+			return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceEnv}
+		}
+		return EventoryCredentialKeyStatus{Configured: true, Source: CredentialKeySourceEnv}
+	}
+	db := repository.GetDB()
+	if db == nil {
+		return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceNone}
+	}
+	adminSvc := NewAdminService()
+	setting, err := adminSvc.GetSetting(eventorySettingScope, eventoryCredentialKeySettingKey)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("[EVENTORY] failed to read credential key setting (scope=%q key=%q): %v",
+				eventorySettingScope, eventoryCredentialKeySettingKey, err)
+		}
+		return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceNone}
+	}
+	raw, _ := setting.Value["key"].(string)
+	if _, err := parseCredentialKey(strings.TrimSpace(raw), "admin UI credential key"); err != nil {
+		if strings.TrimSpace(raw) != "" {
+			log.Printf("[EVENTORY] invalid credential key stored in database (scope=%q key=%q): %v",
+				eventorySettingScope, eventoryCredentialKeySettingKey, err)
+		}
+		return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceDatabase}
+	}
+	return EventoryCredentialKeyStatus{Configured: true, Source: CredentialKeySourceDatabase}
+}
+
+// GenerateCredentialKey generates a cryptographically-random 32-byte key and
+// returns it as a base64-encoded string suitable for use as a credential key.
+func GenerateCredentialKey() (string, error) {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("failed to generate credential key: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(key), nil
+}
+
+// SetEventoryCredentialKey validates key and stores it in app_settings.
+// The key may be a raw 32-byte string or a base64-encoded 32-byte key (any
+// format accepted by parseCredentialKey).
+// Passing an empty string clears the stored key.
+// Returns ErrCredentialKeyInvalid if the key fails validation, ErrDatabaseNotAvailable
+// if the database is not reachable, or an error wrapping the database write failure.
+func SetEventoryCredentialKey(key string) error {
+	db := repository.GetDB()
+	if db == nil {
+		return ErrDatabaseNotAvailable
+	}
+	key = strings.TrimSpace(key)
+	if key != "" {
+		// Validate before storing.
+		if _, err := parseCredentialKey(key, "credential key"); err != nil {
+			return fmt.Errorf("%w: %v", ErrCredentialKeyInvalid, err)
+		}
+	}
+	adminSvc := NewAdminService()
+	return adminSvc.SetSetting(eventorySettingScope, eventoryCredentialKeySettingKey, models.JSONMap{"key": key})
 }
 
 // encryptCredential encrypts plaintext using AES-256-GCM and returns a
@@ -413,9 +577,24 @@ func fetchEventoryProductsWith(cfg *EventoryConfig, client *http.Client) ([]Even
 		}
 	}
 
-	// Try common product endpoint paths. Paths are relative (no leading slash)
-	// so that any configured path prefix in cfg.APIURL is preserved when the
-	// final request URL is built by joinPath.
+	// Try the Eventory /inventory-rentals endpoint first. This is the canonical
+	// Eventory API that returns a hierarchical category/item tree. Individual
+	// rental details (price, description) are fetched from /rentals/{id}.
+	// Only fall back to legacy endpoints when /inventory-rentals is genuinely
+	// unavailable (404). Other errors (401, 5xx, parse failures) are returned
+	// directly to avoid masking misconfigurations and generating extra traffic.
+	products, invErr := fetchInventoryRentals(client, cfg.APIURL, oauthToken, cfg.APIKey)
+	if invErr == nil {
+		return products, nil
+	}
+	if !errors.Is(invErr, errInventoryRentalsNotFound) {
+		return nil, invErr
+	}
+	log.Printf("[EVENTORY] inventory-rentals not found, falling back to legacy endpoints")
+
+	// Fall back to legacy flat-list product endpoint paths. Paths are relative
+	// (no leading slash) so that any configured path prefix in cfg.APIURL is
+	// preserved when the final request URL is built by joinPath.
 	endpoints := []string{
 		"api/v1/products",
 		"api/products",
@@ -543,17 +722,7 @@ func fetchFromEndpoint(client *http.Client, baseURL, endpoint, oauthToken, apiKe
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set Authorization: Bearer from the OAuth access token when available.
-	// Fall back to the API key as the bearer value when no OAuth token is present.
-	if oauthToken != "" {
-		req.Header.Set("Authorization", "Bearer "+oauthToken)
-	} else if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-	// Always send X-API-Key from the configured API key (never from the OAuth token).
-	if apiKey != "" {
-		req.Header.Set("X-API-Key", apiKey)
-	}
+	setEventoryAuthHeaders(req, oauthToken, apiKey)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
@@ -563,12 +732,15 @@ func fetchFromEndpoint(client *http.Client, baseURL, endpoint, oauthToken, apiKe
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("endpoint not found (404)")
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("unauthorized – check your credentials")
 	}
 	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
@@ -602,6 +774,202 @@ func parseEventoryProductsResponse(body []byte) ([]EventoryProduct, error) {
 	}
 
 	return nil, errors.New("unrecognised response format from Eventory API")
+}
+
+// fetchInventoryRentals fetches the /inventory-rentals endpoint from the Eventory
+// API, walks the returned category/item tree, and returns a flat list of
+// EventoryProduct values. Price and description are fetched from /rentals/{id}
+// for each leaf item using bounded concurrency (inventoryRentalsConcurrency).
+// Returns errInventoryRentalsNotFound when the server responds with 404.
+func fetchInventoryRentals(client *http.Client, baseURL, oauthToken, apiKey string) ([]EventoryProduct, error) {
+	fullURL, err := joinPath(baseURL, "inventory-rentals")
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct inventory-rentals URL: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create inventory-rentals request: %w", err)
+	}
+	setEventoryAuthHeaders(req, oauthToken, apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("inventory-rentals request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, errInventoryRentalsNotFound
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, fmt.Errorf("inventory-rentals: unauthorized – check your credentials")
+	}
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, fmt.Errorf("inventory-rentals: unexpected status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read inventory-rentals response: %w", err)
+	}
+
+	var rawNodes []json.RawMessage
+	if err := json.Unmarshal(body, &rawNodes); err != nil {
+		return nil, fmt.Errorf("failed to parse inventory-rentals response: %w", err)
+	}
+
+	// Collect all leaf items from the tree first (no network I/O), then
+	// enrich them concurrently with bounded parallelism.
+	var leaves []inventoryLeaf
+	if err := collectLeaves(rawNodes, "", &leaves); err != nil {
+		return nil, fmt.Errorf("failed to collect inventory leaves: %w", err)
+	}
+
+	// Fetch /rentals/{id} for each leaf concurrently.
+	type result struct {
+		desc string
+		rate float64
+	}
+
+	results := make([]result, len(leaves))
+	sem := make(chan struct{}, inventoryRentalsConcurrency)
+	var wg sync.WaitGroup
+	for i, leaf := range leaves {
+		i, leaf := i, leaf
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			desc, rate := fetchRentalDetail(client, baseURL, leaf.id, oauthToken, apiKey)
+			results[i] = result{desc: desc, rate: rate}
+		}()
+	}
+	wg.Wait()
+
+	products := make([]EventoryProduct, len(leaves))
+	for i, leaf := range leaves {
+		products[i] = EventoryProduct{
+			ID:          leaf.id,
+			Name:        leaf.name,
+			Description: results[i].desc,
+			Category:    leaf.category,
+			Price:       results[i].rate,
+		}
+	}
+	return products, nil
+}
+
+// collectLeaves recursively walks the /inventory-rentals tree and appends all
+// leaf items (nodes without children) to out. categoryPath is the " > "-separated
+// chain of ancestor category names used to populate EventoryProduct.Category.
+// An error is returned if any node fails to parse so that callers cannot silently
+// succeed with a partial or empty product list.
+func collectLeaves(rawNodes []json.RawMessage, categoryPath string, out *[]inventoryLeaf) error {
+	for _, raw := range rawNodes {
+		var node eventoryInventoryNode
+		if err := json.Unmarshal(raw, &node); err != nil {
+			return fmt.Errorf("failed to parse inventory node: %w", err)
+		}
+
+		if node.Children != nil {
+			childPath := node.Name
+			if categoryPath != "" {
+				childPath = categoryPath + " > " + node.Name
+			}
+			if err := collectLeaves(node.Children, childPath, out); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if node.ID == nil {
+			log.Printf("[EVENTORY] Skipping leaf node %q: missing or null ID", node.Name)
+			continue
+		}
+		id := fmt.Sprintf("%v", node.ID)
+		if id == "" {
+			log.Printf("[EVENTORY] Skipping leaf node %q: empty ID", node.Name)
+			continue
+		}
+		*out = append(*out, inventoryLeaf{id: id, name: node.Name, category: categoryPath})
+	}
+	return nil
+}
+
+// fetchRentalDetail fetches GET /rentals/{id} and returns (description, dailyRate).
+// On failure it logs the error and returns ("", 0) so that a single failed fetch
+// does not abort the entire sync. id is validated to be non-empty, and the exact
+// dot-segment IDs "." and ".." are rejected up front because PathEscape leaves
+// them unchanged and ResolveReference would path-clean them (e.g. "rentals/.."
+// collapses to the parent path). Other special characters in id are encoded by
+// neturl.PathEscape so they cannot traverse directory boundaries or change the
+// request host.
+func fetchRentalDetail(client *http.Client, baseURL, id, oauthToken, apiKey string) (description string, dailyRate float64) {
+	if id == "" || id == "." || id == ".." {
+		log.Printf("[EVENTORY] Rental ID must be non-empty and cannot be a dot-segment (. or ..): got %q", id)
+		return "", 0
+	}
+	escapedID := neturl.PathEscape(id)
+	fullURL, err := joinPath(baseURL, "rentals/"+escapedID)
+	if err != nil {
+		log.Printf("[EVENTORY] Failed to build rentals URL for %s: %v", id, err)
+		return "", 0
+	}
+
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		log.Printf("[EVENTORY] Failed to create rentals request for %s: %v", id, err)
+		return "", 0
+	}
+	setEventoryAuthHeaders(req, oauthToken, apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[EVENTORY] rentals/%s request failed: %v", id, err)
+		return "", 0
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[EVENTORY] rentals/%s returned status %d", id, resp.StatusCode)
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return "", 0
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[EVENTORY] Failed to read rentals/%s response: %v", id, err)
+		return "", 0
+	}
+
+	var detail eventoryRentalDetailResponse
+	if err := json.Unmarshal(body, &detail); err != nil {
+		log.Printf("[EVENTORY] Failed to parse rentals/%s response: %v", id, err)
+		return "", 0
+	}
+
+	return detail.Rental.Description, detail.Rental.DailyRate
+}
+
+// setEventoryAuthHeaders sets the Authorization and X-API-Key headers on req.
+// oauthToken takes precedence for Authorization: Bearer; apiKey is used as
+// fallback. X-API-Key is always set from apiKey when non-empty.
+func setEventoryAuthHeaders(req *http.Request, oauthToken, apiKey string) {
+	if oauthToken != "" {
+		req.Header.Set("Authorization", "Bearer "+oauthToken)
+	} else if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 }
 
 // ValidateEventoryURL checks that the given URL is safe to use for outbound

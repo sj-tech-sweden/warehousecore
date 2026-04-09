@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"strings"
 	"testing"
 )
@@ -218,7 +219,11 @@ func TestFetchEventoryProducts_EndpointFallback(t *testing.T) {
 	if len(products) != 1 || products[0].Name != "From fallback" {
 		t.Errorf("unexpected products: %+v", products)
 	}
-	// /api/v1/products should have been tried first and returned 404
+	// /inventory-rentals should have been tried first and returned 404
+	if callCounts["/inventory-rentals"] == 0 {
+		t.Error("expected /inventory-rentals to have been tried")
+	}
+	// legacy endpoints should also have been tried
 	if callCounts["/api/v1/products"] == 0 {
 		t.Error("expected /api/v1/products to have been tried")
 	}
@@ -237,6 +242,431 @@ func TestFetchEventoryProducts_AllFail(t *testing.T) {
 	_, err := fetchEventoryProductsWith(cfg, srv.Client())
 	if err == nil {
 		t.Fatal("expected error when all endpoints fail, got nil")
+	}
+}
+
+// ===========================
+// /inventory-rentals tree tests
+// ===========================
+
+// TestFetchInventoryRentals_Tree verifies that fetchInventoryRentals correctly
+// parses a hierarchical category/item tree and enriches each leaf with price and
+// description fetched from /rentals/{id}.
+func TestFetchInventoryRentals_Tree(t *testing.T) {
+	inventoryBody := `[
+		{
+			"id": "cat-1",
+			"name": "Sound",
+			"children": [
+				{
+					"id": "item-1",
+					"name": "Mixer",
+					"articleNumber": "S001",
+					"stockLevel": 2,
+					"is_pack": false
+				}
+			]
+		},
+		{
+			"id": "cat-2",
+			"name": "Lights",
+			"children": [
+				{
+					"id": "cat-2-1",
+					"name": "LED",
+					"children": [
+						{
+							"id": "item-2",
+							"name": "LED Bar",
+							"articleNumber": "L001",
+							"stockLevel": null,
+							"is_pack": false
+						}
+					]
+				}
+			]
+		}
+	]`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/inventory-rentals":
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+		case "/rentals/item-1":
+			w.Write([]byte(`{"rental":{"id":"item-1","name":"Mixer","description":"Audio mixer","dailyRate":150}}`)) //nolint:errcheck
+		case "/rentals/item-2":
+			w.Write([]byte(`{"rental":{"id":"item-2","name":"LED Bar","description":"Stage light","dailyRate":50}}`)) //nolint:errcheck
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	products, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 2 {
+		t.Fatalf("expected 2 products, got %d: %+v", len(products), products)
+	}
+
+	// Check Mixer
+	var mixer, ledBar EventoryProduct
+	for _, p := range products {
+		switch p.Name {
+		case "Mixer":
+			mixer = p
+		case "LED Bar":
+			ledBar = p
+		}
+	}
+	if mixer.Name != "Mixer" {
+		t.Errorf("expected Mixer product, got %+v", mixer)
+	}
+	if mixer.Category != "Sound" {
+		t.Errorf("expected Mixer category 'Sound', got %q", mixer.Category)
+	}
+	if mixer.Description != "Audio mixer" {
+		t.Errorf("expected Mixer description 'Audio mixer', got %q", mixer.Description)
+	}
+	if mixer.Price != 150 {
+		t.Errorf("expected Mixer price 150, got %f", mixer.Price)
+	}
+
+	// Check LED Bar (nested category path)
+	if ledBar.Name != "LED Bar" {
+		t.Errorf("expected LED Bar product, got %+v", ledBar)
+	}
+	if ledBar.Category != "Lights > LED" {
+		t.Errorf("expected LED Bar category 'Lights > LED', got %q", ledBar.Category)
+	}
+	if ledBar.Description != "Stage light" {
+		t.Errorf("expected LED Bar description 'Stage light', got %q", ledBar.Description)
+	}
+	if ledBar.Price != 50 {
+		t.Errorf("expected LED Bar price 50, got %f", ledBar.Price)
+	}
+}
+
+// TestFetchInventoryRentals_EmptyCategory verifies that category nodes with no
+// leaf children do not produce spurious products.
+func TestFetchInventoryRentals_EmptyCategory(t *testing.T) {
+	inventoryBody := `[
+		{"id": "cat-empty", "name": "Empty Category", "children": []}
+	]`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/inventory-rentals" {
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	products, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 0 {
+		t.Errorf("expected 0 products from empty category, got %d: %+v", len(products), products)
+	}
+}
+
+// TestFetchInventoryRentals_DetailFetchFailure verifies that when /rentals/{id}
+// fails for a leaf item, the product is still returned with zeroed price and
+// empty description (the sync must not abort due to a single detail failure).
+func TestFetchInventoryRentals_DetailFetchFailure(t *testing.T) {
+	inventoryBody := `[
+		{
+			"id": "cat-1",
+			"name": "Sound",
+			"children": [
+				{"id": "item-1", "name": "Speaker", "articleNumber": "S001", "stockLevel": 1, "is_pack": false}
+			]
+		}
+	]`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/inventory-rentals" {
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+		} else {
+			// All detail fetches fail
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	products, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product even when detail fetch fails, got %d", len(products))
+	}
+	if products[0].Name != "Speaker" {
+		t.Errorf("expected Speaker, got %q", products[0].Name)
+	}
+	if products[0].Price != 0 {
+		t.Errorf("expected price 0 when detail unavailable, got %f", products[0].Price)
+	}
+	if products[0].Description != "" {
+		t.Errorf("expected empty description when detail unavailable, got %q", products[0].Description)
+	}
+}
+
+// TestFetchInventoryRentals_AuthHeadersForwarded verifies that the Bearer token
+// and X-API-Key are forwarded to both /inventory-rentals and /rentals/{id}.
+func TestFetchInventoryRentals_AuthHeadersForwarded(t *testing.T) {
+	inventoryBody := `[
+		{"id": "item-1", "name": "Widget", "articleNumber": "W001", "stockLevel": 1, "is_pack": false}
+	]`
+
+	authOnInventory := ""
+	authOnDetail := ""
+	apiKeyOnInventory := ""
+	apiKeyOnDetail := ""
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/inventory-rentals":
+			authOnInventory = r.Header.Get("Authorization")
+			apiKeyOnInventory = r.Header.Get("X-API-Key")
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+		case "/rentals/item-1":
+			authOnDetail = r.Header.Get("Authorization")
+			apiKeyOnDetail = r.Header.Get("X-API-Key")
+			w.Write([]byte(`{"rental":{"id":"item-1","name":"Widget","description":"","dailyRate":0}}`)) //nolint:errcheck
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL, APIKey: "my-api-key"}
+	_, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if authOnInventory != "Bearer my-api-key" {
+		t.Errorf("inventory-rentals: Authorization = %q, want %q", authOnInventory, "Bearer my-api-key")
+	}
+	if apiKeyOnInventory != "my-api-key" {
+		t.Errorf("inventory-rentals: X-API-Key = %q, want %q", apiKeyOnInventory, "my-api-key")
+	}
+	if authOnDetail != "Bearer my-api-key" {
+		t.Errorf("rentals/{id}: Authorization = %q, want %q", authOnDetail, "Bearer my-api-key")
+	}
+	if apiKeyOnDetail != "my-api-key" {
+		t.Errorf("rentals/{id}: X-API-Key = %q, want %q", apiKeyOnDetail, "my-api-key")
+	}
+}
+
+// TestFetchInventoryRentals_MalformedNodeReturnsError verifies that a malformed
+// JSON node in the /inventory-rentals tree causes fetchInventoryRentals to return
+// an error instead of silently succeeding with an empty product list.
+func TestFetchInventoryRentals_MalformedNodeReturnsError(t *testing.T) {
+	// Array with a structurally invalid entry (mismatched type for "name" field).
+	inventoryBody := `[{"id": "item-1", "name": 42, "articleNumber": "X001", "is_pack": false}]`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/inventory-rentals" {
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	_, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for malformed inventory node, got nil")
+	}
+}
+
+// TestFetchInventoryRentals_NumericID verifies that leaf items with numeric IDs
+// (e.g. 42) are correctly stringified and used for both the product ID and the
+// /rentals/{id} detail request.
+func TestFetchInventoryRentals_NumericID(t *testing.T) {
+	inventoryBody := `[{"id": 42, "name": "Widget", "articleNumber": "W001", "is_pack": false}]`
+
+	var gotDetailPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/inventory-rentals":
+			w.Write([]byte(inventoryBody)) //nolint:errcheck
+		case "/rentals/42":
+			gotDetailPath = r.URL.Path
+			w.Write([]byte(`{"rental":{"description":"numeric-id item","dailyRate":25}}`)) //nolint:errcheck
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	products, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(products))
+	}
+	if gotDetailPath != "/rentals/42" {
+		t.Errorf("expected detail request to /rentals/42, got %q", gotDetailPath)
+	}
+	if products[0].Description != "numeric-id item" {
+		t.Errorf("expected description %q, got %q", "numeric-id item", products[0].Description)
+	}
+	if products[0].Price != 25 {
+		t.Errorf("expected price 25, got %f", products[0].Price)
+	}
+}
+
+// TestFetchInventoryRentals_FallsBackToLegacy verifies that when /inventory-rentals
+// returns 404 the legacy flat-list endpoints are tried.
+func TestFetchInventoryRentals_FallsBackToLegacy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/products" {
+			json.NewEncoder(w).Encode([]EventoryProduct{{Name: "Legacy Product"}}) //nolint:errcheck
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	products, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 || products[0].Name != "Legacy Product" {
+		t.Errorf("unexpected products from legacy fallback: %+v", products)
+	}
+}
+
+// TestFetchInventoryRentals_NoFallbackOn401 verifies that a 401 from
+// /inventory-rentals is returned directly to the caller and does NOT trigger
+// the legacy endpoint fallback — preventing masked misconfigurations.
+func TestFetchInventoryRentals_NoFallbackOn401(t *testing.T) {
+	callCounts := map[string]int{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCounts[r.URL.Path]++
+		if r.URL.Path == "/inventory-rentals" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		// Legacy endpoints return products — should never be reached.
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]EventoryProduct{{Name: "Legacy Product"}}) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	_, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for 401 from inventory-rentals, got nil")
+	}
+	// Legacy endpoints must not have been tried.
+	for _, path := range []string{"/api/v1/products", "/api/products", "/products"} {
+		if callCounts[path] > 0 {
+			t.Errorf("legacy endpoint %s should not have been called on 401, but got %d calls", path, callCounts[path])
+		}
+	}
+}
+
+// TestFetchInventoryRentals_NoFallbackOn500 verifies that a 5xx from
+// /inventory-rentals is returned directly to the caller and does NOT trigger
+// the legacy endpoint fallback.
+func TestFetchInventoryRentals_NoFallbackOn500(t *testing.T) {
+	callCounts := map[string]int{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCounts[r.URL.Path]++
+		if r.URL.Path == "/inventory-rentals" {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]EventoryProduct{{Name: "Legacy Product"}}) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	cfg := &EventoryConfig{APIURL: srv.URL}
+	_, err := fetchEventoryProductsWith(cfg, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for 500 from inventory-rentals, got nil")
+	}
+	for _, path := range []string{"/api/v1/products", "/api/products", "/products"} {
+		if callCounts[path] > 0 {
+			t.Errorf("legacy endpoint %s should not have been called on 500, but got %d calls", path, callCounts[path])
+		}
+	}
+}
+
+// TestFetchRentalDetail_PathEscapesID verifies that a rental ID containing
+// path-special characters is properly escaped before being placed in the URL,
+// preventing path traversal or host-override attacks.
+func TestFetchRentalDetail_PathEscapesID(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.RawPath // use RawPath to see the encoded form
+		if gotPath == "" {
+			gotPath = r.URL.Path // fallback when no special chars need encoding
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"rental":{"description":"ok","dailyRate":10}}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	// An ID with slashes that, if unescaped, could traverse path boundaries.
+	id := "../../etc/passwd"
+	desc, rate := fetchRentalDetail(srv.Client(), srv.URL, id, "", "")
+
+	// The server should see the slashes as percent-encoded %2F, not raw /.
+	want := "/rentals/" + neturl.PathEscape(id)
+	if gotPath != want {
+		t.Errorf("expected path %q, got %q (raw slashes would indicate path traversal)", want, gotPath)
+	}
+	// The response should still be parsed correctly.
+	if desc != "ok" {
+		t.Errorf("expected description %q, got %q", "ok", desc)
+	}
+	if rate != 10 {
+		t.Errorf("expected dailyRate 10, got %f", rate)
+	}
+}
+
+// TestFetchRentalDetail_DotSegmentIDsRejected verifies that the empty string
+// and dot-segment IDs ("." and "..") are rejected without making a network
+// call, preventing path traversal via joinPath's dot-segment normalization.
+func TestFetchRentalDetail_DotSegmentIDsRejected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("unexpected HTTP request made to server")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	for _, id := range []string{"", ".", ".."} {
+		t.Run("id="+id, func(t *testing.T) {
+			desc, rate := fetchRentalDetail(srv.Client(), srv.URL, id, "", "")
+			if desc != "" || rate != 0 {
+				t.Errorf("expected (\"\", 0), got (%q, %f)", desc, rate)
+			}
+		})
 	}
 }
 
@@ -314,7 +744,7 @@ func TestFetchEventoryProducts_OAuthPasswordGrant(t *testing.T) {
 		default:
 			gotProductAuth = r.Header.Get("Authorization")
 			gotProductAPIKey = r.Header.Get("X-API-Key")
-			json.NewEncoder(w).Encode([]EventoryProduct{{Name: "Widget"}})
+			json.NewEncoder(w).Encode([]EventoryProduct{{ID: "widget-1", Name: "Widget"}})
 		}
 	}))
 	defer srv.Close()
@@ -510,5 +940,114 @@ func TestEventoryCredentialKey_Base64WrongLength(t *testing.T) {
 	// Error should mention the decoded byte count (16), not the raw string length.
 	if !strings.Contains(err.Error(), "16") {
 		t.Errorf("expected error to mention decoded length 16, got: %v", err)
+	}
+}
+
+// TestParseCredentialKey covers valid and invalid inputs to parseCredentialKey.
+func TestParseCredentialKey_Valid(t *testing.T) {
+	// Raw 32-byte ASCII key
+	raw32 := strings.Repeat("x", 32)
+	key, err := parseCredentialKey(raw32, "test")
+	if err != nil {
+		t.Fatalf("unexpected error for raw 32-byte key: %v", err)
+	}
+	if len(key) != 32 {
+		t.Errorf("expected 32-byte key, got %d", len(key))
+	}
+
+	// base64-encoded 32-byte key
+	b64Key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	key, err = parseCredentialKey(b64Key, "test")
+	if err != nil {
+		t.Fatalf("unexpected error for base64 key: %v", err)
+	}
+	if len(key) != 32 {
+		t.Errorf("expected 32-byte key, got %d", len(key))
+	}
+}
+
+func TestParseCredentialKey_InvalidRawLength(t *testing.T) {
+	_, err := parseCredentialKey("tooshort", "test")
+	if err == nil {
+		t.Fatal("expected error for short raw key, got nil")
+	}
+}
+
+func TestParseCredentialKey_InvalidBase64WrongDecodedLength(t *testing.T) {
+	// base64 of 16 bytes decodes to 16, not 32
+	b64Short := base64.StdEncoding.EncodeToString(make([]byte, 16))
+	_, err := parseCredentialKey(b64Short, "test")
+	if err == nil {
+		t.Fatal("expected error for base64 key with wrong decoded length, got nil")
+	}
+	if !strings.Contains(err.Error(), "16") {
+		t.Errorf("expected error to mention decoded length 16, got: %v", err)
+	}
+}
+
+func TestParseCredentialKey_InvalidBase64String(t *testing.T) {
+	_, err := parseCredentialKey("not-valid-base64!!!", "test")
+	if err == nil {
+		t.Fatal("expected error for invalid base64 string, got nil")
+	}
+}
+
+// TestGetEventoryCredentialKeyStatus_EnvPrecedence verifies the env var takes
+// precedence over a (hypothetical) database value.
+func TestGetEventoryCredentialKeyStatus_EnvPrecedence(t *testing.T) {
+	// Any non-empty env value should report env source.
+	t.Setenv("EVENTORY_CREDENTIAL_KEY", strings.Repeat("k", 32))
+	status := GetEventoryCredentialKeyStatus()
+	if !status.Configured {
+		t.Error("expected Configured=true when env var is set")
+	}
+	if status.Source != CredentialKeySourceEnv {
+		t.Errorf("expected source=%q, got %q", CredentialKeySourceEnv, status.Source)
+	}
+}
+
+func TestGetEventoryCredentialKeyStatus_NoneWhenEnvEmpty(t *testing.T) {
+	t.Setenv("EVENTORY_CREDENTIAL_KEY", "")
+	// No DB available in unit tests — should return none without panic.
+	status := GetEventoryCredentialKeyStatus()
+	if status.Source == CredentialKeySourceEnv {
+		t.Error("env source should not be reported when env var is empty")
+	}
+	// Configured may be false when no DB is available; just check no panic.
+}
+
+// TestGetEventoryCredentialKeyStatus_InvalidEnvKey verifies that an invalid
+// (non-32-byte, non-base64) env var value is reported as Configured=false with
+// Source="env" so the UI can distinguish "env var present but invalid" from "not set".
+func TestGetEventoryCredentialKeyStatus_InvalidEnvKey(t *testing.T) {
+	t.Setenv("EVENTORY_CREDENTIAL_KEY", "not-a-valid-key")
+	status := GetEventoryCredentialKeyStatus()
+	if status.Configured {
+		t.Error("expected Configured=false for an invalid env var key")
+	}
+	if status.Source != CredentialKeySourceEnv {
+		t.Errorf("expected source=%q for an invalid env var key, got %q", CredentialKeySourceEnv, status.Source)
+	}
+}
+
+// TestCollectLeaves_NilIDSkipped verifies that a leaf node with a null ID is
+// skipped with a log message and does not produce a "<nil>" inventory item.
+func TestCollectLeaves_NilIDSkipped(t *testing.T) {
+	raw := []json.RawMessage{
+		json.RawMessage(`{"id": null, "name": "Null-ID Item"}`),
+		json.RawMessage(`{"id": "valid-1", "name": "Valid Item"}`),
+	}
+	var leaves []inventoryLeaf
+	if err := collectLeaves(raw, "", &leaves); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(leaves) != 1 {
+		t.Fatalf("expected 1 leaf (null-ID skipped), got %d", len(leaves))
+	}
+	if leaves[0].id == "<nil>" {
+		t.Error("null ID leaf should have been skipped, not appended as <nil>")
+	}
+	if leaves[0].id != "valid-1" {
+		t.Errorf("expected valid-1, got %q", leaves[0].id)
 	}
 }
