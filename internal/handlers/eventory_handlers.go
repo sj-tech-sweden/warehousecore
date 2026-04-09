@@ -349,7 +349,7 @@ func GenerateEventoryCredentialKey(w http.ResponseWriter, r *http.Request) {
 		if err := services.SetEventoryCredentialKey(generated); err != nil {
 			log.Printf("[EVENTORY] Failed to save generated credential key: %v", err)
 			if errors.Is(err, services.ErrDatabaseNotAvailable) {
-				respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to save generated credential key"})
+				respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Database temporarily unavailable, please try again later"})
 				return
 			}
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to save generated credential key"})
