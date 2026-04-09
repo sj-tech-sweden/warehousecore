@@ -151,6 +151,13 @@ func AllocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int6
 		SELECT COALESCE(MAX(
 			CASE
 				WHEN SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) ~ $3
+					AND (
+						CHAR_LENGTH(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1)) < 19
+						OR (
+							CHAR_LENGTH(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1)) = 19
+							AND SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) <= '9223372036854775807'
+						)
+					)
 				THEN CAST(SUBSTRING(deviceID FROM CHAR_LENGTH($1) + 1) AS BIGINT)
 				ELSE 0
 			END
