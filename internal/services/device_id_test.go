@@ -115,6 +115,24 @@ func TestDeriveDeviceIDPrefix_ManualPrefixNormalized(t *testing.T) {
 	}
 }
 
+func TestDeriveDeviceIDPrefix_NilTxWithEmptyPrefix(t *testing.T) {
+	// When manualPrefix normalizes to empty (e.g. all special chars) and tx is
+	// nil, DeriveDeviceIDPrefix must return an error rather than panicking.
+	_, err := DeriveDeviceIDPrefix(context.Background(), nil, 42, "!@#")
+	if err == nil {
+		t.Fatal("expected error when tx is nil and manualPrefix normalizes to empty, got nil")
+	}
+}
+
+func TestAllocateDeviceCounter_NilTx(t *testing.T) {
+	// AllocateDeviceCounter must return an error when called with a nil tx
+	// rather than panicking on the nil pointer dereference.
+	_, err := AllocateDeviceCounter(context.Background(), nil, "LED1")
+	if err == nil {
+		t.Fatal("expected error when tx is nil, got nil")
+	}
+}
+
 // ===========================
 // buildDeviceIDLikePattern tests
 // ===========================

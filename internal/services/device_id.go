@@ -40,16 +40,19 @@ func normalizeDeviceIDPrefix(p string) string {
 
 // DeriveDeviceIDPrefix returns the device ID prefix for a given product.
 // If manualPrefix is non-empty after trimming it is normalized (uppercased,
-// stripped to [A-Z0-9]) and returned. Otherwise the prefix is derived from
-// the product's subcategory abbreviation + pos_in_category (e.g. "LED1"). If
-// no abbreviation is found the function falls back to "P{productID}" rather
-// than raising an error, intentionally diverging from the DB trigger
-// (migration 030) which raises in that case.
-//
-// The caller must hold an open transaction (tx).
+// stripped to [A-Z0-9]) and returned without accessing the database. Otherwise
+// the prefix is derived from the product's subcategory abbreviation +
+// pos_in_category (e.g. "LED1"); tx must be non-nil for this path. If no
+// abbreviation is found the function falls back to "P{productID}" rather than
+// raising an error, intentionally diverging from the DB trigger (migration 030)
+// which raises in that case.
 func DeriveDeviceIDPrefix(ctx context.Context, tx *sql.Tx, productID int, manualPrefix string) (string, error) {
 	if p := normalizeDeviceIDPrefix(strings.TrimSpace(manualPrefix)); p != "" {
 		return p, nil
+	}
+
+	if tx == nil {
+		return "", errors.New("a database transaction is required to derive the device ID prefix")
 	}
 
 	var abbreviation sql.NullString
@@ -120,6 +123,10 @@ func buildDeviceIDLikePattern(prefix string) string {
 //
 // The caller must hold an open transaction (tx).
 func AllocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("a database transaction is required to allocate a device counter")
+	}
+
 	// Two-key advisory lock: namespace key 1 scopes the lock family to
 	// device-ID allocation; the FNV-32a hash of the prefix serializes
 	// concurrent allocations that share the same prefix namespace without
