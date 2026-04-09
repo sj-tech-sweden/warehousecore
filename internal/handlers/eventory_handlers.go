@@ -68,7 +68,7 @@ func GetEventorySettings(w http.ResponseWriter, r *http.Request) {
 // UpdateEventorySettings saves the Eventory connection settings.
 // Empty api_key / password fields leave the existing stored values unchanged.
 // Set clear_api_key / clear_password to true to explicitly revoke a stored credential.
-// Missing sync_interval_minutes (null in JSON) preserves the existing value.
+// Missing sync_interval_minutes or price_margin_percent (null in JSON) preserves the existing value.
 func UpdateEventorySettings(w http.ResponseWriter, r *http.Request) {
 	var rawPayload struct {
 		APIURL              string   `json:"api_url"`

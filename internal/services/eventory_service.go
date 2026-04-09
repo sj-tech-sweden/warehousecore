@@ -503,6 +503,7 @@ func SaveEventoryConfig(cfg *EventoryConfig) error {
 		"token_endpoint":        cfg.TokenEndpoint,
 		"supplier_name":         cfg.SupplierName,
 		"sync_interval_minutes": cfg.SyncIntervalMinutes,
+		"price_margin_percent":  cfg.PriceMarginPercent,
 	}
 
 	return adminSvc.SetSetting(eventorySettingScope, eventorySettingKey, value)
