@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -291,7 +292,7 @@ func SyncEventoryProducts(w http.ResponseWriter, r *http.Request) {
 
 // GetEventoryCredentialKeyStatus returns whether and from where the Eventory
 // credential encryption key is configured (env var, database, or not set).
-func GetEventoryCredentialKeyStatusHandler(w http.ResponseWriter, r *http.Request) {
+func GetEventoryCredentialKeyStatus(w http.ResponseWriter, r *http.Request) {
 	status := services.GetEventoryCredentialKeyStatus()
 	respondJSON(w, http.StatusOK, status)
 }
@@ -308,8 +309,15 @@ func UpdateEventoryCredentialKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := services.SetEventoryCredentialKey(payload.Key); err != nil {
-		log.Printf("[EVENTORY] Failed to save credential key: %v", err)
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Failed to save credential key: %v", err)})
+		switch {
+		case errors.Is(err, services.ErrCredentialKeyInvalid):
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, services.ErrDatabaseNotAvailable):
+			respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Database not available"})
+		default:
+			log.Printf("[EVENTORY] Failed to save credential key: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to save credential key"})
+		}
 		return
 	}
 	status := services.GetEventoryCredentialKeyStatus()

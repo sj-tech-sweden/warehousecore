@@ -380,7 +380,7 @@ func main() {
 	admin.HandleFunc("/eventory/settings", handlers.UpdateEventorySettings).Methods("PUT")
 	admin.HandleFunc("/eventory/products", handlers.GetEventoryProducts).Methods("GET")
 	admin.HandleFunc("/eventory/sync", handlers.SyncEventoryProducts).Methods("POST")
-	admin.HandleFunc("/eventory/credential-key", handlers.GetEventoryCredentialKeyStatusHandler).Methods("GET")
+	admin.HandleFunc("/eventory/credential-key", handlers.GetEventoryCredentialKeyStatus).Methods("GET")
 	admin.HandleFunc("/eventory/credential-key", handlers.UpdateEventoryCredentialKey).Methods("PUT")
 	admin.HandleFunc("/eventory/credential-key/generate", handlers.GenerateEventoryCredentialKey).Methods("POST")
 

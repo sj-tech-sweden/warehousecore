@@ -614,7 +614,8 @@ export function EventoryTab() {
                   type="button"
                   onClick={() => setCredKeyVisible(v => !v)}
                   className="px-3 py-2 border border-white/20 rounded-lg text-gray-400 hover:text-white hover:border-white/40 transition-colors"
-                  title={credKeyVisible ? 'Hide key' : 'Show key'}
+                  title={credKeyVisible ? t('admin.eventory.hideKey') : t('admin.eventory.showKey')}
+                  aria-label={credKeyVisible ? t('admin.eventory.hideKey') : t('admin.eventory.showKey')}
                 >
                   {credKeyVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>

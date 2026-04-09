@@ -41,6 +41,10 @@ const (
 // the caller should fall back to legacy product endpoints.
 var errInventoryRentalsNotFound = errors.New("inventory-rentals endpoint not found (404)")
 
+// ErrCredentialKeyInvalid is returned by SetEventoryCredentialKey when the
+// supplied key fails validation (bad base64 encoding or wrong length).
+var ErrCredentialKeyInvalid = errors.New("invalid credential key")
+
 // privateNetworks is parsed once at startup from the list of non-routable CIDR
 // blocks used by isPrivateIP. Pre-parsing avoids repeated net.ParseCIDR calls
 // inside DialContext, which is invoked on every outbound connection.
@@ -268,6 +272,10 @@ func GetEventoryCredentialKeyStatus() EventoryCredentialKeyStatus {
 	adminSvc := NewAdminService()
 	setting, err := adminSvc.GetSetting(eventorySettingScope, eventoryCredentialKeySettingKey)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("[EVENTORY] failed to read credential key setting (scope=%q key=%q): %v",
+				eventorySettingScope, eventoryCredentialKeySettingKey, err)
+		}
 		return EventoryCredentialKeyStatus{Configured: false, Source: CredentialKeySourceNone}
 	}
 	raw, _ := setting.Value["key"].(string)
@@ -289,6 +297,8 @@ func GenerateCredentialKey() (string, error) {
 
 // SetEventoryCredentialKey validates keyBase64 and stores it in app_settings.
 // Passing an empty string clears the stored key.
+// Returns ErrCredentialKeyInvalid if the key fails validation, ErrDatabaseNotAvailable
+// if the database is not reachable, or an error wrapping the database write failure.
 func SetEventoryCredentialKey(keyBase64 string) error {
 	db := repository.GetDB()
 	if db == nil {
@@ -298,7 +308,7 @@ func SetEventoryCredentialKey(keyBase64 string) error {
 	if keyBase64 != "" {
 		// Validate before storing.
 		if _, err := parseCredentialKey(keyBase64, "credential key"); err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrCredentialKeyInvalid, err)
 		}
 	}
 	adminSvc := NewAdminService()
@@ -712,12 +722,15 @@ func fetchFromEndpoint(client *http.Client, baseURL, endpoint, oauthToken, apiKe
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("endpoint not found (404)")
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("unauthorized – check your credentials")
 	}
 	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
