@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"log"
+	"math"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -332,7 +333,7 @@ func RunEventorySync(cfg *EventoryConfig) (imported, updated, skipped, total int
 		var inserted bool
 		var upsertErr error
 		if applyMargin {
-			customerPrice := p.Price * (1 + cfg.PriceMarginPercent/100)
+			customerPrice := math.Round(p.Price*(1+cfg.PriceMarginPercent/100)*100) / 100
 			upsertErr = tx.QueryRow(upsertQuery, name, supplierName, p.Price, customerPrice,
 				nullableString(&category), nullableString(&description), now).Scan(&inserted)
 		} else {

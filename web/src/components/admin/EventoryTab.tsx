@@ -554,7 +554,7 @@ export function EventoryTab() {
               min="0"
               step="0.1"
               value={priceMargin}
-              onChange={e => setPriceMargin(Math.max(0, parseFloat(e.target.value) || 0))}
+              onChange={e => { const v = parseFloat(e.target.value); setPriceMargin(isNaN(v) ? 0 : Math.max(0, v)); }}
               className="flex-1 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
             />
             <span className="text-gray-400 font-medium">%</span>
