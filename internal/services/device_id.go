@@ -77,6 +77,17 @@ func DeriveDeviceIDPrefix(ctx context.Context, tx *sql.Tx, productID int, manual
 	return fmt.Sprintf("P%d", productID), nil
 }
 
+// buildDeviceIDLikePattern returns the SQL LIKE pattern for a given device ID
+// prefix: the prefix is escaped so that \, %, and _ are treated as literals,
+// then a trailing % wildcard is appended. The result is suitable for use with
+// ESCAPE '\' in a LIKE predicate.
+//
+// This helper is extracted from AllocateDeviceCounter to make the
+// pattern-building logic independently testable without a database connection.
+func buildDeviceIDLikePattern(prefix string) string {
+	return deviceIDLikeEscaper.Replace(prefix) + "%"
+}
+
 // AllocateDeviceCounter acquires a pg_advisory_xact_lock keyed on a
 // per-namespace FNV-32a hash of the prefix to serialize concurrent allocation,
 // then returns the next available numeric counter for device IDs that start
@@ -120,16 +131,13 @@ func AllocateDeviceCounter(ctx context.Context, tx *sql.Tx, prefix string) (int6
 		return 0, fmt.Errorf("failed to acquire device creation lock: %w", err)
 	}
 
-	// Build a LIKE pattern that treats the prefix as a literal string.
-	// We escape \, %, and _ so they are not interpreted as wildcard characters
-	// by PostgreSQL, then append % so the predicate matches any device ID that
-	// starts with the prefix.
+	// Build a LIKE pattern that treats the prefix as a literal string using the
+	// extracted buildDeviceIDLikePattern helper (also independently tested).
 	// Migration 037 adds a varchar_pattern_ops index on devices(deviceID) so
 	// PostgreSQL can use a btree prefix scan for this LIKE query regardless of
 	// the database collation (plain btree indexes are not used for LIKE under
 	// non-C locales without varchar_pattern_ops).
-	escapedPrefix := deviceIDLikeEscaper.Replace(prefix)
-	pattern := escapedPrefix + "%"
+	pattern := buildDeviceIDLikePattern(prefix)
 
 	var nextCounter int64
 	err := tx.QueryRowContext(ctx, `

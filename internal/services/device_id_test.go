@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"testing"
 )
 
@@ -91,10 +92,8 @@ func TestDeviceIDLikeEscaper_AllSpecialChars(t *testing.T) {
 // ===========================
 
 func TestDeriveDeviceIDPrefix_ManualPrefixNormalized(t *testing.T) {
-	// When a non-empty manualPrefix is supplied, DeriveDeviceIDPrefix should
-	// return it normalized (uppercased, [A-Z0-9] only) without touching the DB.
-	// We call normalizeDeviceIDPrefix directly because the DB call path is
-	// integration-tested; this covers the normalization contract.
+	// When a non-empty manualPrefix is supplied, DeriveDeviceIDPrefix returns
+	// early before touching the tx, so it is safe to pass a nil *sql.Tx.
 	cases := []struct {
 		input string
 		want  string
@@ -102,12 +101,60 @@ func TestDeriveDeviceIDPrefix_ManualPrefixNormalized(t *testing.T) {
 		{"led", "LED"},
 		{"LED 1!", "LED1"},
 		{"Abc-123", "ABC123"},
-		{"  P1  ", "P1"}, // spaces are stripped by normalization (not [A-Z0-9])
+		{"  P1  ", "P1"}, // spaces are stripped; result is P1
 	}
 	for _, c := range cases {
-		got := normalizeDeviceIDPrefix(c.input)
-		if got != c.want {
-			t.Errorf("normalizeDeviceIDPrefix(%q) = %q, want %q", c.input, got, c.want)
+		got, err := DeriveDeviceIDPrefix(context.Background(), nil, 0, c.input)
+		if err != nil {
+			t.Errorf("DeriveDeviceIDPrefix(nil, 0, %q) returned unexpected error: %v", c.input, err)
+			continue
 		}
+		if got != c.want {
+			t.Errorf("DeriveDeviceIDPrefix(nil, 0, %q) = %q, want %q", c.input, got, c.want)
+		}
+	}
+}
+
+// ===========================
+// buildDeviceIDLikePattern tests
+// ===========================
+
+func TestBuildDeviceIDLikePattern_NoSpecialChars(t *testing.T) {
+	got := buildDeviceIDLikePattern("LED1")
+	want := "LED1%"
+	if got != want {
+		t.Fatalf("buildDeviceIDLikePattern(%q) = %q, want %q", "LED1", got, want)
+	}
+}
+
+func TestBuildDeviceIDLikePattern_EscapesPercent(t *testing.T) {
+	got := buildDeviceIDLikePattern("A%B")
+	want := `A\%B%`
+	if got != want {
+		t.Fatalf("buildDeviceIDLikePattern(%q) = %q, want %q", "A%B", got, want)
+	}
+}
+
+func TestBuildDeviceIDLikePattern_EscapesUnderscore(t *testing.T) {
+	got := buildDeviceIDLikePattern("A_B")
+	want := `A\_B%`
+	if got != want {
+		t.Fatalf("buildDeviceIDLikePattern(%q) = %q, want %q", "A_B", got, want)
+	}
+}
+
+func TestBuildDeviceIDLikePattern_EscapesBackslash(t *testing.T) {
+	got := buildDeviceIDLikePattern(`A\B`)
+	want := `A\\B%`
+	if got != want {
+		t.Fatalf("buildDeviceIDLikePattern(%q) = %q, want %q", `A\B`, got, want)
+	}
+}
+
+func TestBuildDeviceIDLikePattern_EscapesAll(t *testing.T) {
+	got := buildDeviceIDLikePattern(`%_\`)
+	want := `\%\_\\%`
+	if got != want {
+		t.Fatalf("buildDeviceIDLikePattern(%q) = %q, want %q", `%_\`, got, want)
 	}
 }
