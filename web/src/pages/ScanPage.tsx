@@ -478,7 +478,7 @@ export function ScanPage() {
       case 'case': return 'scan.case.title';
       case 'device-for-case': return 'scan.case.addDevicesTitle';
       case 'job': return 'scan.outtake.title';
-      default: return action === 'outtake' ? 'scan.outtake.addDevicesTitle' : 'scan.scannerTitle';
+      case 'device': return action === 'outtake' ? 'scan.outtake.addDevicesTitle' : 'scan.scannerTitle';
     }
   };
   const getSubtitleKey = (): string => {
@@ -487,7 +487,7 @@ export function ScanPage() {
       case 'case': return 'scan.case.subtitle';
       case 'device-for-case': return 'scan.case.addDevicesSubtitle';
       case 'job': return 'scan.outtake.subtitle';
-      default: return action === 'outtake' ? 'scan.outtake.addDevicesSubtitle' : 'scan.scannerSubtitle';
+      case 'device': return action === 'outtake' ? 'scan.outtake.addDevicesSubtitle' : 'scan.scannerSubtitle';
     }
   };
 
