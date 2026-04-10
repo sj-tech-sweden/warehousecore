@@ -5,8 +5,6 @@
 -- Using CONCAT to build full name from first_name and last_name
 -- Also trying username and email fields as fallback
 -- Postgres-compatible: insert admin and warehouse_admin roles for matching user
--- LIMIT 1 ensures at most one user receives the role even if multiple users
--- happen to match the name/username/email pattern.
 INSERT INTO user_roles (userid, roleid, assigned_at, is_active)
 SELECT u.userid, r.roleid, NOW(), TRUE
 FROM users u
@@ -16,7 +14,6 @@ WHERE (
   OR u.username ILIKE '%thielmann%'
   OR u.email ILIKE '%thielmann%'
 )
-LIMIT 1
 ON CONFLICT (userid, roleid) DO NOTHING;
 
 INSERT INTO user_roles (userid, roleid, assigned_at, is_active)
@@ -28,7 +25,6 @@ WHERE (
   OR u.username ILIKE '%thielmann%'
   OR u.email ILIKE '%thielmann%'
 )
-LIMIT 1
 ON CONFLICT (userid, roleid) DO NOTHING;
 
 -- This migration is idempotent and safe to run across environments.

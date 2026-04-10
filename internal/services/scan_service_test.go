@@ -22,14 +22,32 @@ func TestUpsertJobDeviceSQL_HasOnConflict(t *testing.T) {
 }
 
 // TestUpsertJobDeviceSQL_ConflictOnJobIDAndDeviceID verifies that the conflict
-// target matches the unique constraint enforced by migration 039.
+// target in the ON CONFLICT clause covers both jobID and deviceID (matching the
+// unique constraint enforced by migration 039), rather than just checking that
+// those column names appear somewhere in the SQL.
 func TestUpsertJobDeviceSQL_ConflictOnJobIDAndDeviceID(t *testing.T) {
-	// The conflict target must reference both columns used in the unique
-	// constraint.  Accept either case (postgres is case-insensitive for
-	// unquoted identifiers; the production SQL uses mixed case).
 	lower := strings.ToLower(upsertJobDeviceSQL)
-	if !strings.Contains(lower, "jobid") || !strings.Contains(lower, "deviceid") {
-		t.Error("ON CONFLICT target must include both jobID and deviceID columns")
+
+	conflictIdx := strings.Index(lower, "on conflict")
+	if conflictIdx == -1 {
+		t.Fatal("upsertJobDeviceSQL must contain an ON CONFLICT clause")
+	}
+
+	// Extract the ON CONFLICT clause up to the closing parenthesis of its
+	// column list so we only inspect the target, not the rest of the SQL.
+	conflictClause := lower[conflictIdx:]
+	openParen := strings.Index(conflictClause, "(")
+	closeParen := strings.Index(conflictClause, ")")
+	if openParen == -1 || closeParen == -1 || closeParen < openParen {
+		t.Fatal("ON CONFLICT clause must have a parenthesised column target")
+	}
+	target := conflictClause[openParen+1 : closeParen]
+
+	if !strings.Contains(target, "jobid") {
+		t.Errorf("ON CONFLICT target %q must include jobid", target)
+	}
+	if !strings.Contains(target, "deviceid") {
+		t.Errorf("ON CONFLICT target %q must include deviceid", target)
 	}
 }
 
@@ -42,12 +60,26 @@ func TestUpsertJobDeviceSQL_UpdatesPackStatusToIssued(t *testing.T) {
 	}
 }
 
-// TestUpsertJobDeviceSQL_UpdatesPackTs verifies that the DO UPDATE clause also
-// updates pack_ts so the timestamp reflects the actual scan time.
+// TestUpsertJobDeviceSQL_UpdatesPackTs verifies that the DO UPDATE clause
+// explicitly sets pack_ts (e.g. to NOW()) so the timestamp always reflects the
+// actual scan time, not just that the column name appears in the INSERT list.
 func TestUpsertJobDeviceSQL_UpdatesPackTs(t *testing.T) {
 	lower := strings.ToLower(upsertJobDeviceSQL)
-	if !strings.Contains(lower, "pack_ts") {
-		t.Error("DO UPDATE must update pack_ts")
+
+	doUpdateIdx := strings.Index(lower, "do update")
+	if doUpdateIdx == -1 {
+		t.Fatal("upsertJobDeviceSQL must contain a DO UPDATE clause")
+	}
+
+	doUpdateClause := lower[doUpdateIdx:]
+	if !strings.Contains(doUpdateClause, "set") {
+		t.Error("DO UPDATE clause must contain a SET")
+	}
+	if !strings.Contains(doUpdateClause, "pack_ts") {
+		t.Error("DO UPDATE SET must include pack_ts")
+	}
+	if !strings.Contains(doUpdateClause, "now()") {
+		t.Error("DO UPDATE SET must assign pack_ts = NOW()")
 	}
 }
 
