@@ -665,7 +665,7 @@ export function ScanPage() {
                 <button
                   type="button"
                   disabled={loading}
-                  onClick={() => { setScannedJobId(null); setStep('job'); }}
+                  onClick={() => { setScannedJobId(null); setScanCode(''); setResult(null); setStep('job'); }}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-gray-300 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <X className="w-3 h-3" />
@@ -686,7 +686,7 @@ export function ScanPage() {
                 <button
                   type="button"
                   disabled={loading}
-                  onClick={() => setStep('job')}
+                  onClick={() => { setScanCode(''); setResult(null); setStep('job'); }}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-accent-red/20 hover:bg-accent-red/30 text-red-300 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {t('scan.outtake.selectJob')}
@@ -826,7 +826,7 @@ export function ScanPage() {
               />
             </div>
 
-            {/* Action Selection - only show in step 1 */}
+            {/* Action Selection - shown in the initial device step, the outtake job step, and no-job consumable mode */}
             {shouldShowActionSelector && (
               <div className="grid grid-cols-4 gap-2 sm:gap-3">
                 {([
@@ -856,7 +856,7 @@ export function ScanPage() {
               <div className="text-center">
                 <button
                   type="button"
-                  onClick={() => { setStep('device'); setResult(null); }}
+                  onClick={() => { setScanCode(''); setResult(null); setStep('device'); }}
                   className="text-xs text-gray-500 hover:text-gray-300 transition-colors underline"
                 >
                   {t('scan.outtake.skipJob')}
