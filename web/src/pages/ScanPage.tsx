@@ -462,6 +462,16 @@ export function ScanPage() {
     setServiceError(null);
   };
 
+  // Derived UI helpers
+  const outtakeJobStepColor = step === 'job' ? 'text-accent-red' : scannedJobId ? 'text-green-500' : 'text-gray-500';
+  const outtakeJobStepBg = step === 'job' ? 'bg-accent-red' : scannedJobId ? 'bg-green-500' : 'bg-gray-600';
+  const outtakeJobStepLabel = step !== 'job' ? (scannedJobId ? '✓' : '—') : '1';
+  const shouldShowActionSelector =
+    step === 'case' ||
+    step === 'job' ||
+    (step === 'device' && action !== 'outtake') ||
+    (step === 'device' && action === 'outtake' && !scannedJobId);
+
   return (
     <div className="flex items-center justify-center p-3 sm:p-4">
       <div className="w-full max-w-2xl my-auto">
@@ -554,11 +564,9 @@ export function ScanPage() {
           {/* Step Indicator for Outtake */}
           {action === 'outtake' && (
             <div className="mb-4 sm:mb-6 flex items-center justify-center gap-2 sm:gap-4">
-              <div className={`flex items-center gap-1.5 sm:gap-2 ${step === 'job' ? 'text-accent-red' : scannedJobId ? 'text-green-500' : 'text-gray-500'}`}>
-                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-sm sm:text-base ${
-                  step === 'job' ? 'bg-accent-red' : scannedJobId ? 'bg-green-500' : 'bg-gray-600'
-                }`}>
-                  {step !== 'job' ? (scannedJobId ? '✓' : '—') : '1'}
+              <div className={`flex items-center gap-1.5 sm:gap-2 ${outtakeJobStepColor}`}>
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-sm sm:text-base ${outtakeJobStepBg}`}>
+                  {outtakeJobStepLabel}
                 </div>
                 <span className="text-sm sm:text-base font-semibold">{t('scan.outtake.steps.job')}</span>
               </div>
@@ -812,7 +820,7 @@ export function ScanPage() {
             </div>
 
             {/* Action Selection - only show in step 1 */}
-            {(step === 'case' || step === 'job' || (step === 'device' && action !== 'outtake') || (step === 'device' && action === 'outtake' && !scannedJobId)) && (
+            {shouldShowActionSelector && (
               <div className="grid grid-cols-4 gap-2 sm:gap-3">
                 {([
                   { value: 'check', label: t('scan.actions.check') },
