@@ -3,8 +3,8 @@ package services
 import (
 	"fmt"
 	"log"
-	"math"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -256,12 +256,15 @@ func defaultEventorySync() {
 }
 
 // applyMarginPrice computes the customer price from a base rental price and a
-// margin percentage, rounding to two decimal places.
+// margin percentage, rounding to two decimal places. It uses decimal-safe
+// rounding (format then re-parse) to avoid binary float representation errors.
 //
 //	applyMarginPrice(100.0, 10) → 110.00
 //	applyMarginPrice(29.99, 10) → 32.99
 func applyMarginPrice(rentalPrice, marginPercent float64) float64 {
-	return math.Round(rentalPrice*(1+marginPercent/100)*100) / 100
+	result := rentalPrice * (1 + marginPercent/100)
+	rounded, _ := strconv.ParseFloat(fmt.Sprintf("%.2f", result), 64)
+	return rounded
 }
 
 // RunEventorySync fetches products from Eventory and upserts them into the

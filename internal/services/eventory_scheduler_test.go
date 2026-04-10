@@ -294,14 +294,14 @@ func TestTryAcquireSync_StopBlocksNewAcquire(t *testing.T) {
 // Customer price margin computation
 // ===========================
 
-func TestComputeCustomerPrice_ZeroMargin(t *testing.T) {
+func TestApplyMarginPrice_ZeroMargin(t *testing.T) {
 	// Zero margin should leave the price unchanged.
 	if got := applyMarginPrice(100.0, 0); got != 100.0 {
 		t.Errorf("expected 100.00, got %v", got)
 	}
 }
 
-func TestComputeCustomerPrice_RoundNumbers(t *testing.T) {
+func TestApplyMarginPrice_RoundNumbers(t *testing.T) {
 	cases := []struct {
 		price    float64
 		margin   float64
@@ -319,7 +319,7 @@ func TestComputeCustomerPrice_RoundNumbers(t *testing.T) {
 	}
 }
 
-func TestComputeCustomerPrice_Rounding(t *testing.T) {
+func TestApplyMarginPrice_Rounding(t *testing.T) {
 	// 29.99 * 1.10 = 32.989 → rounds to 32.99
 	got := applyMarginPrice(29.99, 10)
 	if got != 32.99 {
@@ -333,32 +333,10 @@ func TestComputeCustomerPrice_Rounding(t *testing.T) {
 	}
 }
 
-func TestComputeCustomerPrice_FractionalMargin(t *testing.T) {
+func TestApplyMarginPrice_FractionalMargin(t *testing.T) {
 	// 100.0 * 1.075 = 107.5 → no rounding needed
 	got := applyMarginPrice(100.0, 7.5)
 	if got != 107.5 {
 		t.Errorf("expected 107.50, got %v", got)
-	}
-}
-
-// TestApplyMarginFlag verifies that applyMargin is set correctly based on
-// PriceMarginPercent so the correct upsert branch is selected in RunEventorySync.
-func TestApplyMarginFlag(t *testing.T) {
-	cases := []struct {
-		margin      float64
-		applyMargin bool
-	}{
-		{0, false},
-		{-1, false}, // negative margin should not have been saved, but guard defensively
-		{0.1, true},
-		{10, true},
-		{100, true},
-	}
-	for _, tc := range cases {
-		cfg := &EventoryConfig{PriceMarginPercent: tc.margin}
-		got := cfg.PriceMarginPercent > 0
-		if got != tc.applyMargin {
-			t.Errorf("margin=%.1f: expected applyMargin=%v, got %v", tc.margin, tc.applyMargin, got)
-		}
 	}
 }
