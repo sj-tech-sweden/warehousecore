@@ -30,7 +30,7 @@ export function EventoryTab() {
   const [tokenEndpoint, setTokenEndpoint] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [syncInterval, setSyncInterval] = useState(0);
-  const [priceMargin, setPriceMargin] = useState(0);
+  const [priceMargin, setPriceMargin] = useState('0');
 
   // Credential key state
   const [credKeyStatus, setCredKeyStatus] = useState<EventoryCredentialKeyStatus | null>(null);
@@ -63,7 +63,7 @@ export function EventoryTab() {
       tokenEndpoint !== savedSettings.tokenEndpoint ||
       supplierName !== savedSettings.supplierName ||
       syncInterval !== savedSettings.syncInterval ||
-      priceMargin !== savedSettings.priceMargin ||
+      (parseFloat(priceMargin) || 0) !== savedSettings.priceMargin ||
       apiKey !== '' ||
       clearApiKey ||
       password !== '' ||
@@ -96,7 +96,7 @@ export function EventoryTab() {
       setTokenEndpoint(data.token_endpoint || '');
       setSupplierName(data.supplier_name || '');
       setSyncInterval(data.sync_interval_minutes ?? 0);
-      setPriceMargin(data.price_margin_percent ?? 0);
+      setPriceMargin(String(data.price_margin_percent ?? 0));
       setSavedSettings({
         apiUrl: data.api_url || '',
         username: data.username || '',
@@ -135,7 +135,7 @@ export function EventoryTab() {
         token_endpoint: tokenEndpoint.trim(),
         supplier_name: supplierName.trim(),
         sync_interval_minutes: syncInterval,
-        price_margin_percent: priceMargin,
+        price_margin_percent: Math.max(0, parseFloat(priceMargin) || 0),
       };
       if (clearApiKey) {
         payload.clear_api_key = true;
@@ -162,7 +162,7 @@ export function EventoryTab() {
       setTokenEndpoint(data.token_endpoint || '');
       setSupplierName(data.supplier_name || '');
       setSyncInterval(data.sync_interval_minutes ?? 0);
-      setPriceMargin(data.price_margin_percent ?? 0);
+      setPriceMargin(String(data.price_margin_percent ?? 0));
       setSavedSettings({
         apiUrl: savedApiUrl,
         username: data.username || '',
@@ -554,7 +554,11 @@ export function EventoryTab() {
               min="0"
               step="0.1"
               value={priceMargin}
-              onChange={e => { const v = parseFloat(e.target.value); setPriceMargin(isNaN(v) ? 0 : Math.max(0, v)); }}
+              onChange={e => setPriceMargin(e.target.value)}
+              onBlur={() => {
+                const v = parseFloat(priceMargin);
+                setPriceMargin(String(isNaN(v) ? 0 : Math.max(0, v)));
+              }}
               className="flex-1 px-4 py-3 bg-dark-light border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent-red transition-colors"
             />
             <span className="text-gray-400 font-medium">%</span>

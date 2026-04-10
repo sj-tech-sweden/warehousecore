@@ -1,7 +1,6 @@
 package services
 
 import (
-	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -295,15 +294,9 @@ func TestTryAcquireSync_StopBlocksNewAcquire(t *testing.T) {
 // Customer price margin computation
 // ===========================
 
-// computeCustomerPrice replicates the rounding formula used in RunEventorySync
-// so we can unit-test it without a database connection.
-func computeCustomerPrice(price, marginPercent float64) float64 {
-	return math.Round(price*(1+marginPercent/100)*100) / 100
-}
-
 func TestComputeCustomerPrice_ZeroMargin(t *testing.T) {
 	// Zero margin should leave the price unchanged.
-	if got := computeCustomerPrice(100.0, 0); got != 100.0 {
+	if got := applyMarginPrice(100.0, 0); got != 100.0 {
 		t.Errorf("expected 100.00, got %v", got)
 	}
 }
@@ -320,7 +313,7 @@ func TestComputeCustomerPrice_RoundNumbers(t *testing.T) {
 		{0.0, 50, 0.0},
 	}
 	for _, tc := range cases {
-		if got := computeCustomerPrice(tc.price, tc.margin); got != tc.expected {
+		if got := applyMarginPrice(tc.price, tc.margin); got != tc.expected {
 			t.Errorf("price=%.2f margin=%.2f: expected %.2f, got %.2f", tc.price, tc.margin, tc.expected, got)
 		}
 	}
@@ -328,13 +321,13 @@ func TestComputeCustomerPrice_RoundNumbers(t *testing.T) {
 
 func TestComputeCustomerPrice_Rounding(t *testing.T) {
 	// 29.99 * 1.10 = 32.989 → rounds to 32.99
-	got := computeCustomerPrice(29.99, 10)
+	got := applyMarginPrice(29.99, 10)
 	if got != 32.99 {
 		t.Errorf("expected 32.99, got %v", got)
 	}
 
 	// 9.95 * 1.15 = 11.4425 → rounds to 11.44
-	got = computeCustomerPrice(9.95, 15)
+	got = applyMarginPrice(9.95, 15)
 	if got != 11.44 {
 		t.Errorf("expected 11.44, got %v", got)
 	}
@@ -342,7 +335,7 @@ func TestComputeCustomerPrice_Rounding(t *testing.T) {
 
 func TestComputeCustomerPrice_FractionalMargin(t *testing.T) {
 	// 100.0 * 1.075 = 107.5 → no rounding needed
-	got := computeCustomerPrice(100.0, 7.5)
+	got := applyMarginPrice(100.0, 7.5)
 	if got != 107.5 {
 		t.Errorf("expected 107.50, got %v", got)
 	}

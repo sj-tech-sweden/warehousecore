@@ -255,6 +255,15 @@ func defaultEventorySync() {
 		imported, total, updated, skipped)
 }
 
+// applyMarginPrice computes the customer price from a base rental price and a
+// margin percentage, rounding to two decimal places.
+//
+//	applyMarginPrice(100.0, 10) → 110.00
+//	applyMarginPrice(29.99, 10) → 32.99
+func applyMarginPrice(rentalPrice, marginPercent float64) float64 {
+	return math.Round(rentalPrice*(1+marginPercent/100)*100) / 100
+}
+
 // RunEventorySync fetches products from Eventory and upserts them into the
 // rental_equipment table. It returns counts of imported, updated, and skipped
 // rows plus any fatal error. This is extracted from the handler so it can be
@@ -333,7 +342,7 @@ func RunEventorySync(cfg *EventoryConfig) (imported, updated, skipped, total int
 		var inserted bool
 		var upsertErr error
 		if applyMargin {
-			customerPrice := math.Round(p.Price*(1+cfg.PriceMarginPercent/100)*100) / 100
+			customerPrice := applyMarginPrice(p.Price, cfg.PriceMarginPercent)
 			upsertErr = tx.QueryRow(upsertQuery, name, supplierName, p.Price, customerPrice,
 				nullableString(&category), nullableString(&description), now).Scan(&inserted)
 		} else {

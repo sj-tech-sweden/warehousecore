@@ -436,10 +436,11 @@ func GetEventoryConfig() (*EventoryConfig, error) {
 }
 
 // GetEventoryPublicConfig loads the non-secret Eventory configuration fields
-// (APIURL, Username, TokenEndpoint, SupplierName, SyncIntervalMinutes) from
-// the database without attempting to decrypt stored credentials. Use this when
-// you need to preserve non-secret settings even when EVENTORY_CREDENTIAL_KEY
-// is missing or incorrect and decryption would fail.
+// (APIURL, Username, TokenEndpoint, SupplierName, SyncIntervalMinutes,
+// PriceMarginPercent) from the database without attempting to decrypt stored
+// credentials. Use this when you need to preserve non-secret settings even
+// when EVENTORY_CREDENTIAL_KEY is missing or incorrect and decryption would
+// fail.
 func GetEventoryPublicConfig() (*EventoryConfig, error) {
 	adminSvc := NewAdminService()
 	setting, err := adminSvc.GetSetting(eventorySettingScope, eventorySettingKey)
