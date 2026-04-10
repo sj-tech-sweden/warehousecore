@@ -881,15 +881,28 @@ export default function LabelDesignerPage() {
       newW = Math.min(newW, labelWidth - newX);
       newH = Math.min(newH, labelHeight - newY);
 
+      const roundToTenthMm = (value: number) => Math.round(value * 10) / 10;
+
+      let roundedW = Math.max(3, Math.min(roundToTenthMm(newW), labelWidth));
+      let roundedH = Math.max(2, Math.min(roundToTenthMm(newH), labelHeight));
+      let roundedX = Math.max(0, Math.min(roundToTenthMm(newX), labelWidth - roundedW));
+      let roundedY = Math.max(0, Math.min(roundToTenthMm(newY), labelHeight - roundedH));
+
+      // Re-clamp after rounding so the final persisted geometry still fits the label.
+      roundedW = Math.max(3, Math.min(roundedW, labelWidth - roundedX));
+      roundedH = Math.max(2, Math.min(roundedH, labelHeight - roundedY));
+      roundedX = Math.max(0, Math.min(roundedX, labelWidth - roundedW));
+      roundedY = Math.max(0, Math.min(roundedY, labelHeight - roundedH));
+
       setElements((prev) =>
         prev.map((el) =>
           el.id === id
             ? {
                 ...el,
-                x: Math.round(newX * 10) / 10,
-                y: Math.round(newY * 10) / 10,
-                width: Math.round(newW * 10) / 10,
-                height: Math.round(newH * 10) / 10,
+                x: roundedX,
+                y: roundedY,
+                width: roundedW,
+                height: roundedH,
               }
             : el
         )
