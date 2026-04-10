@@ -1185,7 +1185,7 @@
     },
     "outtake": {
       "title": "Job scannen",
-      "subtitle": "Scanne den Job-Barcode, um mit dem Auslagern zu beginnen",
+      "subtitle": "Scanne den Job-Barcode, um mit dem Auslagern zu beginnen. Geräte benötigen einen Job; Verbrauchsmaterialien und Zubehör können auch ohne Job ausgelagert werden.",
       "addDevicesTitle": "Gerät auslagern",
       "addDevicesSubtitle": "Scanne ein Gerät, um es für diesen Job auszugeben",
       "steps": {
@@ -1196,11 +1196,11 @@
       "scanJobButton": "Job scannen",
       "scanDeviceForJob": "Gerät auslagern",
       "jobSelected": "Job #{{id}} ausgewählt – Gerät scannen zum Ausgeben.",
-      "noJobSelected": "Zuerst einen Job-Barcode (JOB######) scannen, dann das Gerät.",
+      "noJobSelected": "Geräte müssen einem Job zugeordnet werden. Bitte scanne zuerst einen Job-Barcode (JOB######). (Verbrauchsmaterialien und Zubehör können ohne Job ausgelagert werden.)",
       "clearJob": "Job wechseln",
       "skipJob": "Job überspringen (nur Verbrauchsmaterial)",
-      "noJobMode": "Kein Job ausgewählt – nur Verbrauchsmaterial",
-      "noJobModeSubtitle": "Verbrauchsmaterial scannen, um es ohne Job auszulagern",
+      "noJobMode": "Kein Job ausgewählt — nur Verbrauchsmaterial & Zubehör",
+      "noJobModeSubtitle": "Scanne Verbrauchsmaterial oder Zubehör, um es ohne Job auszulagern. Zum Scannen von Geräten scanne zuerst einen Job-Barcode (JOB######).",
       "selectJob": "Job auswählen"
     },
     "ledModal": {

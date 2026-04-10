@@ -1185,7 +1185,7 @@
     },
     "outtake": {
       "title": "Scan Job",
-      "subtitle": "Scan the job barcode to begin outtake",
+      "subtitle": "Scan the job barcode to begin outtake. Devices require a job; consumables and accessories may be outtaken without one.",
       "addDevicesTitle": "Check Out Device",
       "addDevicesSubtitle": "Scan a device to check it out for this job",
       "steps": {
@@ -1196,11 +1196,11 @@
       "scanJobButton": "Scan Job",
       "scanDeviceForJob": "Check Out Device",
       "jobSelected": "Job #{{id}} selected – scan the device to check out.",
-      "noJobSelected": "Scan a job barcode (JOB######) first, then scan the device.",
+      "noJobSelected": "Devices must be checked out against a job. Please scan a job barcode (JOB######) first. (Consumables and accessories may be outtaken without a job.)",
       "clearJob": "Change Job",
       "skipJob": "Skip Job (consumables only)",
-      "noJobMode": "No job selected – consumables only",
-      "noJobModeSubtitle": "Scan a consumable to check it out without a job",
+      "noJobMode": "No job selected — consumables & accessories only",
+      "noJobModeSubtitle": "Scan a consumable or accessory to check it out without a job. To scan devices, first scan a job barcode (JOB######).",
       "selectJob": "Select Job"
     },
     "ledModal": {

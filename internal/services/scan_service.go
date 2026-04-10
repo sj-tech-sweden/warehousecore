@@ -197,10 +197,9 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 
 	// Assign to job and update pack_status to issued
 	_, err = tx.Exec(`
-		INSERT INTO jobdevices (deviceID, jobID, pack_status)
+		INSERT INTO jobdevices (jobID, deviceID, pack_status)
 		VALUES ($1, $2, 'issued')
-		ON CONFLICT (deviceID, jobID) DO UPDATE SET pack_status = 'issued'
-	`, device.DeviceID, *jobID)
+	`, *jobID, device.DeviceID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -408,7 +407,10 @@ func (s *ScanService) getDeviceWithDetails(deviceID string) *models.DeviceWithDe
 
 // logScanEvent records a scan event
 func (s *ScanService) logScanEvent(tx *sql.Tx, scanCode string, deviceID *string, action string, jobID, zoneID, userID *int64, success bool, errorMsg, ipAddr, userAgent string) {
-	_, err := tx.Exec(`
+	// Use a separate DB execution (not the provided tx) to ensure logging still
+	// works when the caller transaction has already been aborted by a previous
+	// error. This keeps the audit trail even when the main transaction fails.
+	_, err := s.db.Exec(`
 		INSERT INTO scan_events
 		(scan_code, device_id, action, job_id, zone_id, user_id, success, error_message, ip_address, user_agent, timestamp)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
