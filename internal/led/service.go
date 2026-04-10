@@ -246,9 +246,19 @@ func (s *Service) ensureMappingFile(path string) error {
 
 // HighlightJobBins highlights bins for devices in a specific job
 func (s *Service) HighlightJobBins(jobID string) error {
-	zoneCounts, err := s.getJobDeviceZonesWithCounts(jobID)
+	// Prefer product-requirement-based zones: highlight any bin that holds a device
+	// matching one of the product types required by the job.
+	zoneCounts, err := s.getProductRequirementZonesWithCounts(jobID)
 	if err != nil {
-		return fmt.Errorf("failed to get job devices: %w", err)
+		return fmt.Errorf("failed to get product requirement zones: %w", err)
+	}
+	// Fall back to zones of devices already assigned to the job when no product
+	// requirements are configured.
+	if len(zoneCounts) == 0 {
+		zoneCounts, err = s.getJobDeviceZonesWithCounts(jobID)
+		if err != nil {
+			return fmt.Errorf("failed to get job devices: %w", err)
+		}
 	}
 	if len(zoneCounts) == 0 {
 		return fmt.Errorf("no devices found for job %s", jobID)
@@ -585,10 +595,17 @@ func (s *Service) UpdateBinAfterScan(jobID string, zoneCode string) error {
 
 	log.Printf("[LED] Refreshing all bins for job %s after scan in zone %s", jobID, zoneCode)
 
-	// Get all device zones for this job with their current counts
-	deviceZones, err := s.getJobDeviceZonesWithCounts(jobID)
+	// Use product-requirement zones so that bins with matching devices are shown.
+	deviceZones, err := s.getProductRequirementZonesWithCounts(jobID)
 	if err != nil {
-		return fmt.Errorf("failed to get job device zones: %w", err)
+		return fmt.Errorf("failed to get product requirement zones: %w", err)
+	}
+	// Fall back to assigned-device zones when no product requirements exist.
+	if len(deviceZones) == 0 {
+		deviceZones, err = s.getJobDeviceZonesWithCounts(jobID)
+		if err != nil {
+			return fmt.Errorf("failed to get job device zones: %w", err)
+		}
 	}
 
 	s.mu.RLock()
@@ -699,6 +716,44 @@ func (s *Service) getJobDeviceZonesWithCounts(jobID string) (map[string]int, err
 		}
 		zoneCounts[zoneCode] = count
 		log.Printf("[LED] Zone %s has %d devices for job %s", zoneCode, count, jobID)
+	}
+
+	return zoneCounts, nil
+}
+
+// getProductRequirementZonesWithCounts returns a map of zone_code -> device count
+// for all in-storage devices whose product type matches one of the job's product
+// requirements. This is used to highlight bins that a warehouse worker should visit
+// when preparing a job, regardless of whether devices are already assigned to the job.
+func (s *Service) getProductRequirementZonesWithCounts(jobID string) (map[string]int, error) {
+	db := repository.GetSQLDB()
+
+	query := `
+		SELECT z.code, COUNT(*) as device_count
+		FROM devices d
+		JOIN storage_zones z ON d.zone_id = z.zone_id
+		JOIN job_product_requirements jpr ON jpr.product_id = d.productID AND jpr.job_id = $1
+		WHERE d.status = 'in_storage'
+		  AND z.code IS NOT NULL
+		GROUP BY z.code
+	`
+
+	rows, err := db.Query(query, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("querying product requirement zones for job %s: %w", jobID, err)
+	}
+	defer rows.Close()
+
+	zoneCounts := make(map[string]int)
+	for rows.Next() {
+		var zoneCode string
+		var count int
+		if err := rows.Scan(&zoneCode, &count); err != nil {
+			log.Printf("[LED] Error scanning product requirement zone count: %v", err)
+			continue
+		}
+		zoneCounts[zoneCode] = count
+		log.Printf("[LED] Zone %s has %d matching product devices for job %s", zoneCode, count, jobID)
 	}
 
 	return zoneCounts, nil
