@@ -477,7 +477,19 @@ export function JobsPage() {
   }
 
   // Job Details & Scan View
-  const stats = getDeviceStats(selectedJob.devices);
+  // Prefer product requirement based progress when available, otherwise fall
+  // back to device-based progress for legacy jobs.
+  const getRequirementStats = (reqs: ProductRequirement[] | undefined, devices: JobDevice[]) => {
+    if (reqs && reqs.length > 0) {
+      const total = reqs.reduce((acc, r) => acc + (r.required || 0), 0);
+      const scanned = reqs.reduce((acc, r) => acc + (r.assigned || 0), 0);
+      const remaining = Math.max(0, total - scanned);
+      return { total, scanned, remaining };
+    }
+    return getDeviceStats(devices);
+  };
+
+  const stats = getRequirementStats(selectedJob.product_requirements, selectedJob.devices);
   const progress = stats.total > 0 ? (stats.scanned / stats.total) * 100 : 0;
 
   return (
