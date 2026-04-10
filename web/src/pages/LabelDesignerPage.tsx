@@ -35,6 +35,18 @@ export default function LabelDesignerPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  // Cancel any in-flight drag/resize when the component unmounts or the
+  // window loses focus (e.g. mid-drag Alt+Tab).
+  useEffect(() => {
+    const cancelDrag = () => dragCleanupRef.current?.();
+    window.addEventListener('blur', cancelDrag);
+    return () => {
+      window.removeEventListener('blur', cancelDrag);
+      dragCleanupRef.current?.();
+    };
+  }, []);
 
   useEffect(() => {
     loadDevices();
@@ -814,14 +826,18 @@ export default function LabelDesignerPage() {
       );
     };
 
-    const handleMouseUp = () => {
+    const cleanup = () => {
       setIsDragging(false);
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', cleanup);
+      document.removeEventListener('pointercancel', cleanup);
+      dragCleanupRef.current = null;
     };
 
+    dragCleanupRef.current = cleanup;
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', cleanup);
+    document.addEventListener('pointercancel', cleanup);
   };
 
   const handleResizeMouseDown = (e: React.MouseEvent, id: string, direction: string) => {
@@ -861,6 +877,9 @@ export default function LabelDesignerPage() {
 
       newX = Math.max(0, Math.min(labelWidth - newW, newX));
       newY = Math.max(0, Math.min(labelHeight - newH, newY));
+      // Clamp width/height to remaining label space from the (possibly adjusted) origin
+      newW = Math.min(newW, labelWidth - newX);
+      newH = Math.min(newH, labelHeight - newY);
 
       setElements((prev) =>
         prev.map((el) =>
@@ -877,14 +896,18 @@ export default function LabelDesignerPage() {
       );
     };
 
-    const handleMouseUp = () => {
+    const cleanup = () => {
       setIsDragging(false);
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', cleanup);
+      document.removeEventListener('pointercancel', cleanup);
+      dragCleanupRef.current = null;
     };
 
+    dragCleanupRef.current = cleanup;
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', cleanup);
+    document.addEventListener('pointercancel', cleanup);
   };
 
   const selectedElem = elements.find((e) => e.id === selectedElement);
@@ -1272,7 +1295,7 @@ export default function LabelDesignerPage() {
                 className="canvas-overlay"
                 onClick={() => setSelectedElement(null)}
               >
-                {elements.map((elem) => (
+                {labelWidth > 0 && labelHeight > 0 && elements.map((elem) => (
                   <div
                     key={elem.id}
                     className={`element-overlay${selectedElement === elem.id ? ' selected' : ''}`}
