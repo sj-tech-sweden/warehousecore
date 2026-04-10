@@ -34,7 +34,8 @@ export default function LabelDesignerPage() {
   const [currentTemplateId, setCurrentTemplateId] = useState<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  // Use a ref instead of state so toggling drag doesn't re-trigger the renderPreview effect.
+  const isDraggingRef = useRef(false);
   const dragCleanupRef = useRef<(() => void) | null>(null);
 
   // Cancel any in-flight drag/resize when the component unmounts or the
@@ -411,10 +412,10 @@ export default function LabelDesignerPage() {
   };
 
   useEffect(() => {
-    if (previewDevice && !isDragging) {
+    if (previewDevice && !isDraggingRef.current) {
       renderPreview();
     }
-  }, [elements, labelWidth, labelHeight, previewDevice, isDragging]);
+  }, [elements, labelWidth, labelHeight, previewDevice]);
 
   const generateAllLabels = async () => {
     const totalItems = devices.length + cases.length + zones.length;
@@ -809,38 +810,54 @@ export default function LabelDesignerPage() {
     const elemWidth = elem.width;
     const elemHeight = elem.height;
 
-    setIsDragging(true);
+    isDraggingRef.current = true;
 
     const handleMouseMove = (me: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       const deltaXMm = ((me.clientX - startX) / rect.width) * labelWidth;
       const deltaYMm = ((me.clientY - startY) / rect.height) * labelHeight;
-      const newX = Math.max(0, Math.min(labelWidth - elemWidth, origX + deltaXMm));
-      const newY = Math.max(0, Math.min(labelHeight - elemHeight, origY + deltaYMm));
+      const rawX = Math.max(0, Math.min(labelWidth - elemWidth, origX + deltaXMm));
+      const rawY = Math.max(0, Math.min(labelHeight - elemHeight, origY + deltaYMm));
+      // Round then re-clamp so rounding never pushes x/y outside the label.
+      const newX = Math.max(0, Math.min(Math.round(rawX * 10) / 10, labelWidth - elemWidth));
+      const newY = Math.max(0, Math.min(Math.round(rawY * 10) / 10, labelHeight - elemHeight));
       setElements((prev) =>
         prev.map((el) =>
           el.id === id
-            ? { ...el, x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 }
+            ? { ...el, x: newX, y: newY }
             : el
         )
       );
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') cleanup();
+    };
+    const handleWindowMouseOut = (me: MouseEvent) => {
+      if (me.relatedTarget === null) cleanup();
+    };
+
     const cleanup = () => {
-      setIsDragging(false);
+      isDraggingRef.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', cleanup);
-      document.removeEventListener('pointercancel', cleanup);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', cleanup);
+      window.removeEventListener('mouseout', handleWindowMouseOut);
       dragCleanupRef.current = null;
+      // Trigger a final preview render now that the drag is done.
+      renderPreview();
     };
 
     dragCleanupRef.current = cleanup;
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', cleanup);
-    document.addEventListener('pointercancel', cleanup);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', cleanup);
+    window.addEventListener('mouseout', handleWindowMouseOut);
   };
 
-  const handleResizeMouseDown = (e: React.MouseEvent, id: string, direction: string) => {
+  const handleResizeMouseDown = (e: React.MouseEvent, id: string, direction: 'nw' | 'ne' | 'sw' | 'se') => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -855,7 +872,7 @@ export default function LabelDesignerPage() {
     const origW = elem.width;
     const origH = elem.height;
 
-    setIsDragging(true);
+    isDraggingRef.current = true;
 
     const handleMouseMove = (me: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -909,18 +926,31 @@ export default function LabelDesignerPage() {
       );
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') cleanup();
+    };
+    const handleWindowMouseOut = (me: MouseEvent) => {
+      if (me.relatedTarget === null) cleanup();
+    };
+
     const cleanup = () => {
-      setIsDragging(false);
+      isDraggingRef.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', cleanup);
-      document.removeEventListener('pointercancel', cleanup);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', cleanup);
+      window.removeEventListener('mouseout', handleWindowMouseOut);
       dragCleanupRef.current = null;
+      // Trigger a final preview render now that the drag is done.
+      renderPreview();
     };
 
     dragCleanupRef.current = cleanup;
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', cleanup);
-    document.addEventListener('pointercancel', cleanup);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', cleanup);
+    window.addEventListener('mouseout', handleWindowMouseOut);
   };
 
   const selectedElem = elements.find((e) => e.id === selectedElement);
