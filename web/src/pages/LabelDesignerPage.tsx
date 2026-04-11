@@ -801,6 +801,7 @@ export default function LabelDesignerPage() {
   };
 
   const handleElementMouseDown = (e: React.MouseEvent, id: string) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     setSelectedElement(id);
@@ -817,9 +818,11 @@ export default function LabelDesignerPage() {
     const elemHeight = elem.height;
 
     isDraggingRef.current = true;
+    let geometryChanged = false;
 
     const handleMouseMove = (me: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
       const deltaXMm = ((me.clientX - startX) / rect.width) * labelWidth;
       const deltaYMm = ((me.clientY - startY) / rect.height) * labelHeight;
       const rawX = Math.max(0, Math.min(labelWidth - elemWidth, origX + deltaXMm));
@@ -827,13 +830,12 @@ export default function LabelDesignerPage() {
       // Round then re-clamp so rounding never pushes x/y outside the label.
       const newX = Math.max(0, Math.min(Math.round(rawX * 10) / 10, labelWidth - elemWidth));
       const newY = Math.max(0, Math.min(Math.round(rawY * 10) / 10, labelHeight - elemHeight));
-      setElements((prev) =>
-        prev.map((el) =>
-          el.id === id
-            ? { ...el, x: newX, y: newY }
-            : el
-        )
-      );
+      setElements((prev) => {
+        const current = prev.find((el) => el.id === id);
+        if (current && current.x === newX && current.y === newY) return prev;
+        geometryChanged = true;
+        return prev.map((el) => (el.id === id ? { ...el, x: newX, y: newY } : el));
+      });
     };
 
     const handleVisibilityChange = () => {
@@ -854,8 +856,8 @@ export default function LabelDesignerPage() {
       window.removeEventListener('blur', cleanup);
       window.removeEventListener('mouseout', handleWindowMouseOut);
       dragCleanupRef.current = null;
-      // Trigger a final preview render (via ref to avoid stale closure).
-      if (isMountedRef.current) renderPreviewRef.current();
+      // Only re-render when the element was actually moved (not on a simple click).
+      if (geometryChanged && isMountedRef.current) renderPreviewRef.current();
     };
 
     dragCleanupRef.current = cleanup;
@@ -867,6 +869,7 @@ export default function LabelDesignerPage() {
   };
 
   const handleResizeMouseDown = (e: React.MouseEvent, id: string, direction: 'nw' | 'ne' | 'sw' | 'se') => {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -882,11 +885,13 @@ export default function LabelDesignerPage() {
     const origH = elem.height;
 
     isDraggingRef.current = true;
+    let geometryChanged = false;
 
     const handleMouseMove = (me: MouseEvent) => {
       if (labelWidth <= 0 || labelHeight <= 0) return;
 
       const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
       const deltaXMm = ((me.clientX - startX) / rect.width) * labelWidth;
       const deltaYMm = ((me.clientY - startY) / rect.height) * labelHeight;
 
@@ -926,19 +931,24 @@ export default function LabelDesignerPage() {
       roundedX = Math.max(0, Math.min(roundedX, Math.max(0, labelWidth - roundedW)));
       roundedY = Math.max(0, Math.min(roundedY, Math.max(0, labelHeight - roundedH)));
 
-      setElements((prev) =>
-        prev.map((el) =>
+      setElements((prev) => {
+        const current = prev.find((el) => el.id === id);
+        if (
+          current &&
+          current.x === roundedX &&
+          current.y === roundedY &&
+          current.width === roundedW &&
+          current.height === roundedH
+        ) {
+          return prev;
+        }
+        geometryChanged = true;
+        return prev.map((el) =>
           el.id === id
-            ? {
-                ...el,
-                x: roundedX,
-                y: roundedY,
-                width: roundedW,
-                height: roundedH,
-              }
+            ? { ...el, x: roundedX, y: roundedY, width: roundedW, height: roundedH }
             : el
-        )
-      );
+        );
+      });
     };
 
     const handleVisibilityChange = () => {
@@ -959,8 +969,8 @@ export default function LabelDesignerPage() {
       window.removeEventListener('blur', cleanup);
       window.removeEventListener('mouseout', handleWindowMouseOut);
       dragCleanupRef.current = null;
-      // Trigger a final preview render (via ref to avoid stale closure).
-      if (isMountedRef.current) renderPreviewRef.current();
+      // Only re-render when geometry actually changed (not on a simple mousedown).
+      if (geometryChanged && isMountedRef.current) renderPreviewRef.current();
     };
 
     dragCleanupRef.current = cleanup;
@@ -1392,22 +1402,26 @@ export default function LabelDesignerPage() {
                       <>
                         <div
                           className="resize-handle resize-nw"
-                          aria-label={t('labels.resizeHandleNW')}
+                          aria-hidden="true"
+                          role="presentation"
                           onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'nw')}
                         />
                         <div
                           className="resize-handle resize-ne"
-                          aria-label={t('labels.resizeHandleNE')}
+                          aria-hidden="true"
+                          role="presentation"
                           onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'ne')}
                         />
                         <div
                           className="resize-handle resize-sw"
-                          aria-label={t('labels.resizeHandleSW')}
+                          aria-hidden="true"
+                          role="presentation"
                           onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'sw')}
                         />
                         <div
                           className="resize-handle resize-se"
-                          aria-label={t('labels.resizeHandleSE')}
+                          aria-hidden="true"
+                          role="presentation"
                           onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'se')}
                         />
                       </>

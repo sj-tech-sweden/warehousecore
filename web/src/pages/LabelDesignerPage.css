@@ -470,6 +470,11 @@
   background: rgba(59, 130, 246, 0.12);
 }
 
+.element-overlay:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
 .element-overlay-label {
   position: absolute;
   top: 1px;
