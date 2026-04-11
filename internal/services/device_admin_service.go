@@ -48,7 +48,7 @@ func (s *DeviceAdminService) CreateDevices(ctx context.Context, input *models.De
 	}
 
 	status := strings.TrimSpace(input.Status)
-	if status == "" {
+	if status == "" || status == "free" {
 		status = string(models.StatusInStorage)
 	}
 

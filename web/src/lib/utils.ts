@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 export function getStatusColor(status: string): string {
   switch (status.toLowerCase()) {
     case 'in_storage':
-    case 'free':
+    case 'free': // retained for case-entity status badges (cases still use 'free' as a distinct concept)
       return 'text-green-500';
     case 'on_job':
     case 'rented':
