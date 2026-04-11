@@ -286,11 +286,7 @@
       "case": "Case Fields",
       "zone": "Zone Fields"
     },
-    "dragHint": "Click to select · Drag to move · Corner handles to resize",
-    "resizeHandleNW": "Resize top-left",
-    "resizeHandleNE": "Resize top-right",
-    "resizeHandleSW": "Resize bottom-left",
-    "resizeHandleSE": "Resize bottom-right"
+    "dragHint": "Click to select · Drag to move · Corner handles to resize"
   },
   "maintenance": {
     "title": "Maintenance",

@@ -33,7 +33,6 @@ export default function LabelDesignerPage() {
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [currentTemplateId, setCurrentTemplateId] = useState<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const canvasContainerRef = useRef<HTMLDivElement>(null);
   // Use a ref instead of state so toggling drag doesn't re-trigger the renderPreview effect.
   const isDraggingRef = useRef(false);
   const dragCleanupRef = useRef<(() => void) | null>(null);
@@ -802,8 +801,8 @@ export default function LabelDesignerPage() {
 
   const handleElementMouseDown = (e: React.MouseEvent, id: string) => {
     if (e.button !== 0) return;
-    e.preventDefault();
     e.stopPropagation();
+    (e.currentTarget as HTMLElement).focus();
     setSelectedElement(id);
 
     const elem = elements.find((el) => el.id === id);
@@ -1360,7 +1359,7 @@ export default function LabelDesignerPage() {
           </div>
           <div className="canvas-drag-hint">{t('labels.dragHint')}</div>
           <div className="canvas-wrapper">
-            <div className="canvas-interactive-container" ref={canvasContainerRef}>
+            <div className="canvas-interactive-container">
               <canvas ref={canvasRef} className="label-canvas" style={{ display: 'block' }} />
               <div
                 className="canvas-overlay"
