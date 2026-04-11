@@ -186,6 +186,9 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     setZoneFilter('');
   };
 
+  const normalizeDeviceStatus = (status: string) =>
+    status === 'free' ? 'in_storage' : status;
+
   const filteredDevices = devices.filter((device) => {
     const matchesSearch =
       !debouncedSearch ||
@@ -197,16 +200,13 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
       device.barcode?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
       device.notes?.toLowerCase().includes(debouncedSearch.toLowerCase());
 
-    const matchesStatus = !statusFilter || device.status === statusFilter;
+    const matchesStatus = !statusFilter || normalizeDeviceStatus(device.status) === statusFilter;
     const matchesProduct =
       productFilter === '' || device.product_id === productFilter;
     const matchesZone = zoneFilter === '' || device.zone_id === zoneFilter;
 
     return matchesSearch && matchesStatus && matchesProduct && matchesZone;
   });
-
-  const normalizeDeviceStatus = (status: string) =>
-    status === 'free' ? 'in_storage' : status;
 
   const statusLabel = (status?: string) => {
     if (!status) return '-';
@@ -224,7 +224,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     setFormData({
       new_device_id: device.device_id,
       product_id: device.product_id,
-      status: (device.status === 'free' ? 'in_storage' : device.status) || 'in_storage',
+      status: normalizeDeviceStatus(device.status || 'in_storage'),
       serial_number: device.serial_number || '',
       rfid: device.rfid || '',
       barcode: device.barcode || '',
