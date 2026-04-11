@@ -221,7 +221,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     setFormData({
       new_device_id: device.device_id,
       product_id: device.product_id,
-      status: device.status || 'in_storage',
+      status: (device.status === 'free' ? 'in_storage' : device.status) || 'in_storage',
       serial_number: device.serial_number || '',
       rfid: device.rfid || '',
       barcode: device.barcode || '',

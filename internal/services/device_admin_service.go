@@ -49,7 +49,7 @@ func (s *DeviceAdminService) CreateDevices(ctx context.Context, input *models.De
 
 	status := strings.TrimSpace(input.Status)
 	if status == "" {
-		status = "in_storage"
+		status = string(models.StatusInStorage)
 	}
 
 	autoGenerateLabel := true
