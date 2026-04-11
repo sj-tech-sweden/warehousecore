@@ -824,7 +824,8 @@
         "defective": "Defective",
         "maintenance": "Maintenance",
         "retired": "Retired",
-        "in_storage": "In Storage"
+        "in_storage": "In Storage",
+        "free": "In Storage"
       },
       "retireDate": "Retire date",
       "warrantyEndDate": "Warranty end date",

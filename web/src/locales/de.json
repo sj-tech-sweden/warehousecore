@@ -824,7 +824,8 @@
         "defective": "Defekt",
         "maintenance": "Wartung",
         "retired": "Ausgemustert",
-        "in_storage": "Im Lager"
+        "in_storage": "Im Lager",
+        "free": "Im Lager"
       },
       "retireDate": "Außerdienststellungsdatum",
       "warrantyEndDate": "Garantieende",
