@@ -11,6 +11,9 @@ interface DesignElement extends LabelElement {
   image_data?: string; // Base64 encoded image data
 }
 
+/** Rounds a mm value to one decimal place (0.1 mm precision). */
+const roundToTenthMm = (value: number) => Math.round(value * 10) / 10;
+
 /**
  * Registers the shared event listeners for a drag or resize interaction
  * and returns an idempotent cleanup function.
@@ -43,7 +46,7 @@ function startDragInteraction(
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('blur', cleanup);
     window.removeEventListener('mouseout', handleWindowMouseOut);
-    window.removeEventListener('scroll', refreshRect, true);
+    window.removeEventListener('scroll', refreshRect, { capture: true, passive: true } as AddEventListenerOptions);
     window.removeEventListener('resize', refreshRect);
     onDone();
   };
@@ -53,7 +56,7 @@ function startDragInteraction(
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('blur', cleanup);
   window.addEventListener('mouseout', handleWindowMouseOut);
-  window.addEventListener('scroll', refreshRect, true);
+  window.addEventListener('scroll', refreshRect, { capture: true, passive: true });
   window.addEventListener('resize', refreshRect);
 
   return cleanup;
@@ -881,10 +884,17 @@ export default function LabelDesignerPage() {
         const newX = Math.max(0, Math.min(Math.round(rawX * 10) / 10, labelWidth - elemWidth));
         const newY = Math.max(0, Math.min(Math.round(rawY * 10) / 10, labelHeight - elemHeight));
         setElements((prev) => {
-          const current = prev.find((el) => el.id === id);
-          if (current && current.x === newX && current.y === newY) return prev;
+          let index = -1;
+          for (let i = 0; i < prev.length; i++) {
+            if (prev[i].id === id) { index = i; break; }
+          }
+          if (index === -1) return prev;
+          const current = prev[index];
+          if (current.x === newX && current.y === newY) return prev;
           geometryChanged = true;
-          return prev.map((el) => (el.id === id ? { ...el, x: newX, y: newY } : el));
+          const next = [...prev];
+          next[index] = { ...current, x: newX, y: newY };
+          return next;
         });
       },
       () => {
@@ -950,8 +960,7 @@ export default function LabelDesignerPage() {
         newW = Math.min(newW, labelWidth - newX);
         newH = Math.min(newH, labelHeight - newY);
 
-        const roundToTenthMm = (value: number) => Math.round(value * 10) / 10;
-
+        // Round then re-clamp so rounding never pushes values outside the label.
         let roundedW = Math.max(minW, Math.min(roundToTenthMm(newW), labelWidth));
         let roundedH = Math.max(minH, Math.min(roundToTenthMm(newH), labelHeight));
         let roundedX = Math.max(0, Math.min(roundToTenthMm(newX), Math.max(0, labelWidth - roundedW)));
@@ -964,22 +973,22 @@ export default function LabelDesignerPage() {
         roundedY = Math.max(0, Math.min(roundedY, Math.max(0, labelHeight - roundedH)));
 
         setElements((prev) => {
-          const current = prev.find((el) => el.id === id);
+          let index = -1;
+          for (let i = 0; i < prev.length; i++) {
+            if (prev[i].id === id) { index = i; break; }
+          }
+          if (index === -1) return prev;
+          const current = prev[index];
           if (
-            current &&
             current.x === roundedX &&
             current.y === roundedY &&
             current.width === roundedW &&
             current.height === roundedH
-          ) {
-            return prev;
-          }
+          ) return prev;
           geometryChanged = true;
-          return prev.map((el) =>
-            el.id === id
-              ? { ...el, x: roundedX, y: roundedY, width: roundedW, height: roundedH }
-              : el
-          );
+          const next = [...prev];
+          next[index] = { ...current, x: roundedX, y: roundedY, width: roundedW, height: roundedH };
+          return next;
         });
       },
       () => {
