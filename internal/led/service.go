@@ -246,12 +246,14 @@ func (s *Service) ensureMappingFile(path string) error {
 
 // HighlightJobBins highlights bins for devices in a specific job
 func (s *Service) HighlightJobBins(jobID string) error {
-	zoneCounts, err := s.getJobDeviceZonesWithCounts(jobID)
+	// Prefer product-requirement-based zones; fall back to assigned-device zones only
+	// when the job has no product requirements configured.
+	zoneCounts, err := s.resolveJobZoneCounts(jobID)
 	if err != nil {
-		return fmt.Errorf("failed to get job devices: %w", err)
+		return fmt.Errorf("failed to resolve job zone counts: %w", err)
 	}
 	if len(zoneCounts) == 0 {
-		return fmt.Errorf("no devices found for job %s", jobID)
+		return fmt.Errorf("no matching in-storage devices or zones found for highlighting for job %s", jobID)
 	}
 
 	s.mu.RLock()
@@ -585,10 +587,11 @@ func (s *Service) UpdateBinAfterScan(jobID string, zoneCode string) error {
 
 	log.Printf("[LED] Refreshing all bins for job %s after scan in zone %s", jobID, zoneCode)
 
-	// Get all device zones for this job with their current counts
-	deviceZones, err := s.getJobDeviceZonesWithCounts(jobID)
+	// Prefer product-requirement zones; fall back to assigned-device zones only when
+	// the job has no product requirements configured.
+	deviceZones, err := s.resolveJobZoneCounts(jobID)
 	if err != nil {
-		return fmt.Errorf("failed to get job device zones: %w", err)
+		return fmt.Errorf("failed to resolve job zone counts: %w", err)
 	}
 
 	s.mu.RLock()
@@ -701,6 +704,84 @@ func (s *Service) getJobDeviceZonesWithCounts(jobID string) (map[string]int, err
 		log.Printf("[LED] Zone %s has %d devices for job %s", zoneCode, count, jobID)
 	}
 
+	return zoneCounts, nil
+}
+
+// getProductRequirementZonesWithCounts returns:
+//   - a map of zone_code -> in-storage device count for devices matching the job's product requirements
+//   - hasRequirements: true when the job has at least one product requirement row (even if no devices are
+//     currently in storage for that requirement)
+//
+// Callers should only fall back to assigned-device zones when hasRequirements is false.
+func (s *Service) getProductRequirementZonesWithCounts(jobID string) (zoneCounts map[string]int, hasRequirements bool, err error) {
+	db := repository.GetSQLDB()
+
+	query := `
+		WITH requirement_state AS (
+			SELECT EXISTS(
+				SELECT 1
+				FROM job_product_requirements
+				WHERE job_id = $1
+			) AS has_requirements
+		)
+		SELECT rs.has_requirements, z.code, COUNT(z.code) AS device_count
+		FROM requirement_state rs
+		LEFT JOIN job_product_requirements jpr
+			ON rs.has_requirements AND jpr.job_id = $1
+		LEFT JOIN devices d
+			ON jpr.product_id = d.productID
+		   AND d.status = 'in_storage'
+		LEFT JOIN storage_zones z
+			ON d.zone_id = z.zone_id
+		   AND z.code IS NOT NULL
+		GROUP BY rs.has_requirements, z.code
+	`
+
+	rows, queryErr := db.Query(query, jobID)
+	if queryErr != nil {
+		return nil, false, fmt.Errorf("querying product requirement zones for job %s: %w", jobID, queryErr)
+	}
+	defer rows.Close()
+
+	zoneCounts = make(map[string]int)
+	for rows.Next() {
+		var zoneCode sql.NullString
+		var count int
+		if scanErr := rows.Scan(&hasRequirements, &zoneCode, &count); scanErr != nil {
+			return nil, false, fmt.Errorf("scanning product requirement zone for job %s: %w", jobID, scanErr)
+		}
+		if !hasRequirements {
+			continue
+		}
+		if zoneCode.Valid && count > 0 {
+			zoneCounts[zoneCode.String] = count
+			log.Printf("[LED] Zone %s has %d matching product devices for job %s", zoneCode.String, count, jobID)
+		}
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, false, fmt.Errorf("iterating product requirement zones for job %s: %w", jobID, rowsErr)
+	}
+
+	if !hasRequirements {
+		return zoneCounts, false, nil
+	}
+	return zoneCounts, true, nil
+}
+
+// resolveJobZoneCounts returns the zone→device-count map to use for job LED highlighting.
+// It prefers product-requirement-based zones; it only falls back to zones of devices already
+// assigned to the job when the job has no product requirements configured at all.
+func (s *Service) resolveJobZoneCounts(jobID string) (map[string]int, error) {
+	zoneCounts, hasRequirements, err := s.getProductRequirementZonesWithCounts(jobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get product requirement zones: %w", err)
+	}
+	if !hasRequirements {
+		zoneCounts, err = s.getJobDeviceZonesWithCounts(jobID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get job device zones: %w", err)
+		}
+	}
 	return zoneCounts, nil
 }
 
