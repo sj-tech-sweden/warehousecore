@@ -248,13 +248,14 @@ func (s *Service) ensureMappingFile(path string) error {
 func (s *Service) HighlightJobBins(jobID string) error {
 	// Prefer product-requirement-based zones: highlight any bin that holds a device
 	// matching one of the product types required by the job.
-	zoneCounts, err := s.getProductRequirementZonesWithCounts(jobID)
+	zoneCounts, hasRequirements, err := s.getProductRequirementZonesWithCounts(jobID)
 	if err != nil {
 		return fmt.Errorf("failed to get product requirement zones: %w", err)
 	}
-	// Fall back to zones of devices already assigned to the job when no product
-	// requirements are configured.
-	if len(zoneCounts) == 0 {
+	// Only fall back to zones of devices already assigned to the job when the job
+	// has no product requirements at all (not when requirements exist but all
+	// matching devices happen to be out of storage).
+	if !hasRequirements {
 		zoneCounts, err = s.getJobDeviceZonesWithCounts(jobID)
 		if err != nil {
 			return fmt.Errorf("failed to get job devices: %w", err)
@@ -596,12 +597,13 @@ func (s *Service) UpdateBinAfterScan(jobID string, zoneCode string) error {
 	log.Printf("[LED] Refreshing all bins for job %s after scan in zone %s", jobID, zoneCode)
 
 	// Use product-requirement zones so that bins with matching devices are shown.
-	deviceZones, err := s.getProductRequirementZonesWithCounts(jobID)
+	deviceZones, hasRequirements, err := s.getProductRequirementZonesWithCounts(jobID)
 	if err != nil {
 		return fmt.Errorf("failed to get product requirement zones: %w", err)
 	}
-	// Fall back to assigned-device zones when no product requirements exist.
-	if len(deviceZones) == 0 {
+	// Only fall back to assigned-device zones when the job has no product requirements
+	// configured (not merely when all matching devices are out of storage).
+	if !hasRequirements {
 		deviceZones, err = s.getJobDeviceZonesWithCounts(jobID)
 		if err != nil {
 			return fmt.Errorf("failed to get job device zones: %w", err)
@@ -721,12 +723,23 @@ func (s *Service) getJobDeviceZonesWithCounts(jobID string) (map[string]int, err
 	return zoneCounts, nil
 }
 
-// getProductRequirementZonesWithCounts returns a map of zone_code -> device count
-// for all in-storage devices whose product type matches one of the job's product
-// requirements. This is used to highlight bins that a warehouse worker should visit
-// when preparing a job, regardless of whether devices are already assigned to the job.
-func (s *Service) getProductRequirementZonesWithCounts(jobID string) (map[string]int, error) {
+// getProductRequirementZonesWithCounts returns:
+//   - a map of zone_code -> in-storage device count for devices matching the job's product requirements
+//   - hasRequirements: true when the job has at least one product requirement row (even if no devices are
+//     currently in storage for that requirement)
+//
+// Callers should only fall back to assigned-device zones when hasRequirements is false.
+func (s *Service) getProductRequirementZonesWithCounts(jobID string) (zoneCounts map[string]int, hasRequirements bool, err error) {
 	db := repository.GetSQLDB()
+
+	// First check whether any requirements are configured for this job.
+	var reqCount int
+	if scanErr := db.QueryRow(`SELECT COUNT(*) FROM job_product_requirements WHERE job_id = $1`, jobID).Scan(&reqCount); scanErr != nil {
+		return nil, false, fmt.Errorf("checking product requirements for job %s: %w", jobID, scanErr)
+	}
+	if reqCount == 0 {
+		return make(map[string]int), false, nil
+	}
 
 	query := `
 		SELECT z.code, COUNT(*) as device_count
@@ -738,25 +751,27 @@ func (s *Service) getProductRequirementZonesWithCounts(jobID string) (map[string
 		GROUP BY z.code
 	`
 
-	rows, err := db.Query(query, jobID)
-	if err != nil {
-		return nil, fmt.Errorf("querying product requirement zones for job %s: %w", jobID, err)
+	rows, queryErr := db.Query(query, jobID)
+	if queryErr != nil {
+		return nil, true, fmt.Errorf("querying product requirement zones for job %s: %w", jobID, queryErr)
 	}
 	defer rows.Close()
 
-	zoneCounts := make(map[string]int)
+	zoneCounts = make(map[string]int)
 	for rows.Next() {
 		var zoneCode string
 		var count int
-		if err := rows.Scan(&zoneCode, &count); err != nil {
-			log.Printf("[LED] Error scanning product requirement zone count: %v", err)
-			continue
+		if scanErr := rows.Scan(&zoneCode, &count); scanErr != nil {
+			return nil, true, fmt.Errorf("scanning product requirement zone for job %s: %w", jobID, scanErr)
 		}
 		zoneCounts[zoneCode] = count
 		log.Printf("[LED] Zone %s has %d matching product devices for job %s", zoneCode, count, jobID)
 	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, true, fmt.Errorf("iterating product requirement zones for job %s: %w", jobID, rowsErr)
+	}
 
-	return zoneCounts, nil
+	return zoneCounts, true, nil
 }
 
 // getJobDeviceZones retrieves device zone codes for a job from database
