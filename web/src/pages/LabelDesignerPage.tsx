@@ -11,6 +11,60 @@ interface DesignElement extends LabelElement {
   image_data?: string; // Base64 encoded image data
 }
 
+/** Rounds a mm value to one decimal place (0.1 mm precision). */
+const roundToTenthMm = (value: number) => Math.round(value * 10) / 10;
+
+/** Maximum number of characters shown from element content in accessible labels/tooltips. */
+const MAX_OVERLAY_LABEL_CONTENT_LENGTH = 50;
+
+/**
+ * Registers the shared event listeners for a drag or resize interaction
+ * and returns an idempotent cleanup function.
+ *
+ * - Caches the canvas bounding rect once at call time; refreshes on scroll/resize.
+ * - Calls `onMouseMove(event, rect)` on each mousemove.
+ * - Calls `onDone()` when the interaction ends (mouseup, blur, visibility change, etc.).
+ */
+function startDragInteraction(
+  canvas: HTMLCanvasElement,
+  onMouseMove: (me: MouseEvent, rect: DOMRect) => void,
+  onDone: () => void
+): () => void {
+  let cachedRect = canvas.getBoundingClientRect();
+  const refreshRect = () => { cachedRect = canvas.getBoundingClientRect(); };
+  const wrappedMouseMove = (me: MouseEvent) => onMouseMove(me, cachedRect);
+  const handleVisibilityChange = () => {
+    if (document.visibilityState !== 'visible') cleanup();
+  };
+  const handleWindowMouseOut = (me: MouseEvent) => {
+    if (me.relatedTarget === null) cleanup();
+  };
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    document.removeEventListener('mousemove', wrappedMouseMove);
+    document.removeEventListener('mouseup', cleanup);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('blur', cleanup);
+    window.removeEventListener('mouseout', handleWindowMouseOut);
+    window.removeEventListener('scroll', refreshRect, true);
+    window.removeEventListener('resize', refreshRect);
+    onDone();
+  };
+
+  document.addEventListener('mousemove', wrappedMouseMove);
+  document.addEventListener('mouseup', cleanup);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('blur', cleanup);
+  window.addEventListener('mouseout', handleWindowMouseOut);
+  window.addEventListener('scroll', refreshRect, { capture: true, passive: true });
+  window.addEventListener('resize', refreshRect);
+
+  return cleanup;
+}
+
 export default function LabelDesignerPage() {
   const { t } = useTranslation();
   const presetSizes = [
@@ -33,6 +87,22 @@ export default function LabelDesignerPage() {
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [currentTemplateId, setCurrentTemplateId] = useState<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Use a ref instead of state so toggling drag doesn't re-trigger the renderPreview effect.
+  const isDraggingRef = useRef(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  // Always points to the latest renderPreview to avoid stale closures in drag/resize cleanup.
+  const renderPreviewRef = useRef<() => void>(() => {});
+  // Track mount state so cleanup never fires API calls after the component unmounts.
+  const isMountedRef = useRef(true);
+
+  // Cancel any in-flight drag/resize when the component unmounts.
+  // Blur cleanup is handled by the active drag/resize interaction itself.
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      dragCleanupRef.current?.();
+    };
+  }, []);
 
   useEffect(() => {
     loadDevices();
@@ -396,8 +466,12 @@ export default function LabelDesignerPage() {
     }
   };
 
+  // Keep the ref pointing at the latest renderPreview so drag/resize cleanup
+  // always calls the version that reads the most-recent elements state.
+  renderPreviewRef.current = renderPreview;
+
   useEffect(() => {
-    if (previewDevice) {
+    if (previewDevice && !isDraggingRef.current) {
       renderPreview();
     }
   }, [elements, labelWidth, labelHeight, previewDevice]);
@@ -779,6 +853,179 @@ export default function LabelDesignerPage() {
     }
   };
 
+  const handleElementMouseDown = (e: React.MouseEvent, id: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).focus();
+    setSelectedElement(id);
+
+    const elemIndex = elements.findIndex((el) => el.id === id);
+    if (elemIndex === -1 || !canvasRef.current) return;
+    const elem = elements[elemIndex];
+
+    // Terminate any previous interaction before starting a new one.
+    dragCleanupRef.current?.();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origX = elem.x;
+    const origY = elem.y;
+    const elemWidth = elem.width;
+    const elemHeight = elem.height;
+
+    isDraggingRef.current = true;
+    let geometryChanged = false;
+    // Track the last applied position outside the updater to avoid side effects
+    // inside a (potentially re-invoked) functional updater in React StrictMode.
+    let lastAppliedX = origX;
+    let lastAppliedY = origY;
+
+    const cleanup = startDragInteraction(
+      canvasRef.current,
+      (me, rect) => {
+        if (rect.width === 0 || rect.height === 0) return;
+        const deltaXMm = ((me.clientX - startX) / rect.width) * labelWidth;
+        const deltaYMm = ((me.clientY - startY) / rect.height) * labelHeight;
+        const rawX = Math.max(0, Math.min(labelWidth - elemWidth, origX + deltaXMm));
+        const rawY = Math.max(0, Math.min(labelHeight - elemHeight, origY + deltaYMm));
+        // Round then re-clamp so rounding never pushes x/y outside the label.
+        const newX = Math.max(0, Math.min(roundToTenthMm(rawX), labelWidth - elemWidth));
+        const newY = Math.max(0, Math.min(roundToTenthMm(rawY), labelHeight - elemHeight));
+        // Track change outside the updater to keep the updater free of side effects.
+        if (newX !== lastAppliedX || newY !== lastAppliedY) {
+          geometryChanged = true;
+          lastAppliedX = newX;
+          lastAppliedY = newY;
+        }
+        setElements((prev) => {
+          // Use the cached index with a bounds + id guard in case the array was mutated.
+          const current = prev[elemIndex];
+          if (!current || current.id !== id) return prev;
+          if (current.x === newX && current.y === newY) return prev;
+          const next = [...prev];
+          next[elemIndex] = { ...current, x: newX, y: newY };
+          return next;
+        });
+      },
+      () => {
+        isDraggingRef.current = false;
+        dragCleanupRef.current = null;
+        // Only re-render when the element was actually moved (not on a simple click).
+        if (geometryChanged && isMountedRef.current) renderPreviewRef.current();
+      }
+    );
+
+    dragCleanupRef.current = cleanup;
+  };
+
+  const handleResizeMouseDown = (e: React.MouseEvent, id: string, direction: 'nw' | 'ne' | 'sw' | 'se') => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const elemIndex = elements.findIndex((el) => el.id === id);
+    if (elemIndex === -1 || !canvasRef.current) return;
+    const elem = elements[elemIndex];
+
+    // Terminate any previous interaction before starting a new one.
+    dragCleanupRef.current?.();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origX = elem.x;
+    const origY = elem.y;
+    const origW = elem.width;
+    const origH = elem.height;
+
+    isDraggingRef.current = true;
+    let geometryChanged = false;
+    // Track the last applied geometry outside the updater to avoid side effects
+    // inside a (potentially re-invoked) functional updater in React StrictMode.
+    let lastAppliedX = origX, lastAppliedY = origY, lastAppliedW = origW, lastAppliedH = origH;
+
+    const cleanup = startDragInteraction(
+      canvasRef.current,
+      (me, rect) => {
+        if (labelWidth <= 0 || labelHeight <= 0) return;
+        if (rect.width === 0 || rect.height === 0) return;
+        const deltaXMm = ((me.clientX - startX) / rect.width) * labelWidth;
+        const deltaYMm = ((me.clientY - startY) / rect.height) * labelHeight;
+
+        // Use label-aware minimums so the min never exceeds the label itself.
+        const minW = Math.min(3, labelWidth);
+        const minH = Math.min(2, labelHeight);
+
+        let newX = origX, newY = origY, newW = origW, newH = origH;
+
+        if (direction.includes('e')) newW = Math.max(minW, origW + deltaXMm);
+        if (direction.includes('s')) newH = Math.max(minH, origH + deltaYMm);
+        if (direction.includes('w')) {
+          newW = Math.max(minW, origW - deltaXMm);
+          newX = origX + origW - newW;
+        }
+        if (direction.includes('n')) {
+          newH = Math.max(minH, origH - deltaYMm);
+          newY = origY + origH - newH;
+        }
+
+        newX = Math.max(0, Math.min(Math.max(0, labelWidth - newW), newX));
+        newY = Math.max(0, Math.min(Math.max(0, labelHeight - newH), newY));
+        // Clamp width/height to remaining label space from the (possibly adjusted) origin
+        newW = Math.min(newW, labelWidth - newX);
+        newH = Math.min(newH, labelHeight - newY);
+
+        // Round then re-clamp so rounding never pushes values outside the label.
+        let roundedW = Math.max(minW, Math.min(roundToTenthMm(newW), labelWidth));
+        let roundedH = Math.max(minH, Math.min(roundToTenthMm(newH), labelHeight));
+        let roundedX = Math.max(0, Math.min(roundToTenthMm(newX), Math.max(0, labelWidth - roundedW)));
+        let roundedY = Math.max(0, Math.min(roundToTenthMm(newY), Math.max(0, labelHeight - roundedH)));
+
+        // Re-clamp after rounding so the final persisted geometry still fits the label.
+        roundedW = Math.max(minW, Math.min(roundedW, labelWidth - roundedX));
+        roundedH = Math.max(minH, Math.min(roundedH, labelHeight - roundedY));
+        roundedX = Math.max(0, Math.min(roundedX, Math.max(0, labelWidth - roundedW)));
+        roundedY = Math.max(0, Math.min(roundedY, Math.max(0, labelHeight - roundedH)));
+
+        // Track change outside the updater to keep the updater free of side effects.
+        if (
+          roundedX !== lastAppliedX ||
+          roundedY !== lastAppliedY ||
+          roundedW !== lastAppliedW ||
+          roundedH !== lastAppliedH
+        ) {
+          geometryChanged = true;
+          lastAppliedX = roundedX;
+          lastAppliedY = roundedY;
+          lastAppliedW = roundedW;
+          lastAppliedH = roundedH;
+        }
+
+        setElements((prev) => {
+          // Use the cached index with a bounds + id guard in case the array was mutated.
+          const current = prev[elemIndex];
+          if (!current || current.id !== id) return prev;
+          if (
+            current.x === roundedX &&
+            current.y === roundedY &&
+            current.width === roundedW &&
+            current.height === roundedH
+          ) return prev;
+          const next = [...prev];
+          next[elemIndex] = { ...current, x: roundedX, y: roundedY, width: roundedW, height: roundedH };
+          return next;
+        });
+      },
+      () => {
+        isDraggingRef.current = false;
+        dragCleanupRef.current = null;
+        // Only re-render when geometry actually changed (not on a simple mousedown).
+        if (geometryChanged && isMountedRef.current) renderPreviewRef.current();
+      }
+    );
+
+    dragCleanupRef.current = cleanup;
+  };
+
   const selectedElem = elements.find((e) => e.id === selectedElement);
 
   return (
@@ -1156,8 +1403,101 @@ export default function LabelDesignerPage() {
               </optgroup>
             </select>
           </div>
+          <div className="canvas-drag-hint">{t('labels.dragHint')}</div>
           <div className="canvas-wrapper">
-            <canvas ref={canvasRef} className="label-canvas" />
+            <div className="canvas-interactive-container">
+              <canvas ref={canvasRef} className="label-canvas" style={{ display: 'block' }} />
+              <div
+                className="canvas-overlay"
+                onMouseDown={(e) => {
+                  if (e.target === e.currentTarget) {
+                    setSelectedElement(null);
+                  }
+                }}
+              >
+                {labelWidth > 0 && labelHeight > 0 && elements.map((elem) => {
+                  const typeLabel =
+                    elem.type === 'qrcode' ? t('labels.qrCode') :
+                    elem.type === 'barcode' ? t('labels.barcode') :
+                    elem.type === 'text' ? t('labels.text') :
+                    elem.type === 'image' ? t('labels.image') :
+                    elem.type;
+                  const shortContent = (elem.content || '').slice(0, MAX_OVERLAY_LABEL_CONTENT_LENGTH);
+                  const overlayLabel = t('labels.elementOverlayLabel', {
+                    type: typeLabel,
+                    content: shortContent,
+                    x: elem.x,
+                    y: elem.y,
+                  });
+                  return (
+                  <div
+                    key={elem.id}
+                    className={`element-overlay${selectedElement === elem.id ? ' selected' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={overlayLabel}
+                    aria-pressed={selectedElement === elem.id}
+                    style={{
+                      left: `${(elem.x / labelWidth) * 100}%`,
+                      top: `${(elem.y / labelHeight) * 100}%`,
+                      width: `${(elem.width / labelWidth) * 100}%`,
+                      height: `${(elem.height / labelHeight) * 100}%`,
+                    }}
+                    title={overlayLabel}
+                    onMouseDown={(e) => handleElementMouseDown(e, elem.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedElement(elem.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedElement(elem.id);
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setSelectedElement(null);
+                      }
+                    }}
+                  >
+                    <div className="element-overlay-label">
+                      {elem.type === 'qrcode' && <QrCode size={10} />}
+                      {elem.type === 'barcode' && <Barcode size={10} />}
+                      {elem.type === 'text' && <Type size={10} />}
+                      {elem.type === 'image' && <ImageIcon size={10} />}
+                    </div>
+                    {selectedElement === elem.id && (
+                      <>
+                        <div
+                          className="resize-handle resize-nw"
+                          aria-hidden="true"
+                          role="presentation"
+                          onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'nw')}
+                        />
+                        <div
+                          className="resize-handle resize-ne"
+                          aria-hidden="true"
+                          role="presentation"
+                          onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'ne')}
+                        />
+                        <div
+                          className="resize-handle resize-sw"
+                          aria-hidden="true"
+                          role="presentation"
+                          onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'sw')}
+                        />
+                        <div
+                          className="resize-handle resize-se"
+                          aria-hidden="true"
+                          role="presentation"
+                          onMouseDown={(e) => handleResizeMouseDown(e, elem.id, 'se')}
+                        />
+                      </>
+                    )}
+                  </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 

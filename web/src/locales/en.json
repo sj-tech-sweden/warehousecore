@@ -285,7 +285,9 @@
       "location": "Location Fields",
       "case": "Case Fields",
       "zone": "Zone Fields"
-    }
+    },
+    "dragHint": "Click to select · Drag to move · Corner handles to resize",
+    "elementOverlayLabel": "{{type}}: {{content}} (x: {{x}}mm, y: {{y}}mm)"
   },
   "maintenance": {
     "title": "Maintenance",
