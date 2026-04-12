@@ -875,6 +875,10 @@ export default function LabelDesignerPage() {
 
     isDraggingRef.current = true;
     let geometryChanged = false;
+    // Track the last applied position outside the updater to avoid side effects
+    // inside a (potentially re-invoked) functional updater in React StrictMode.
+    let lastAppliedX = origX;
+    let lastAppliedY = origY;
 
     const cleanup = startDragInteraction(
       canvasRef.current,
@@ -885,14 +889,19 @@ export default function LabelDesignerPage() {
         const rawX = Math.max(0, Math.min(labelWidth - elemWidth, origX + deltaXMm));
         const rawY = Math.max(0, Math.min(labelHeight - elemHeight, origY + deltaYMm));
         // Round then re-clamp so rounding never pushes x/y outside the label.
-        const newX = Math.max(0, Math.min(Math.round(rawX * 10) / 10, labelWidth - elemWidth));
-        const newY = Math.max(0, Math.min(Math.round(rawY * 10) / 10, labelHeight - elemHeight));
+        const newX = Math.max(0, Math.min(roundToTenthMm(rawX), labelWidth - elemWidth));
+        const newY = Math.max(0, Math.min(roundToTenthMm(rawY), labelHeight - elemHeight));
+        // Track change outside the updater to keep the updater free of side effects.
+        if (newX !== lastAppliedX || newY !== lastAppliedY) {
+          geometryChanged = true;
+          lastAppliedX = newX;
+          lastAppliedY = newY;
+        }
         setElements((prev) => {
           // Use the cached index with a bounds + id guard in case the array was mutated.
           const current = prev[elemIndex];
           if (!current || current.id !== id) return prev;
           if (current.x === newX && current.y === newY) return prev;
-          geometryChanged = true;
           const next = [...prev];
           next[elemIndex] = { ...current, x: newX, y: newY };
           return next;
@@ -930,6 +939,9 @@ export default function LabelDesignerPage() {
 
     isDraggingRef.current = true;
     let geometryChanged = false;
+    // Track the last applied geometry outside the updater to avoid side effects
+    // inside a (potentially re-invoked) functional updater in React StrictMode.
+    let lastAppliedX = origX, lastAppliedY = origY, lastAppliedW = origW, lastAppliedH = origH;
 
     const cleanup = startDragInteraction(
       canvasRef.current,
@@ -974,6 +986,20 @@ export default function LabelDesignerPage() {
         roundedX = Math.max(0, Math.min(roundedX, Math.max(0, labelWidth - roundedW)));
         roundedY = Math.max(0, Math.min(roundedY, Math.max(0, labelHeight - roundedH)));
 
+        // Track change outside the updater to keep the updater free of side effects.
+        if (
+          roundedX !== lastAppliedX ||
+          roundedY !== lastAppliedY ||
+          roundedW !== lastAppliedW ||
+          roundedH !== lastAppliedH
+        ) {
+          geometryChanged = true;
+          lastAppliedX = roundedX;
+          lastAppliedY = roundedY;
+          lastAppliedW = roundedW;
+          lastAppliedH = roundedH;
+        }
+
         setElements((prev) => {
           // Use the cached index with a bounds + id guard in case the array was mutated.
           const current = prev[elemIndex];
@@ -984,7 +1010,6 @@ export default function LabelDesignerPage() {
             current.width === roundedW &&
             current.height === roundedH
           ) return prev;
-          geometryChanged = true;
           const next = [...prev];
           next[elemIndex] = { ...current, x: roundedX, y: roundedY, width: roundedW, height: roundedH };
           return next;
@@ -1384,7 +1409,11 @@ export default function LabelDesignerPage() {
               <canvas ref={canvasRef} className="label-canvas" style={{ display: 'block' }} />
               <div
                 className="canvas-overlay"
-                onClick={() => setSelectedElement(null)}
+                onMouseDown={(e) => {
+                  if (e.target === e.currentTarget) {
+                    setSelectedElement(null);
+                  }
+                }}
               >
                 {labelWidth > 0 && labelHeight > 0 && elements.map((elem) => {
                   const typeLabel =
