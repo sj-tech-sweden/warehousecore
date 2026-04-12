@@ -5,6 +5,6 @@
 
 BEGIN;
 
-UPDATE devices SET status = 'in_storage' WHERE status = 'free';
+UPDATE devices SET status = 'in_storage' WHERE LOWER(TRIM(status)) = 'free';
 
 COMMIT;

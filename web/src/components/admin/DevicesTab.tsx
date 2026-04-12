@@ -186,8 +186,10 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     setZoneFilter('');
   };
 
-  const normalizeDeviceStatus = (status: string) =>
-    status === 'free' ? 'in_storage' : status;
+  const normalizeDeviceStatus = (status: string) => {
+    const normalizedStatus = status.trim().toLowerCase();
+    return normalizedStatus === 'free' ? 'in_storage' : normalizedStatus;
+  };
 
   const filteredDevices = devices.filter((device) => {
     const matchesSearch =
