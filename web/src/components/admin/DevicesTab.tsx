@@ -530,7 +530,9 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filteredDevices.map((device) => (
+              {filteredDevices.map((device) => {
+                  const ns = normalizeDeviceStatus(device.status);
+                  return (
                   <tr key={device.device_id} className="hover:bg-white/5 transition-colors">
                     <td className="px-4 py-3 text-sm text-gray-300">{device.device_id}</td>
                     <td className="px-4 py-3 text-sm">
@@ -545,11 +547,11 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                     <td className="px-4 py-3">
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          normalizeDeviceStatus(device.status) === 'in_storage'
+                          ns === 'in_storage'
                             ? 'bg-green-500/20 text-green-400'
-                            : normalizeDeviceStatus(device.status) === 'on_job'
+                            : ns === 'on_job'
                             ? 'bg-blue-500/20 text-blue-400'
-                            : normalizeDeviceStatus(device.status) === 'defective'
+                            : ns === 'defective'
                             ? 'bg-red-500/20 text-red-400'
                             : 'bg-yellow-500/20 text-yellow-400'
                         }`}
@@ -602,15 +604,18 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                         </button>
                       </div>
                     </td>
-                  </tr>
-                ))}
+                   </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredDevices.map((device) => (
+          {filteredDevices.map((device) => {
+            const ns = normalizeDeviceStatus(device.status);
+            return (
             <div key={device.device_id} className="glass-dark rounded-xl p-4 space-y-3">
             <div className="flex items-start justify-between">
               <div>
@@ -622,11 +627,11 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
               </div>
                 <span
                   className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                    normalizeDeviceStatus(device.status) === 'in_storage'
+                    ns === 'in_storage'
                       ? 'bg-green-500/20 text-green-400'
-                      : normalizeDeviceStatus(device.status) === 'on_job'
+                      : ns === 'on_job'
                       ? 'bg-blue-500/20 text-blue-400'
-                      : normalizeDeviceStatus(device.status) === 'defective'
+                      : ns === 'defective'
                       ? 'bg-red-500/20 text-red-400'
                       : 'bg-yellow-500/20 text-yellow-400'
                   }`}
@@ -688,7 +693,8 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

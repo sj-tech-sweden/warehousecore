@@ -202,7 +202,11 @@ func (s *DeviceAdminService) UpdateDevice(ctx context.Context, deviceID string, 
 
 	if input.Status.Set {
 		if input.Status.Valid {
-			addArg("status = $%d", strings.TrimSpace(input.Status.Value))
+			normalizedStatus := strings.ToLower(strings.TrimSpace(input.Status.Value))
+			if normalizedStatus == "free" {
+				normalizedStatus = string(models.StatusInStorage)
+			}
+			addArg("status = $%d", normalizedStatus)
 		} else {
 			addArg("status = $%d", nil)
 		}
