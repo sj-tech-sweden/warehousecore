@@ -76,9 +76,9 @@ func TestExtractAPIKey_NonBearerAuth(t *testing.T) {
 	}
 }
 
-// TestAuthMiddleware_NoCredentials verifies that requests without any
-// credentials receive a 401 with the "No session" message.
-func TestAuthMiddleware_NoCredentials(t *testing.T) {
+// TestAuthMiddleware_NoCredentials_NoDB verifies that when the database is
+// unavailable and no credentials are provided, a 500 is returned.
+func TestAuthMiddleware_NoCredentials_NoDB(t *testing.T) {
 	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called")
 	}))
@@ -87,37 +87,36 @@ func TestAuthMiddleware_NoCredentials(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
+	// DB is nil in test environment → 500
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB is nil, got %d", rr.Code)
 	}
-	if body := rr.Body.String(); body != "{\"error\":\"Unauthorized - No session\"}\n" {
+	if body := rr.Body.String(); body != "{\"error\":\"Database unavailable\"}\n" {
 		t.Errorf("unexpected body: %s", body)
 	}
 }
 
-// TestAuthMiddleware_InvalidAPIKey verifies that an invalid API key gets a 401
-// with the "Invalid API key" message (not "No session").
-func TestAuthMiddleware_InvalidAPIKey(t *testing.T) {
+// TestAuthMiddleware_InvalidAPIKey_NoDB verifies that an API key still gets
+// 500 when the database is unavailable (not a misleading 401).
+func TestAuthMiddleware_InvalidAPIKey_NoDB(t *testing.T) {
 	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called")
 	}))
 
 	req := httptest.NewRequest("GET", "/admin/zone-types", nil)
-	req.Header.Set("X-API-Key", "definitely-not-a-valid-key")
+	req.Header.Set("X-API-Key", "some-key")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
-	}
-	if body := rr.Body.String(); body != "{\"error\":\"Unauthorized - Invalid API key\"}\n" {
-		t.Errorf("unexpected body: %s", body)
+	// DB is nil → 500 even with an API key
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB is nil, got %d", rr.Code)
 	}
 }
 
-// TestAuthMiddleware_InvalidBearerToken verifies that an invalid Bearer token
-// also produces the "Invalid API key" message.
-func TestAuthMiddleware_InvalidBearerToken(t *testing.T) {
+// TestAuthMiddleware_InvalidBearerToken_NoDB verifies that a Bearer token
+// still gets 500 when the database is unavailable.
+func TestAuthMiddleware_InvalidBearerToken_NoDB(t *testing.T) {
 	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called")
 	}))
@@ -127,10 +126,8 @@ func TestAuthMiddleware_InvalidBearerToken(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
-	}
-	if body := rr.Body.String(); body != "{\"error\":\"Unauthorized - Invalid API key\"}\n" {
-		t.Errorf("unexpected body: %s", body)
+	// DB is nil → 500
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB is nil, got %d", rr.Code)
 	}
 }

@@ -760,6 +760,7 @@
       "deactivate": "Deactivate",
       "adminAccess": "Admin access",
       "adminAccessHint": "Allow this key to access admin endpoints",
+      "adminBadge": "Admin",
       "neverUsed": "—",
       "confirmDelete": "Delete this API key?",
       "errors": {

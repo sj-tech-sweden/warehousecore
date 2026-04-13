@@ -26,15 +26,21 @@ func authDebugLog(format string, args ...interface{}) {
 	log.Printf(format, args...)
 }
 
-// AuthMiddleware validates session cookie or API key and loads user.
+// AuthMiddleware validates session cookie or admin API key and loads user.
 // It first checks for a session_id cookie. If none is found, it falls back
-// to X-API-Key header or Authorization: Bearer <key> header. API keys are
-// validated against the api_keys table; keys with is_admin=true receive
-// admin and warehouse_admin roles in the user context.
+// to X-API-Key header or Authorization: Bearer <key> header. Only API keys
+// with is_admin=true are accepted; non-admin keys are rejected so that
+// programmatic access is limited to explicitly granted admin keys.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Debug: Log all cookies
 		authDebugLog("DEBUG [WarehouseCore]: AuthMiddleware - Path: %s, Cookies: %+v", r.URL.Path, r.Cookies())
+
+		// Check database availability early so outages are reported as 500.
+		if repository.GetDB() == nil || repository.GetSQLDB() == nil {
+			http.Error(w, `{"error":"Database unavailable"}`, http.StatusInternalServerError)
+			return
+		}
 
 		// --- Try session cookie first ---
 		cookie, err := r.Cookie("session_id")
@@ -46,10 +52,10 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// --- Fallback: API key via X-API-Key header or Authorization: Bearer ---
+		// --- Fallback: admin API key via X-API-Key or Authorization: Bearer ---
 		apiKey := extractAPIKey(r)
 		if apiKey != "" {
-			if user := authenticateAPIKey(apiKey); user != nil {
+			if user := authenticateAdminAPIKey(apiKey); user != nil {
 				ctx := context.WithValue(r.Context(), UserContextKey, user)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -119,10 +125,12 @@ func authenticateSession(cookieValue string) *models.User {
 	return &session.User
 }
 
-// authenticateAPIKey validates a raw API key against the api_keys table.
-// If the key is active and has is_admin=true, a synthetic admin user is
+// authenticateAdminAPIKey validates a raw API key against the api_keys table.
+// Only keys with is_admin=true are accepted. A synthetic admin user is
 // returned so that downstream RequireAdmin / RequireRole checks pass.
-func authenticateAPIKey(raw string) *models.User {
+// Non-admin keys are rejected (they are handled by APIKeyMiddleware on
+// public routes instead).
+func authenticateAdminAPIKey(raw string) *models.User {
 	db := repository.GetSQLDB()
 	if db == nil {
 		return nil
@@ -141,29 +149,30 @@ func authenticateAPIKey(raw string) *models.User {
 		return nil
 	}
 
+	// Only admin keys may authenticate via AuthMiddleware
+	if !isAdmin {
+		authDebugLog("DEBUG [WarehouseCore]: API key %q (id=%d) is not an admin key – rejecting", name, id)
+		return nil
+	}
+
 	// Best-effort last_used_at update
 	go func(id int) {
 		_, _ = db.Exec(`UPDATE api_keys SET last_used_at = $1 WHERE id = $2`, time.Now(), id)
 	}(id)
 
-	authDebugLog("DEBUG [WarehouseCore]: API key authenticated: %q (id=%d, is_admin=%v)", name, id, isAdmin)
+	authDebugLog("DEBUG [WarehouseCore]: Admin API key authenticated: %q (id=%d)", name, id)
 
 	// UserID 0 is a sentinel indicating API-key authentication (no real user row).
-	user := &models.User{
+	return &models.User{
 		UserID:   0,
 		Username: "api-key:" + name,
 		IsActive: true,
-		IsAdmin:  isAdmin,
-	}
-
-	if isAdmin {
-		user.Roles = []models.Role{
+		IsAdmin:  true,
+		Roles: []models.Role{
 			{Name: "admin"},
 			{Name: "warehouse_admin"},
-		}
+		},
 	}
-
-	return user
 }
 
 // OptionalAuthMiddleware loads user if session exists, but doesn't require it

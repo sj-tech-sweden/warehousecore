@@ -2,12 +2,14 @@
 package repository
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
@@ -127,8 +129,20 @@ func GetSQLDB() *sql.DB {
 	return DB
 }
 
-// HashAPIKey creates a stable SHA-256 hex hash of an API key.
+// apiKeyPepper is an application-level secret used to HMAC API key hashes.
+// Set via API_KEY_PEPPER env var; defaults to a built-in value so the app
+// works out of the box, but operators SHOULD set their own pepper.
+var apiKeyPepper = func() string {
+	if v := os.Getenv("API_KEY_PEPPER"); v != "" {
+		return v
+	}
+	return "warehousecore-default-api-key-pepper"
+}()
+
+// HashAPIKey creates a keyed HMAC-SHA256 hex digest of an API key.
+// The pepper prevents rainbow-table attacks even if the database is leaked.
 func HashAPIKey(key string) string {
-	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:])
+	mac := hmac.New(sha256.New, []byte(apiKeyPepper))
+	mac.Write([]byte(key))
+	return hex.EncodeToString(mac.Sum(nil))
 }

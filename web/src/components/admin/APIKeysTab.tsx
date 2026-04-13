@@ -182,7 +182,7 @@ export function APIKeysTab() {
                 {k.is_admin ? (
                   <>
                     <Shield className="w-4 h-4 text-yellow-400" />
-                    <span className="text-yellow-300 text-xs font-semibold">Admin</span>
+                    <span className="text-yellow-300 text-xs font-semibold">{t('admin.apiKeys.adminBadge')}</span>
                   </>
                 ) : (
                   <span className="text-gray-500 text-xs">—</span>
