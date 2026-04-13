@@ -1,6 +1,9 @@
 package middleware
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -22,7 +25,13 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !isAPIKeyValid(key) {
+		valid, err := isAPIKeyValid(key)
+		if err != nil {
+			log.Printf("[APIKEY] database error during key validation: %v", err)
+			http.Error(w, `{"error":"Database unavailable"}`, http.StatusInternalServerError)
+			return
+		}
+		if !valid {
 			http.Error(w, "invalid API key", http.StatusUnauthorized)
 			return
 		}
@@ -31,17 +40,20 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func isAPIKeyValid(raw string) bool {
+func isAPIKeyValid(raw string) (bool, error) {
 	db := repository.GetSQLDB()
 	if db == nil {
-		return false
+		return false, errors.New("SQL DB handle is nil")
 	}
 	hash := hashAPIKey(raw)
 
 	var id int
 	err := db.QueryRow(`SELECT id FROM api_keys WHERE api_key_hash = $1 AND is_active = TRUE LIMIT 1`, hash).Scan(&id)
 	if err != nil {
-		return false
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil // key not found – credential mismatch
+		}
+		return false, fmt.Errorf("api_key query: %w", err)
 	}
 
 	// Update last_used_at synchronously (single indexed UPDATE).
@@ -49,7 +61,7 @@ func isAPIKeyValid(raw string) bool {
 		log.Printf("WARN [WarehouseCore]: failed to update last_used_at for API key (id=%d): %v", id, err)
 	}
 
-	return true
+	return true, nil
 }
 
 func hashAPIKey(key string) string {

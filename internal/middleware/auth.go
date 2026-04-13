@@ -47,8 +47,10 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		authDebugLog("DEBUG [WarehouseCore]: AuthMiddleware - Path: %s, Cookies: %+v", r.URL.Path, r.Cookies())
 
 		// --- Try session cookie first ---
+		hadSessionCookie := false
 		cookie, err := r.Cookie("session_id")
 		if err == nil && cookie.Value != "" {
+			hadSessionCookie = true
 			user, authErr := authenticateSession(cookie.Value)
 			if authErr != nil {
 				if errors.Is(authErr, errDBUnavailable) {
@@ -89,7 +91,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// No credentials at all
+		// No valid credentials
+		if hadSessionCookie {
+			http.Error(w, `{"error":"Unauthorized - Invalid session"}`, http.StatusUnauthorized)
+			return
+		}
 		authDebugLog("DEBUG [WarehouseCore]: No session_id cookie or API key found for %s", r.URL.Path)
 		http.Error(w, `{"error":"Unauthorized - No session"}`, http.StatusUnauthorized)
 	})
