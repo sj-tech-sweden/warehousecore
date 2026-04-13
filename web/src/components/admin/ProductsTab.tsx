@@ -1671,7 +1671,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('admin.products.brandManufacturer')}</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('admin.brandsManufacturers.levels.brands')}</label>
                   <SearchableSelect
                     value={bulkEditData.brand_id ? String(bulkEditData.brand_id) : ''}
                     onChange={v => setBulkEditData({ ...bulkEditData, brand_id: v ? Number(v) : undefined })}
@@ -1680,11 +1680,11 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                       ...brands.map(b => ({ value: String(b.brand_id), label: b.name })),
                     ]}
                     className="w-full"
-                    title={t('admin.products.brandManufacturer')}
+                    title={t('admin.brandsManufacturers.levels.brands')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('admin.products.noManufacturer')}</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('admin.brandsManufacturers.levels.manufacturers')}</label>
                   <SearchableSelect
                     value={bulkEditData.manufacturer_id ? String(bulkEditData.manufacturer_id) : ''}
                     onChange={v => setBulkEditData({ ...bulkEditData, manufacturer_id: v ? Number(v) : undefined })}
@@ -1693,7 +1693,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                       ...manufacturers.map(m => ({ value: String(m.manufacturer_id), label: m.name })),
                     ]}
                     className="w-full"
-                    title={t('admin.products.noManufacturer')}
+                    title={t('admin.brandsManufacturers.levels.manufacturers')}
                   />
                 </div>
               </div>
