@@ -9,7 +9,7 @@ interface UserProfile {
     user_id: number;
     display_name: string;
     avatar_url: string;
-    prefs: any;
+    prefs: Record<string, unknown>;
     user?: {
       userID: number;
       username: string;
@@ -65,8 +65,9 @@ export function ProfilePage() {
       setMessage(t('profilePage.saveSuccess'));
       setTimeout(() => setMessage(''), 3000);
       loadProfile();
-    } catch (error: any) {
-      setMessage(t('profilePage.saveError', { error: error.response?.data?.error || error.message }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setMessage(t('profilePage.saveError', { error: errorMessage }));
     } finally {
       setSaving(false);
     }
