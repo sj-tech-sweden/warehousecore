@@ -136,6 +136,7 @@ var apiKeyPepper = func() string {
 	if v := os.Getenv("API_KEY_PEPPER"); v != "" {
 		return v
 	}
+	log.Println("WARNING: API_KEY_PEPPER is not set – using default pepper. Set API_KEY_PEPPER env var for production use.")
 	return "warehousecore-default-api-key-pepper"
 }()
 

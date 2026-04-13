@@ -10,7 +10,9 @@ BEGIN;
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Invalidate existing key hashes (new algorithm makes them unmatchable anyway).
--- Operators should create fresh keys via the admin UI after deploying.
+-- WARNING: This deletes all existing API keys. Operators should create fresh
+-- keys via the admin UI after deploying. Plan replacement keys before running
+-- this migration if API keys are actively in use.
 DELETE FROM api_keys;
 
 COMMIT;
