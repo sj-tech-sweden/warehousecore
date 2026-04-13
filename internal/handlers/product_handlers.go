@@ -27,6 +27,30 @@ var productPictureService = services.NewProductPictureServiceFromEnv()
 var errPicturesUnavailable = errors.New("product pictures not available")
 var websiteRevalidator = services.NewRevalidatorFromEnv()
 
+// cleanupDeviceLabelFiles removes label files from disk for the given label_path values.
+// Paths are sanitized to prevent path traversal outside the web/dist directory.
+func cleanupDeviceLabelFiles(labelPaths []string, logPrefix string) {
+	if len(labelPaths) == 0 {
+		return
+	}
+	baseDir, err := filepath.Abs(filepath.Join("web", "dist"))
+	if err != nil {
+		log.Printf("[%s] Failed to resolve base dir for label cleanup: %v", logPrefix, err)
+		return
+	}
+	for _, lp := range labelPaths {
+		cleaned := filepath.Clean(strings.TrimPrefix(lp, "/"))
+		fullPath := filepath.Join(baseDir, cleaned)
+		if !strings.HasPrefix(fullPath, baseDir+string(os.PathSeparator)) {
+			log.Printf("[%s] Skipping label path outside base dir: %s", logPrefix, lp)
+			continue
+		}
+		if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("[%s] Failed to remove label %s: %v", logPrefix, fullPath, err)
+		}
+	}
+}
+
 // Product represents a product (item type)
 type Product struct {
 	ProductID           int      `json:"product_id"`
@@ -874,16 +898,21 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[PRODUCT DELETE] Deleting product %d (%s) with %d associated device(s)", id, productName, deviceCount)
 
 	// Cascade delete: Delete all associated devices first
+	var labelPaths []string
 	if deviceCount > 0 {
-		// Get device IDs for detailed logging
+		// Get device IDs and label paths for logging and cleanup
 		var deviceIDs []string
-		rows, err := db.Query("SELECT deviceID FROM devices WHERE productID = $1", id)
+		rows, err := db.Query("SELECT deviceID, label_path FROM devices WHERE productID = $1", id)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var deviceID string
-				if err := rows.Scan(&deviceID); err == nil {
+				var labelPath sql.NullString
+				if err := rows.Scan(&deviceID, &labelPath); err == nil {
 					deviceIDs = append(deviceIDs, deviceID)
+					if labelPath.Valid && labelPath.String != "" {
+						labelPaths = append(labelPaths, labelPath.String)
+					}
 				}
 			}
 		}
@@ -920,6 +949,9 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[PRODUCT DELETE] Successfully deleted product %d (%s)", id, productName)
+
+	// Clean up device label files after successful deletion
+	cleanupDeviceLabelFiles(labelPaths, "PRODUCT DELETE")
 
 	// Include device count in response
 	message := "Product deleted successfully"
@@ -1038,22 +1070,7 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clean up label files after successful commit
-	baseDir, err := filepath.Abs(filepath.Join("web", "dist"))
-	if err != nil {
-		log.Printf("[BULK PRODUCT DELETE] Failed to resolve base dir for label cleanup: %v", err)
-	} else {
-		for _, lp := range labelPaths {
-			cleaned := filepath.Clean(strings.TrimPrefix(lp, "/"))
-			fullPath := filepath.Join(baseDir, cleaned)
-			if !strings.HasPrefix(fullPath, baseDir+string(os.PathSeparator)) {
-				log.Printf("[BULK PRODUCT DELETE] Skipping label path outside base dir: %s", lp)
-				continue
-			}
-			if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-				log.Printf("[BULK PRODUCT DELETE] Failed to remove label %s: %v", fullPath, err)
-			}
-		}
-	}
+	cleanupDeviceLabelFiles(labelPaths, "BULK PRODUCT DELETE")
 
 	log.Printf("[BULK PRODUCT DELETE] Deleted %d products and %d devices", totalProductsDeleted, totalDevicesDeleted)
 

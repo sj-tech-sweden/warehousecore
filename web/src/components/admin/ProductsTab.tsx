@@ -221,7 +221,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
-    const anyModalOpen = modalOpen || !!viewProduct;
+    const anyModalOpen = modalOpen || !!viewProduct || bulkEditOpen;
     if (anyModalOpen) {
       // scrollPosition.current = window.scrollY || window.pageYOffset || 0; // Not needed if we don't fix body
       html.classList.add('modal-open');
@@ -245,7 +245,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     }
 
     return undefined;
-  }, [modalOpen, viewProduct]);
+  }, [modalOpen, viewProduct, bulkEditOpen]);
 
   const fetchProducts = useCallback(
     async (searchValue?: string, categoryId?: number | '') => {

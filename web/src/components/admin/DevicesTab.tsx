@@ -129,7 +129,7 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
   const [bulkEditData, setBulkEditData] = useState<{ status?: string; zone_id?: number }>({});
 
   // Block body scroll when any modal is open
-  useBlockBodyScroll(modalOpen);
+  useBlockBodyScroll(modalOpen || bulkEditOpen);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
