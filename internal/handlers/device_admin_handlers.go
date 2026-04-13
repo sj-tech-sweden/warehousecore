@@ -291,33 +291,23 @@ func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	service := services.NewDeviceAdminService()
-	var deleted, failed int
-	var failedIDs []string
-
-	for _, id := range req.IDs {
-		err := service.DeleteDevice(r.Context(), id)
-		if err != nil {
-			log.Printf("[BULK DEVICE DELETE] Failed for %s: %v", id, err)
-			failed++
-			failedIDs = append(failedIDs, id)
-		} else {
-			deleted++
-		}
-	}
-
-	if deleted == 0 && failed > 0 {
-		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"error":      "Failed to delete all devices",
-			"failed_ids": failedIDs,
-		})
+	result, err := service.BulkDeleteDevices(r.Context(), req.IDs)
+	if err != nil {
+		log.Printf("[BULK DEVICE DELETE] Transaction error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to process bulk delete"})
 		return
 	}
 
+	message := fmt.Sprintf("Deleted %d device(s)", result.Deleted)
+	if result.Deleted == 0 && result.Failed > 0 {
+		message = "No devices were deleted"
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":         fmt.Sprintf("Deleted %d device(s)", deleted),
-		"deleted_devices": deleted,
-		"failed_devices":  failed,
-		"failed_ids":      failedIDs,
+		"message":         message,
+		"deleted_devices": result.Deleted,
+		"failed_devices":  result.Failed,
+		"failed_ids":      result.FailedIDs,
 	})
 }
 
