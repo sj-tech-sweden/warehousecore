@@ -17,6 +17,7 @@ type APIKey struct {
 	ID         int        `json:"id"`
 	Name       string     `json:"name"`
 	IsActive   bool       `json:"is_active"`
+	IsAdmin    bool       `json:"is_admin"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 }
@@ -29,7 +30,7 @@ type CreateAPIKeyResponse struct {
 // ListAPIKeys returns all API keys (without plaintext).
 func ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
-	rows, err := db.Query(`SELECT id, name, is_active, created_at, last_used_at FROM api_keys ORDER BY created_at DESC`)
+	rows, err := db.Query(`SELECT id, name, is_active, is_admin, created_at, last_used_at FROM api_keys ORDER BY created_at DESC`)
 	if err != nil {
 		log.Printf("[APIKEY] failed to list keys: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list API keys"})
@@ -40,7 +41,7 @@ func ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	var keys []APIKey
 	for rows.Next() {
 		var k APIKey
-		if err := rows.Scan(&k.ID, &k.Name, &k.IsActive, &k.CreatedAt, &k.LastUsedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.Name, &k.IsActive, &k.IsAdmin, &k.CreatedAt, &k.LastUsedAt); err != nil {
 			continue
 		}
 		keys = append(keys, k)
@@ -52,7 +53,8 @@ func ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 // CreateAPIKey creates a new key and returns the plaintext once.
 func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		Name    string `json:"name"`
+		IsAdmin bool   `json:"is_admin"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
@@ -68,7 +70,7 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 	var id int64
-	err := db.QueryRow(`INSERT INTO api_keys (name, api_key_hash, is_active) VALUES ($1, $2, TRUE) RETURNING id`, body.Name, hash).Scan(&id)
+	err := db.QueryRow(`INSERT INTO api_keys (name, api_key_hash, is_active, is_admin) VALUES ($1, $2, TRUE, $3) RETURNING id`, body.Name, hash, body.IsAdmin).Scan(&id)
 	if err != nil {
 		log.Printf("[APIKEY] failed to create key: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create API key"})
@@ -79,6 +81,7 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 			ID:        int(id),
 			Name:      body.Name,
 			IsActive:  true,
+			IsAdmin:   body.IsAdmin,
 			CreatedAt: time.Now(),
 		},
 		PlainText: rawKey,

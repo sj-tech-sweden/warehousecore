@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { KeyRound, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCcw, Copy } from 'lucide-react';
+import { KeyRound, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCcw, Copy, Shield } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { apiKeysAdminApi, type APIKeyItem } from '../../lib/api';
 import { formatLocalDateTime } from '../../lib/utils';
@@ -10,6 +10,7 @@ export function APIKeysTab() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newIsAdmin, setNewIsAdmin] = useState(false);
   const [plainKey, setPlainKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,9 +41,10 @@ export function APIKeysTab() {
     setError(null);
     setPlainKey(null);
     try {
-      const { data } = await apiKeysAdminApi.create({ name: newName.trim() });
+      const { data } = await apiKeysAdminApi.create({ name: newName.trim(), is_admin: newIsAdmin });
       setPlainKey(data.api_key);
       setNewName('');
+      setNewIsAdmin(false);
       await loadKeys();
     } catch (err) {
       console.error('Failed to create API key', err);
@@ -95,6 +97,16 @@ export function APIKeysTab() {
             onChange={(e) => setNewName(e.target.value)}
           />
         </div>
+        <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none" title={t('admin.apiKeys.adminAccessHint')}>
+          <input
+            type="checkbox"
+            checked={newIsAdmin}
+            onChange={(e) => setNewIsAdmin(e.target.checked)}
+            className="accent-accent-red w-4 h-4"
+          />
+          <Shield className="w-4 h-4 text-yellow-400" />
+          {t('admin.apiKeys.adminAccess')}
+        </label>
         <button
           onClick={createKey}
           disabled={creating}
@@ -127,8 +139,9 @@ export function APIKeysTab() {
 
       <div className="glass-dark rounded-xl overflow-hidden">
         <div className="grid grid-cols-12 px-4 py-3 text-sm font-semibold text-gray-300 border-b border-white/5">
-          <div className="col-span-4">{t('cases.name')}</div>
-          <div className="col-span-3">{t('devices.status')}</div>
+          <div className="col-span-3">{t('cases.name')}</div>
+          <div className="col-span-2">{t('devices.status')}</div>
+          <div className="col-span-2">{t('admin.apiKeys.adminAccess')}</div>
           <div className="col-span-3">{t('admin.apiKeys.lastUsed')}</div>
           <div className="col-span-2 text-right">{t('labels.actions')}</div>
         </div>
@@ -142,11 +155,11 @@ export function APIKeysTab() {
               key={k.id}
               className="grid grid-cols-12 px-4 py-3 items-center border-b border-white/5 text-sm text-gray-100"
             >
-              <div className="col-span-4">
+              <div className="col-span-3">
                 <div className="font-semibold text-white">{k.name}</div>
                 <div className="text-xs text-gray-400">{t('admin.apiKeys.id', { id: k.id })}</div>
               </div>
-              <div className="col-span-3 flex items-center gap-2">
+              <div className="col-span-2 flex items-center gap-2">
                 {k.is_active ? (
                   <>
                     <ToggleRight className="w-5 h-5 text-green-400" />
@@ -164,6 +177,16 @@ export function APIKeysTab() {
                 >
                   {k.is_active ? t('admin.apiKeys.deactivate') : t('admin.apiKeys.activate')}
                 </button>
+              </div>
+              <div className="col-span-2 flex items-center gap-1">
+                {k.is_admin ? (
+                  <>
+                    <Shield className="w-4 h-4 text-yellow-400" />
+                    <span className="text-yellow-300 text-xs font-semibold">Admin</span>
+                  </>
+                ) : (
+                  <span className="text-gray-500 text-xs">—</span>
+                )}
               </div>
               <div className="col-span-3 text-gray-300 text-sm">
                 {k.last_used_at ? formatLocalDateTime(k.last_used_at) : t('admin.apiKeys.neverUsed')}

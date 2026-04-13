@@ -747,7 +747,7 @@
     },
     "apiKeys": {
       "title": "API Keys",
-      "subtitle": "Secure access to public website feeds",
+      "subtitle": "Secure access to public website feeds and admin endpoints",
       "nameDescription": "Name / Description",
       "namePlaceholder": "e.g. tsweb-frontend",
       "newKey": "New Key",
@@ -758,6 +758,8 @@
       "id": "ID: {{id}}",
       "activate": "Activate",
       "deactivate": "Deactivate",
+      "adminAccess": "Admin access",
+      "adminAccessHint": "Allow this key to access admin endpoints",
       "neverUsed": "—",
       "confirmDelete": "Delete this API key?",
       "errors": {
