@@ -1003,6 +1003,8 @@
       "ip": "IP",
       "mac": "MAC",
       "firmware": "Firmware",
+      "firmwareType": "Typ",
+      "esphomeBadge": "ESPHome",
       "leds": "LEDs",
       "wifiRssi": "WiFi RSSI",
       "uptime": "Uptime",

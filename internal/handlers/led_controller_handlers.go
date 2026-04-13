@@ -55,6 +55,7 @@ func CreateLEDController(w http.ResponseWriter, r *http.Request) {
 		TopicSuffix:  topic,
 		Metadata:     payload.Metadata,
 		IsActive:     true,
+		FirmwareType: "arduino",
 	}
 
 	if payload.IsActive != nil {

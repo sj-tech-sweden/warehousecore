@@ -562,6 +562,9 @@ export function LEDControllersTab() {
                     <div className="min-w-0 flex-1">
                       <h3 className="text-white font-semibold text-sm sm:text-base flex items-center gap-2 flex-wrap">
                         <span className="truncate">{controller.display_name}</span>
+                        {controller.firmware_type === 'esphome' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 font-semibold flex-shrink-0">{t('admin.ledControllers.esphomeBadge', 'ESPHome')}</span>
+                        )}
                         {!controller.is_active && <span className="text-xs text-gray-500 flex-shrink-0">{t('admin.ledControllers.deactivated')}</span>}
                       </h3>
                       <p className="text-xs text-gray-400 truncate">
@@ -581,6 +584,9 @@ export function LEDControllersTab() {
                         {controller.ip_address && <span className="truncate">{t('admin.ledControllers.ip')}: <span className="font-mono text-gray-300">{controller.ip_address}</span></span>}
                         {controller.mac_address && <span className="truncate">{t('admin.ledControllers.mac')}: <span className="font-mono text-gray-300">{controller.mac_address}</span></span>}
                         {controller.firmware_version && <span className="truncate">{t('admin.ledControllers.firmware')}: <span className="font-mono text-gray-300">{controller.firmware_version}</span></span>}
+                        {controller.firmware_type && controller.firmware_type !== 'arduino' && (
+                          <span className="truncate">{t('admin.ledControllers.firmwareType')}: <span className="font-mono text-gray-300">{controller.firmware_type}</span></span>
+                        )}
                         {typeof ledCount === 'number' && <span>{t('admin.ledControllers.leds')}: <span className="font-mono text-gray-300">{ledCount}</span></span>}
                         {wifiRSSI !== undefined && <span>{t('admin.ledControllers.wifiRssi')}: <span className="font-mono text-gray-300">{wifiRSSI} dBm</span></span>}
                         {uptimeLabel && <span>{t('admin.ledControllers.uptime')}: <span className="font-mono text-gray-300">{uptimeLabel}</span></span>}
