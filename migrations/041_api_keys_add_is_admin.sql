@@ -14,8 +14,10 @@ ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT 
 -- timestamps remain available. Operators should create fresh keys via the
 -- admin UI after deploying. Plan replacement keys before running this
 -- migration if API keys are actively in use.
+-- Use a per-row invalidated value so the update remains valid if
+-- api_key_hash is protected by a UNIQUE constraint.
 UPDATE api_keys
-SET api_key_hash = '__invalidated__',
+SET api_key_hash = '__invalidated__:' || id::text,
     is_active = FALSE;
 
 COMMIT;
