@@ -252,6 +252,7 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 ### Key Features
 
 - **Unlimited ESP Controllers**: Each ESP32 firmware automatically generates a unique `controller_id` and receives its own MQTT topic. Zone types can be routed per controller.
+- **Arduino & ESPHome Support**: Choose between the Arduino C++ firmware or ESPHome YAML for your controllers. ESPHome adds Home Assistant integration, OTA updates, and a web-based config portal.
 - **Zero-Touch Discovery**: As soon as a controller subscribes to its MQTT status topic and sends a heartbeat message, WarehouseCore automatically registers it in the database – without any additional firmware configuration or manual master data management.
 - **Admin ESP Dashboard**: New tab "ESP Controllers" shows IP, hostname, firmware, RSSI and uptime, allows friendly names and multiple zone type assignments via a convenient multi-select dropdown.
 - **Telemetry Heartbeats**: MQTT + REST heartbeat (`/api/v1/led/controllers/{id}/heartbeat`) keeps status data up to date in the backend – including LED count, WiFi RSSI, firmware version.
@@ -308,6 +309,24 @@ Flow: Job Selected → Publish to cloud broker → ESP32 subscribes → Show LED
 - `esp32_sk6812_leds.ino` - Main firmware
 - `secrets.h.template` - Config template (WiFi, MQTT credentials)
 - **[README.md](firmware/esp32_sk6812_leds/README.md)** - **📘 Complete Setup Guide: Flashing, Hardware Wiring, Configuration**
+
+#### 3b. ESP32 Firmware (ESPHome) — NEW
+
+**Location:** `firmware/esphome/`
+
+- `warehousecore_led_controller.yaml` - ESPHome configuration
+- `secrets.yaml.template` - Credentials template
+- **[README.md](firmware/esphome/README.md)** - **📘 ESPHome Setup Guide**
+
+ESPHome is an alternative firmware that adds **Home Assistant integration**, **OTA updates**, and **YAML-based configuration** while remaining fully compatible with the WarehouseCore MQTT protocol. Choose ESPHome if you want to control your LEDs from both WarehouseCore and Home Assistant.
+
+Quick start:
+```bash
+cd firmware/esphome
+cp secrets.yaml.template secrets.yaml
+# Edit secrets.yaml with your credentials
+esphome run warehousecore_led_controller.yaml
+```
 
 **Multi-ESP32 Quick Start:**
 

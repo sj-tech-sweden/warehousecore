@@ -14,6 +14,7 @@ type LEDController struct {
 	IPAddress       *string    `json:"ip_address" gorm:"column:ip_address"`
 	Hostname        *string    `json:"hostname" gorm:"column:hostname"`
 	FirmwareVersion *string    `json:"firmware_version" gorm:"column:firmware_version"`
+	FirmwareType    string     `json:"firmware_type" gorm:"column:firmware_type;not null;default:'arduino'"`
 	MacAddress      *string    `json:"mac_address" gorm:"column:mac_address"`
 	StatusData      JSONMap    `json:"status_data" gorm:"column:status_data;type:json"`
 	CreatedAt       time.Time  `json:"created_at" gorm:"column:created_at"`
@@ -47,6 +48,7 @@ type LEDControllerHeartbeat struct {
 	IPAddress       string `json:"ip_address"`
 	Hostname        string `json:"hostname"`
 	FirmwareVersion string `json:"firmware_version"`
+	FirmwareType    string `json:"firmware_type,omitempty"` // "arduino" or "esphome"
 	MacAddress      string `json:"mac_address"`
 	WifiRSSI        *int   `json:"wifi_rssi"`
 	UptimeSeconds   *int64 `json:"uptime_seconds"`

@@ -262,7 +262,7 @@ func CreateCable(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 
 	var id int64
-	query := `INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING cable_id`
+	query := `INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING cableID`
 	err := db.QueryRow(query, input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, input.Name).Scan(&id)
 	if err != nil {
 		log.Printf("Error creating cable: %v", err)

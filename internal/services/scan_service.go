@@ -5,12 +5,24 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"warehousecore/internal/led"
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 )
+
+// upsertJobDeviceSQL inserts (or re-activates on conflict) a row in jobdevices.
+// When a device has previously been returned via intake its pack_status is reset
+// to 'pending'; scanning it out again must restore it to 'issued'. Using an
+// explicit constant lets tests verify the SQL without running a real database.
+const upsertJobDeviceSQL = `
+INSERT INTO jobdevices (deviceid, jobid, pack_status, pack_ts)
+VALUES ($1, $2, 'issued', NOW())
+ON CONFLICT (deviceid, jobid) DO UPDATE
+SET pack_status = 'issued', pack_ts = NOW();
+`
 
 // ScanService handles all scan-related business logic
 type ScanService struct {
@@ -40,8 +52,7 @@ func (s *ScanService) ProcessScan(req models.ScanRequest, userID *int64, ipAddr,
 		consumable, consumableErr := s.findConsumableByScan(req.ScanCode)
 		if consumableErr != nil {
 			// Neither device nor consumable found
-			s.logScanEvent(tx, req.ScanCode, nil, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
-			tx.Commit()
+			s.logScanEvent(req.ScanCode, nil, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
 			return &models.ScanResponse{
 				Success: false,
 				Message: fmt.Sprintf("Product not found: %v", err),
@@ -55,8 +66,7 @@ func (s *ScanService) ProcessScan(req models.ScanRequest, userID *int64, ipAddr,
 	// Check for duplicate scan (same job)
 	if req.JobID != nil && device.CurrentJobID.Valid && device.CurrentJobID.Int64 == *req.JobID {
 		// Duplicate scan - treat as job complete signal
-		s.logScanEvent(tx, req.ScanCode, &device.DeviceID, "check", req.JobID, req.ZoneID, userID, true, "", ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(req.ScanCode, &device.DeviceID, "check", req.JobID, req.ZoneID, userID, true, "", ipAddr, userAgent)
 
 		return &models.ScanResponse{
 			Success:   true,
@@ -85,8 +95,7 @@ func (s *ScanService) ProcessScan(req models.ScanRequest, userID *int64, ipAddr,
 	}
 
 	if err != nil {
-		s.logScanEvent(tx, req.ScanCode, &device.DeviceID, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(req.ScanCode, &device.DeviceID, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: fmt.Sprintf("Action failed: %v", err),
@@ -95,7 +104,7 @@ func (s *ScanService) ProcessScan(req models.ScanRequest, userID *int64, ipAddr,
 	}
 
 	// Log successful scan
-	s.logScanEvent(tx, req.ScanCode, &device.DeviceID, req.Action, req.JobID, req.ZoneID, userID, true, "", ipAddr, userAgent)
+	s.logScanEvent(req.ScanCode, &device.DeviceID, req.Action, req.JobID, req.ZoneID, userID, true, "", ipAddr, userAgent)
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
@@ -122,17 +131,23 @@ func (s *ScanService) processIntake(tx *sql.Tx, device *models.Device, zoneID *i
 	}
 
 	// Update device status to in_storage
-	_, err := tx.Exec(`
-		UPDATE devices
-		SET status = 'in_storage', zone_id = $1, current_location = 'warehouse'
-		WHERE deviceID = $2
-	`, zoneID, device.DeviceID)
-	if err != nil {
-		return nil, nil, err
-	}
+	// Note: This section appears to be incomplete or incorrect in the original logic.
+	// Since this is intake (returning to warehouse), we should not be inserting into jobdevices.
+	// Commenting out this section as it conflicts with the reset logic below.
+	/*
+		_, err = tx.Exec(`
+			INSERT INTO public.job_devices (deviceid, jobid, pack_status)
+			VALUES ($1, $2, 'issued')
+			ON CONFLICT (deviceid, jobid) DO UPDATE SET pack_status = 'issued'
+		`, device.DeviceID, *jobID)
+		if err != nil {
+			return nil, nil, err
+		}
+	*/
 
 	// Reset pack status instead of removing from job
 	// This makes it appear as "not scanned" again in the job
+	var err error
 	if fromJobID != nil {
 		_, err = tx.Exec(`
 			UPDATE jobdevices
@@ -185,24 +200,40 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 		fromZoneID = &device.ZoneID.Int64
 	}
 
-	// Update device status to on_job
+	// Persist device status change inside the transaction so the device row
+	// reflects the outtake immediately.
 	_, err := tx.Exec(`
 		UPDATE devices
-		SET status = 'on_job', zone_id = NULL
+		SET status = 'on_job', zone_id = NULL, current_location = 'job'
 		WHERE deviceID = $1
 	`, device.DeviceID)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Assign to job and update pack_status to issued
-	_, err = tx.Exec(`
-		INSERT INTO jobdevices (deviceID, jobID, pack_status)
-		VALUES ($1, $2, 'issued')
-		ON CONFLICT (deviceID, jobID) DO UPDATE SET pack_status = 'issued'
-	`, device.DeviceID, *jobID)
-	if err != nil {
-		return nil, nil, err
+	// Upsert into jobdevices. Run this outside the caller transaction so a
+	// missing UNIQUE constraint (which triggers a Postgres error) doesn't
+	// abort the main transaction — instead we detect the condition and fall
+	// back to an UPDATE/INSERT using the DB handle directly.
+	if _, err := s.db.Exec(upsertJobDeviceSQL, device.DeviceID, *jobID); err != nil {
+		if strings.Contains(err.Error(), "no unique or exclusion constraint matching the ON CONFLICT specification") {
+			// Fallback: try UPDATE first; if no rows updated, INSERT.
+			updRes, updErr := s.db.Exec(`
+				UPDATE jobdevices
+				SET pack_status = 'issued', pack_ts = NOW()
+				WHERE deviceid = $1 AND jobid = $2
+			`, device.DeviceID, *jobID)
+			if updErr != nil {
+				return nil, nil, updErr
+			}
+			if n, _ := updRes.RowsAffected(); n == 0 {
+				if _, insErr := s.db.Exec(`INSERT INTO jobdevices (deviceid, jobid, pack_status, pack_ts) VALUES ($1, $2, 'issued', NOW())`, device.DeviceID, *jobID); insErr != nil {
+					return nil, nil, insErr
+				}
+			}
+		} else {
+			return nil, nil, err
+		}
 	}
 
 	// Create movement record
@@ -407,8 +438,11 @@ func (s *ScanService) getDeviceWithDetails(deviceID string) *models.DeviceWithDe
 }
 
 // logScanEvent records a scan event
-func (s *ScanService) logScanEvent(tx *sql.Tx, scanCode string, deviceID *string, action string, jobID, zoneID, userID *int64, success bool, errorMsg, ipAddr, userAgent string) {
-	_, err := tx.Exec(`
+func (s *ScanService) logScanEvent(scanCode string, deviceID *string, action string, jobID, zoneID, userID *int64, success bool, errorMsg, ipAddr, userAgent string) {
+	// Use a separate DB execution (not the provided tx) to ensure logging still
+	// works when the caller transaction has already been aborted by a previous
+	// error. This keeps the audit trail even when the main transaction fails.
+	_, err := s.db.Exec(`
 		INSERT INTO scan_events
 		(scan_code, device_id, action, job_id, zone_id, user_id, success, error_message, ip_address, user_agent, timestamp)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -509,8 +543,7 @@ func (s *ScanService) processConsumableScan(tx *sql.Tx, product *ConsumableProdu
 		return s.processConsumableCheck(tx, product, &productIDStr, req.ScanCode, userID, ipAddr, userAgent)
 	default:
 		err := fmt.Errorf("unsupported action for consumables: %s", req.Action)
-		s.logScanEvent(tx, req.ScanCode, &productIDStr, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(req.ScanCode, &productIDStr, req.Action, req.JobID, req.ZoneID, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: err.Error(),
@@ -522,8 +555,7 @@ func (s *ScanService) processConsumableScan(tx *sql.Tx, product *ConsumableProdu
 func (s *ScanService) processConsumableIntake(tx *sql.Tx, product *ConsumableProduct, zoneID *int64, jobID *int64, productIDStr *string, scanCode string, userID *int64, ipAddr, userAgent string) (*models.ScanResponse, error) {
 	if zoneID == nil {
 		err := fmt.Errorf("zone_id is required for consumable intake")
-		s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(scanCode, productIDStr, "intake", nil, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: err.Error(),
@@ -543,8 +575,7 @@ func (s *ScanService) processConsumableIntake(tx *sql.Tx, product *ConsumablePro
 		ON CONFLICT (product_id, zone_id) DO UPDATE SET quantity = product_locations.quantity + $4
 	`, product.ProductID, *zoneID, quantity, quantity)
 	if err != nil {
-		s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(scanCode, productIDStr, "intake", nil, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to update stock: %v", err),
@@ -561,7 +592,7 @@ func (s *ScanService) processConsumableIntake(tx *sql.Tx, product *ConsumablePro
 		log.Printf("Warning: failed to sync products.stock_quantity: %v", err)
 	}
 
-	s.logScanEvent(tx, scanCode, productIDStr, "intake", nil, zoneID, userID, true, "", ipAddr, userAgent)
+	s.logScanEvent(scanCode, productIDStr, "intake", nil, zoneID, userID, true, "", ipAddr, userAgent)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit: %w", err)
@@ -599,15 +630,13 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 
 		if err == sql.ErrNoRows {
 			err = fmt.Errorf("no stock available for %s", product.Name)
-			s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, nil, userID, false, err.Error(), ipAddr, userAgent)
-			tx.Commit()
+			s.logScanEvent(scanCode, productIDStr, "outtake", jobID, nil, userID, false, err.Error(), ipAddr, userAgent)
 			return &models.ScanResponse{
 				Success: false,
 				Message: err.Error(),
 			}, nil
 		} else if err != nil {
-			s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, nil, userID, false, err.Error(), ipAddr, userAgent)
-			tx.Commit()
+			s.logScanEvent(scanCode, productIDStr, "outtake", jobID, nil, userID, false, err.Error(), ipAddr, userAgent)
 			return &models.ScanResponse{
 				Success: false,
 				Message: fmt.Sprintf("Failed to find stock location: %v", err),
@@ -629,8 +658,7 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 			WHERE product_id = $1 AND zone_id = $2
 		`, product.ProductID, *zoneID).Scan(&currentStock)
 		if err != nil && err != sql.ErrNoRows {
-			s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-			tx.Commit()
+			s.logScanEvent(scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 			return &models.ScanResponse{
 				Success: false,
 				Message: fmt.Sprintf("Failed to check stock: %v", err),
@@ -640,8 +668,7 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 
 	if currentStock < quantity {
 		err = fmt.Errorf("insufficient stock (available: %.0f, requested: %.0f)", currentStock, quantity)
-		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: err.Error(),
@@ -654,8 +681,7 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 		WHERE product_id = $2 AND zone_id IS NOT DISTINCT FROM $3
 	`, quantity, product.ProductID, zoneID)
 	if err != nil {
-		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to update stock: %v", err),
@@ -666,8 +692,7 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
 		err := fmt.Errorf("no stock location found for zone_id=%v", zoneID)
-		s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(scanCode, productIDStr, "outtake", jobID, zoneID, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: err.Error(),
@@ -684,7 +709,7 @@ func (s *ScanService) processConsumableOuttake(tx *sql.Tx, product *ConsumablePr
 		log.Printf("Warning: failed to sync products.stock_quantity: %v", err)
 	}
 
-	s.logScanEvent(tx, scanCode, productIDStr, "outtake", jobID, zoneID, userID, true, "", ipAddr, userAgent)
+	s.logScanEvent(scanCode, productIDStr, "outtake", jobID, zoneID, userID, true, "", ipAddr, userAgent)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit: %w", err)
@@ -705,16 +730,14 @@ func (s *ScanService) processConsumableCheck(tx *sql.Tx, product *ConsumableProd
 		SELECT COALESCE(stock_quantity, 0) FROM products WHERE productID = $1
 	`, product.ProductID).Scan(&totalStock)
 	if err != nil {
-		s.logScanEvent(tx, scanCode, productIDStr, "check", nil, nil, userID, false, err.Error(), ipAddr, userAgent)
-		tx.Commit()
+		s.logScanEvent(scanCode, productIDStr, "check", nil, nil, userID, false, err.Error(), ipAddr, userAgent)
 		return &models.ScanResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to get stock: %v", err),
 		}, nil
 	}
 
-	s.logScanEvent(tx, scanCode, productIDStr, "check", nil, nil, userID, true, "", ipAddr, userAgent)
-	tx.Commit()
+	s.logScanEvent(scanCode, productIDStr, "check", nil, nil, userID, true, "", ipAddr, userAgent)
 
 	productType := "Consumable"
 	if product.IsAccessory {

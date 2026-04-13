@@ -477,8 +477,26 @@ export function JobsPage() {
   }
 
   // Job Details & Scan View
-  const stats = getDeviceStats(selectedJob.devices);
-  const progress = stats.total > 0 ? (stats.scanned / stats.total) * 100 : 0;
+  // Prefer product requirement based progress when available, otherwise fall
+  // back to device-based progress for legacy jobs.
+  const getRequirementStats = (reqs: ProductRequirement[] | undefined, devices: JobDevice[]) => {
+    if (reqs && reqs.length > 0) {
+      const total = reqs.reduce((acc, r) => acc + (r.required || 0), 0);
+      const scanned = reqs.reduce(
+        (acc, r) => acc + Math.min(r.assigned || 0, r.required || 0),
+        0
+      );
+      const remaining = reqs.reduce(
+        (acc, r) => acc + Math.max(0, (r.required || 0) - (r.assigned || 0)),
+        0
+      );
+      return { total, scanned, remaining };
+    }
+    return getDeviceStats(devices);
+  };
+
+  const stats = getRequirementStats(selectedJob.product_requirements, selectedJob.devices);
+  const progress = stats.total > 0 ? Math.min((stats.scanned / stats.total) * 100, 100) : 0;
 
   return (
     <div className="min-h-screen p-6">

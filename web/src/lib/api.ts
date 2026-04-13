@@ -502,6 +502,7 @@ export interface LEDController {
   ip_address?: string | null;
   hostname?: string | null;
   firmware_version?: string | null;
+  firmware_type: 'arduino' | 'esphome';
   mac_address?: string | null;
   status_data?: Record<string, unknown> | null;
   zone_types?: ZoneTypeDefinition[];
@@ -698,13 +699,14 @@ export interface APIKeyItem {
   id: number;
   name: string;
   is_active: boolean;
+  is_admin: boolean;
   created_at: string;
   last_used_at?: string | null;
 }
 
 export const apiKeysAdminApi = {
   list: () => api.get<{ keys: APIKeyItem[] }>('/admin/api-keys'),
-  create: (payload: { name: string }) => api.post<{ keys: APIKeyItem[]; api_key: string } | { api_key: string }>('/admin/api-keys', payload),
+  create: (payload: { name: string; is_admin?: boolean }) => api.post<{ keys: APIKeyItem[]; api_key: string } | { api_key: string }>('/admin/api-keys', payload),
   updateStatus: (id: number, is_active: boolean) => api.put(`/admin/api-keys/${id}/status`, { is_active }),
   delete: (id: number) => api.delete(`/admin/api-keys/${id}`),
 };

@@ -1,6 +1,10 @@
 package middleware
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -21,7 +25,13 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !isAPIKeyValid(key) {
+		valid, err := isAPIKeyValid(key)
+		if err != nil {
+			log.Printf("[APIKEY] database error during key validation: %v", err)
+			http.Error(w, `{"error":"Database unavailable"}`, http.StatusInternalServerError)
+			return
+		}
+		if !valid {
 			http.Error(w, "invalid API key", http.StatusUnauthorized)
 			return
 		}
@@ -30,22 +40,28 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func isAPIKeyValid(raw string) bool {
+func isAPIKeyValid(raw string) (bool, error) {
 	db := repository.GetSQLDB()
+	if db == nil {
+		return false, errors.New("SQL DB handle is nil")
+	}
 	hash := hashAPIKey(raw)
 
 	var id int
-	err := db.QueryRow(`SELECT id FROM api_keys WHERE api_key_hash = ? AND is_active = TRUE LIMIT 1`, hash).Scan(&id)
+	err := db.QueryRow(`SELECT id FROM api_keys WHERE api_key_hash = $1 AND is_active = TRUE LIMIT 1`, hash).Scan(&id)
 	if err != nil {
-		return false
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil // key not found – credential mismatch
+		}
+		return false, fmt.Errorf("api_key query: %w", err)
 	}
 
-	// Best effort last_used_at update
-	go func(id int) {
-		_, _ = db.Exec("UPDATE api_keys SET last_used_at = ? WHERE id = ?", time.Now(), id)
-	}(id)
+	// Update last_used_at synchronously (single indexed UPDATE).
+	if _, err := db.Exec("UPDATE api_keys SET last_used_at = $1 WHERE id = $2", time.Now(), id); err != nil {
+		log.Printf("WARN [WarehouseCore]: failed to update last_used_at for API key (id=%d): %v", id, err)
+	}
 
-	return true
+	return true, nil
 }
 
 func hashAPIKey(key string) string {
