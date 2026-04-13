@@ -766,6 +766,13 @@ export const cablesAdminApi = {
   getTypes: () => api.get<CableType[]>('/admin/cable-types'),
 };
 
+export const productConvertApi = {
+  toCase: (productId: number) =>
+    api.post<{ case_id: number; message: string }>(`/admin/products/${productId}/convert-to-case`, {}),
+  toCable: (productId: number, data: { connector1: number; connector2: number; typ: number; length: number; mm2?: number }) =>
+    api.post<{ cable_id: number; message: string }>(`/admin/products/${productId}/convert-to-cable`, data),
+};
+
 export interface ProductPicture {
   file_name: string;
   size: number;

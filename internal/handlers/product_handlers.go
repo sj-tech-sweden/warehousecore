@@ -1637,3 +1637,128 @@ func buildPublicImageURLs(productID int, files []string) []string {
 	}
 	return out
 }
+
+// ConvertProductToCase converts a product into a case by copying compatible fields.
+func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+
+	var name string
+	var description sql.NullString
+	var weight, height, width, depth sql.NullFloat64
+	err = db.QueryRow(
+		`SELECT name, description, weight, height, width, depth FROM products WHERE productID = $1`, id,
+	).Scan(&name, &description, &weight, &height, &width, &depth)
+	if err == sql.ErrNoRows {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+		return
+	} else if err != nil {
+		log.Printf("[CONVERT CASE] Failed to fetch product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product"})
+		return
+	}
+
+	var descPtr *string
+	if description.Valid && strings.TrimSpace(description.String) != "" {
+		descPtr = &description.String
+	}
+	var wVal, hVal, dVal, weightVal *float64
+	if width.Valid {
+		wVal = &width.Float64
+	}
+	if height.Valid {
+		hVal = &height.Float64
+	}
+	if depth.Valid {
+		dVal = &depth.Float64
+	}
+	if weight.Valid {
+		weightVal = &weight.Float64
+	}
+
+	var caseID int64
+	err = db.QueryRow(`
+		INSERT INTO cases (name, description, width, height, depth, weight, status)
+		VALUES ($1, $2, $3, $4, $5, $6, 'free')
+		RETURNING caseID
+	`, name, descPtr, wVal, hVal, dVal, weightVal).Scan(&caseID)
+	if err != nil {
+		log.Printf("[CONVERT CASE] Failed to create case from product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create case"})
+		return
+	}
+
+	log.Printf("[CONVERT CASE] Product %d converted to case %d", id, caseID)
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"case_id": caseID,
+		"message": "Product converted to case successfully",
+	})
+}
+
+// ConvertProductToCable converts a product into a cable. The product name is
+// used as the cable name while the caller must supply cable-specific fields.
+func ConvertProductToCable(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+
+	var productName string
+	err = db.QueryRow(`SELECT name FROM products WHERE productID = $1`, id).Scan(&productName)
+	if err == sql.ErrNoRows {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
+		return
+	} else if err != nil {
+		log.Printf("[CONVERT CABLE] Failed to fetch product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product"})
+		return
+	}
+
+	var input struct {
+		Connector1 int      `json:"connector1"`
+		Connector2 int      `json:"connector2"`
+		Typ        int      `json:"typ"`
+		Length     float64  `json:"length"`
+		MM2        *float64 `json:"mm2"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if input.Length <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Length must be greater than 0"})
+		return
+	}
+	if input.Connector1 <= 0 || input.Connector2 <= 0 || input.Typ <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1, Connector2, and Type are required"})
+		return
+	}
+
+	var cableID int64
+	err = db.QueryRow(
+		`INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING cable_id`,
+		input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, productName,
+	).Scan(&cableID)
+	if err != nil {
+		log.Printf("[CONVERT CABLE] Failed to create cable from product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create cable"})
+		return
+	}
+
+	log.Printf("[CONVERT CABLE] Product %d converted to cable %d", id, cableID)
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"cable_id": cableID,
+		"message":  "Product converted to cable successfully",
+	})
+}

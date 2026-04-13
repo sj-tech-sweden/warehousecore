@@ -1141,8 +1141,16 @@
         "invalidDeviceCount": "Please enter a valid quantity.",
         "partialDeviceDelete": "Product saved, but some devices could not be deleted.",
         "deviceCreate": "Product created, but devices could not be created.",
-        "save": "Failed to save product."
-      }
+        "save": "Failed to save product.",
+        "convertToCase": "Failed to convert product to case.",
+        "convertToCable": "Failed to convert product to cable."
+      },
+      "convertToCase": "Convert to case",
+      "convertToCable": "Convert to cable",
+      "convertToCaseConfirm": "Convert product \"{{name}}\" to a case? A new case will be created with the product's name, description, and dimensions.",
+      "convertToCaseSuccess": "Product converted to case successfully.",
+      "convertToCableSuccess": "Product converted to cable successfully.",
+      "convertToCableTitle": "Convert \"{{name}}\" to Cable"
     }
   },
   "scan": {

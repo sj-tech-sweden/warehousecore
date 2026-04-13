@@ -343,6 +343,8 @@ func main() {
 	admin.HandleFunc("/products/{id}/dependencies", handlers.GetProductDependencies).Methods("GET")
 	admin.HandleFunc("/products/{id}/dependencies", handlers.CreateProductDependency).Methods("POST")
 	admin.HandleFunc("/products/{id}/dependencies/{dep_id}", handlers.DeleteProductDependency).Methods("DELETE")
+	admin.HandleFunc("/products/{id}/convert-to-case", handlers.ConvertProductToCase).Methods("POST")
+	admin.HandleFunc("/products/{id}/convert-to-cable", handlers.ConvertProductToCable).Methods("POST")
 	admin.HandleFunc("/product-packages", handlers.CreateProductPackage).Methods("POST")
 	admin.HandleFunc("/product-packages/{id}", handlers.UpdateProductPackage).Methods("PUT")
 	admin.HandleFunc("/product-packages/{id}", handlers.DeleteProductPackage).Methods("DELETE")
