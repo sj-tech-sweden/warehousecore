@@ -35,6 +35,7 @@ substitutions:
 
 esphome:
   name: warehousecore-led
+  name_add_mac_suffix: true
   friendly_name: "WarehouseCore LED Controller"
   includes:
     - ArduinoJson.h

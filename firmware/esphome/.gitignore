@@ -1,2 +1,12 @@
 # ESPHome secrets — NEVER commit this file
 secrets.yaml
+
+# ESPHome generated files
+.esphome/
+.pioenvs/
+.piolibdeps/
+
+# Generated firmware artifacts
+*.bin
+*.elf
+*.map
