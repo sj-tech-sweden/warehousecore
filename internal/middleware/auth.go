@@ -148,7 +148,9 @@ func authenticateAPIKey(raw string) *models.User {
 
 	authDebugLog("DEBUG [WarehouseCore]: API key authenticated: %q (id=%d, is_admin=%v)", name, id, isAdmin)
 
+	// UserID 0 is a sentinel indicating API-key authentication (no real user row).
 	user := &models.User{
+		UserID:   0,
 		Username: "api-key:" + name,
 		IsActive: true,
 		IsAdmin:  isAdmin,
