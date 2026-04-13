@@ -203,7 +203,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
   const [deviceDetail, setDeviceDetail] = useState<Device | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const [bulkEditData, setBulkEditData] = useState<{ category_id?: number; brand_id?: number; manufacturer_id?: number }>({});
+  const [bulkEditData, setBulkEditData] = useState<{ category_id?: number; brand_id?: number; manufacturer_id?: number; item_cost_per_day?: number }>({});
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
@@ -605,6 +605,11 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     });
   };
 
+  // Clear selection when filters/search change so invisible items aren't left selected
+  useEffect(() => {
+    setSelectedProducts(new Set());
+  }, [debouncedSearch, categoryFilter]);
+
   const toggleSelectAllProducts = () => {
     if (selectedProducts.size === sortedProducts.length) {
       setSelectedProducts(new Set());
@@ -633,17 +638,23 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       await fetchProducts(searchTerm, categoryFilter);
     } catch (error) {
       console.error('Failed to bulk delete products:', error);
-      window.alert(t('admin.products.errors.bulkDelete'));
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string } } };
+      const errorMessage =
+        axiosErr?.response?.data?.error ||
+        axiosErr?.response?.data?.message ||
+        t('admin.products.errors.bulkDelete');
+      window.alert(errorMessage);
     }
   };
 
   const handleBulkEditProductsSubmit = async () => {
     if (selectedProducts.size === 0) return;
 
-    const updates: { category_id?: number; brand_id?: number; manufacturer_id?: number } = {};
+    const updates: { category_id?: number; brand_id?: number; manufacturer_id?: number; item_cost_per_day?: number } = {};
     if (bulkEditData.category_id) updates.category_id = bulkEditData.category_id;
     if (bulkEditData.brand_id) updates.brand_id = bulkEditData.brand_id;
     if (bulkEditData.manufacturer_id) updates.manufacturer_id = bulkEditData.manufacturer_id;
+    if (bulkEditData.item_cost_per_day !== undefined) updates.item_cost_per_day = bulkEditData.item_cost_per_day;
 
     if (Object.keys(updates).length === 0) {
       setBulkEditOpen(false);
@@ -1705,6 +1716,18 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     ]}
                     className="w-full"
                     title={t('admin.brandsManufacturers.levels.manufacturers')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('products.pricePerDay')}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={bulkEditData.item_cost_per_day ?? ''}
+                    onChange={e => setBulkEditData({ ...bulkEditData, item_cost_per_day: e.target.value ? Number(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-gray-500"
+                    placeholder="—"
                   />
                 </div>
               </div>

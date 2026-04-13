@@ -215,6 +215,11 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     return matchesSearch && matchesStatus && matchesProduct && matchesZone;
   });
 
+  // Clear selection when filters/search change so invisible items aren't left selected
+  useEffect(() => {
+    setSelectedDevices(new Set());
+  }, [debouncedSearch, statusFilter, productFilter, zoneFilter]);
+
   const statusLabel = (status?: string) => {
     if (!status) return '-';
     return t(`admin.devices.statuses.${normalizeDeviceStatus(status)}`, status);
@@ -419,6 +424,8 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
       const { data } = await devicesAdminApi.bulkDelete(Array.from(selectedDevices));
       if (data.failed_devices > 0) {
         alert(t('admin.devices.bulkDeletePartial', { deleted: data.deleted_devices, failed: data.failed_devices }));
+      } else {
+        alert(t('admin.devices.bulkDeleteSuccess', { count: data.deleted_devices }));
       }
       setSelectedDevices(new Set());
       await fetchDevices();

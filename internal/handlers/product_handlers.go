@@ -1038,10 +1038,20 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clean up label files after successful commit
-	for _, lp := range labelPaths {
-		fullPath := filepath.Join("web", "dist", strings.TrimPrefix(lp, "/"))
-		if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Printf("[BULK PRODUCT DELETE] Failed to remove label %s: %v", fullPath, err)
+	baseDir, err := filepath.Abs(filepath.Join("web", "dist"))
+	if err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed to resolve base dir for label cleanup: %v", err)
+	} else {
+		for _, lp := range labelPaths {
+			cleaned := filepath.Clean(strings.TrimPrefix(lp, "/"))
+			fullPath := filepath.Join(baseDir, cleaned)
+			if !strings.HasPrefix(fullPath, baseDir+string(os.PathSeparator)) {
+				log.Printf("[BULK PRODUCT DELETE] Skipping label path outside base dir: %s", lp)
+				continue
+			}
+			if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Printf("[BULK PRODUCT DELETE] Failed to remove label %s: %v", fullPath, err)
+			}
 		}
 	}
 
