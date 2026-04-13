@@ -747,7 +747,7 @@
     },
     "apiKeys": {
       "title": "API-Keys",
-      "subtitle": "Zugriff auf die öffentlichen Website-Feeds absichern",
+      "subtitle": "Zugriff auf die öffentlichen Website-Feeds und Admin-Endpunkte absichern",
       "nameDescription": "Name / Beschreibung",
       "namePlaceholder": "z.B. tsweb-frontend",
       "newKey": "Neuer Key",
@@ -758,6 +758,9 @@
       "id": "ID: {{id}}",
       "activate": "Aktivieren",
       "deactivate": "Deaktivieren",
+      "adminAccess": "Admin-Zugriff",
+      "adminAccessHint": "Diesem Key Zugriff auf Admin-Endpunkte erlauben",
+      "adminBadge": "Admin",
       "neverUsed": "—",
       "confirmDelete": "Diesen API-Key wirklich löschen?",
       "errors": {
