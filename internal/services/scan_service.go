@@ -130,17 +130,23 @@ func (s *ScanService) processIntake(tx *sql.Tx, device *models.Device, zoneID *i
 	}
 
 	// Update device status to in_storage
-	_, err := tx.Exec(`
-		UPDATE devices
-		SET status = 'in_storage', zone_id = $1, current_location = 'warehouse'
-		WHERE deviceID = $2
-	`, zoneID, device.DeviceID)
-	if err != nil {
-		return nil, nil, err
-	}
+	// Note: This section appears to be incomplete or incorrect in the original logic.
+	// Since this is intake (returning to warehouse), we should not be inserting into jobdevices.
+	// Commenting out this section as it conflicts with the reset logic below.
+	/*
+		_, err := tx.Exec(`
+			INSERT INTO jobdevices (deviceID, jobID, pack_status)
+			VALUES ($1, $2, 'issued')
+			ON CONFLICT (deviceID, jobID) DO UPDATE SET pack_status = 'issued'
+		`, device.DeviceID, *jobID)
+		if err != nil {
+			return nil, nil, err
+		}
+	*/
 
 	// Reset pack status instead of removing from job
 	// This makes it appear as "not scanned" again in the job
+	var err error
 	if fromJobID != nil {
 		_, err = tx.Exec(`
 			UPDATE jobdevices

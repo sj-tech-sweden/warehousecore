@@ -134,11 +134,14 @@ export function ScanPage() {
         setScannedJobId(jobId);
         setShowLEDModal(true);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Job scan failed:', error);
+      const errorMessage = error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { error?: string } } }).response?.data?.error
+        : undefined;
       setResult({
         success: false,
-        message: error.response?.data?.error || t('jobsPage.jobNotFound', { id: jobId }),
+        message: errorMessage || t('jobsPage.jobNotFound', { id: jobId }),
         action: 'check',
         duplicate: false,
       });
@@ -341,21 +344,24 @@ export function ScanPage() {
         // After a successful device outtake, keep the job selected so the user
         // can continue scanning more devices for the same job.
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Scan failed:', error);
+      const errorMessage = error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { error?: string } } }).response?.data?.error
+        : undefined;
 
       if (action === 'case' && step === 'case') {
-        setCaseActionMessage({ type: 'error', text: error.response?.data?.error || t('scan.case.caseNotFound') });
+        setCaseActionMessage({ type: 'error', text: errorMessage || t('scan.case.caseNotFound') });
         setScanCode('');
         scheduleCaseActionDismiss(4000);
       } else if (action === 'case' && step === 'device-for-case') {
-        setCaseActionMessage({ type: 'error', text: error.response?.data?.error || t('scan.scanError') });
+        setCaseActionMessage({ type: 'error', text: errorMessage || t('scan.scanError') });
         setScanCode('');
         scheduleCaseActionDismiss(3000);
       } else {
         setResult({
           success: false,
-          message: error.response?.data?.error || t('scan.scanError'),
+          message: errorMessage || t('scan.scanError'),
           action,
           duplicate: false,
         });
@@ -447,9 +453,12 @@ export function ScanPage() {
     try {
       await maintenanceApi.createDefect(serviceForm);
       setServiceSuccess(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to create defect:', error);
-      setServiceError(error.response?.data?.error || t('maintenance.createDefectError'));
+      const errorMessage = error instanceof Error && 'response' in error
+        ? (error as { response?: { data?: { error?: string } } }).response?.data?.error
+        : undefined;
+      setServiceError(errorMessage || t('maintenance.createDefectError'));
     } finally {
       setServiceLoading(false);
     }
@@ -629,6 +638,7 @@ export function ScanPage() {
                         <button
                           type="button"
                           disabled={loading}
+                          title={t('scan.case.removeDevice')}
                           onClick={async () => {
                             try {
                               await casesApi.removeDevice(scannedCase.case_id, id);
@@ -1004,6 +1014,7 @@ export function ScanPage() {
                         type="text"
                         value={serviceForm.device_id}
                         readOnly
+                        placeholder={t('maintenance.form.deviceId')}
                         className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-white/5 border-2 border-white/10 rounded-lg sm:rounded-xl text-sm sm:text-base text-gray-300 cursor-default"
                       />
                     </div>
@@ -1016,6 +1027,7 @@ export function ScanPage() {
                       <select
                         value={serviceForm.severity}
                         onChange={(e) => setServiceForm({ ...serviceForm, severity: e.target.value })}
+                        title={t('maintenance.form.severity')}
                         className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-white/10 border-2 border-white/20 rounded-lg sm:rounded-xl text-sm sm:text-base text-white focus:outline-none focus:border-accent-red"
                       >
                         <option value="low">{t('maintenance.severity.low')}</option>
