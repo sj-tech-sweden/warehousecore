@@ -294,7 +294,12 @@ func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
 	result, err := service.BulkDeleteDevices(r.Context(), req.IDs)
 	if err != nil {
 		log.Printf("[BULK DEVICE DELETE] Transaction error: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to process bulk delete"})
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"message":         "Failed to process bulk delete: " + err.Error(),
+			"deleted_devices": 0,
+			"failed_devices":  len(req.IDs),
+			"failed_ids":      req.IDs,
+		})
 		return
 	}
 

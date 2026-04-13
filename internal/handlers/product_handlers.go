@@ -1009,7 +1009,8 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(deletableIDs) == 0 {
-		respondJSON(w, http.StatusOK, map[string]int{
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"message":          fmt.Sprintf("No products deleted (%d skipped as package-managed)", len(skippedPackages)),
 			"deleted_products": 0,
 			"deleted_devices":  0,
 			"skipped_packages": len(skippedPackages),
