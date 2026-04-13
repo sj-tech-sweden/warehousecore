@@ -185,14 +185,14 @@ func TestAuthMiddleware_SessionCookie_NoDB(t *testing.T) {
 	}
 }
 
-// TestAuthMiddleware_APIKey_NonAdminPath verifies that an API key on a
-// non-admin path (e.g. /auth/me) is ignored and the request gets 401,
-// not authenticated via API key.
-func TestAuthMiddleware_APIKey_NonAdminPath(t *testing.T) {
+// TestAuthMiddleware_APIKey_AnyPath verifies that an API key on any
+// path (including non-admin) triggers the API key auth fallback and gets
+// 500 when DB is unavailable (not silently ignored with 401).
+func TestAuthMiddleware_APIKey_AnyPath(t *testing.T) {
 	withNilDB(t)
 
 	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("handler should not be called on non-admin path with API key")
+		t.Error("handler should not be called when DB is nil")
 	}))
 
 	req := httptest.NewRequest("GET", "/api/v1/auth/me", nil)
@@ -200,30 +200,8 @@ func TestAuthMiddleware_APIKey_NonAdminPath(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	// API key ignored on non-admin path → 401 "No session"
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 on non-admin path with API key, got %d", rr.Code)
-	}
-}
-
-// TestIsAdminPath verifies the admin-path detection helper.
-func TestIsAdminPath(t *testing.T) {
-	tests := []struct {
-		path string
-		want bool
-	}{
-		{"/api/v1/admin/zone-types", true},
-		{"/api/v1/admin/api-keys", true},
-		{"/admin/users", true},
-		{"/api/v1/admin", true},
-		{"/api/v1/auth/me", false},
-		{"/api/v1/scans", false},
-		{"/api/v1/scans/history", false},
-		{"/api/v1/administrator/settings", false}, // not a real /admin/ segment
-	}
-	for _, tt := range tests {
-		if got := isAdminPath(tt.path); got != tt.want {
-			t.Errorf("isAdminPath(%q) = %v, want %v", tt.path, got, tt.want)
-		}
+	// API key on non-admin path → DB lookup attempted → 500
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on non-admin path with API key (DB nil), got %d", rr.Code)
 	}
 }

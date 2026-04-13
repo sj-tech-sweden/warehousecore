@@ -30,6 +30,11 @@ type CreateAPIKeyResponse struct {
 // ListAPIKeys returns all API keys (without plaintext).
 func ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
+	if db == nil {
+		log.Printf("[APIKEY] database unavailable")
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database unavailable"})
+		return
+	}
 	rows, err := db.Query(`SELECT id, name, is_active, is_admin, created_at, last_used_at FROM api_keys ORDER BY created_at DESC`)
 	if err != nil {
 		log.Printf("[APIKEY] failed to list keys: %v", err)
@@ -71,6 +76,11 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	hash := repository.HashAPIKey(rawKey)
 
 	db := repository.GetSQLDB()
+	if db == nil {
+		log.Printf("[APIKEY] failed to create key: SQL DB unavailable")
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database unavailable"})
+		return
+	}
 	var id int64
 	err := db.QueryRow(`INSERT INTO api_keys (name, api_key_hash, is_active, is_admin) VALUES ($1, $2, TRUE, $3) RETURNING id`, body.Name, hash, body.IsAdmin).Scan(&id)
 	if err != nil {

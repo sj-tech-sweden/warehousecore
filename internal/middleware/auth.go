@@ -36,12 +36,11 @@ func authDebugLog(format string, args ...interface{}) {
 var errDBUnavailable = errors.New("database unavailable")
 
 // AuthMiddleware validates session cookie or admin API key and loads user.
-// It first checks for a session_id cookie. If none is found and the request
-// targets an /admin path, it falls back to X-API-Key header or
-// Authorization: Bearer <key> header. Only API keys with is_admin=true are
-// accepted. The API-key fallback is intentionally limited to admin paths so
-// that non-admin protected endpoints (e.g. /auth/me, /scans) cannot be
-// accessed with an API key.
+// It first checks for a session_id cookie. If none is found, it falls back
+// to X-API-Key header or Authorization: Bearer <key> header. Only API keys
+// with is_admin=true are accepted; non-admin keys are rejected so that
+// programmatic access via AuthMiddleware is limited to explicitly granted
+// admin keys.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Debug: Log all cookies
@@ -69,30 +68,25 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// --- Fallback: admin API key via X-API-Key or Authorization: Bearer ---
-		// Only allow API-key auth on /admin paths so the authentication surface
-		// area is not unintentionally expanded to non-admin protected endpoints
-		// (e.g. /auth/me, /scans) which also use AuthMiddleware.
-		if isAdminPath(r.URL.Path) {
-			apiKey := extractAPIKey(r)
-			if apiKey != "" {
-				user, authErr := authenticateAdminAPIKey(apiKey)
-				if authErr != nil {
-					if errors.Is(authErr, errDBUnavailable) {
-						http.Error(w, `{"error":"Database unavailable"}`, http.StatusInternalServerError)
-						return
-					}
-					log.Printf("[AUTH] API key auth DB error: %v", authErr)
-					http.Error(w, `{"error":"Internal server error"}`, http.StatusInternalServerError)
+		apiKey := extractAPIKey(r)
+		if apiKey != "" {
+			user, authErr := authenticateAdminAPIKey(apiKey)
+			if authErr != nil {
+				if errors.Is(authErr, errDBUnavailable) {
+					http.Error(w, `{"error":"Database unavailable"}`, http.StatusInternalServerError)
 					return
 				}
-				if user != nil {
-					ctx := context.WithValue(r.Context(), UserContextKey, user)
-					next.ServeHTTP(w, r.WithContext(ctx))
-					return
-				}
-				http.Error(w, `{"error":"Unauthorized - Invalid API key"}`, http.StatusUnauthorized)
+				log.Printf("[AUTH] API key auth DB error: %v", authErr)
+				http.Error(w, `{"error":"Internal server error"}`, http.StatusInternalServerError)
 				return
 			}
+			if user != nil {
+				ctx := context.WithValue(r.Context(), UserContextKey, user)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			http.Error(w, `{"error":"Unauthorized - Invalid API key"}`, http.StatusUnauthorized)
+			return
 		}
 
 		// No credentials at all
@@ -115,13 +109,6 @@ func extractAPIKey(r *http.Request) string {
 		}
 	}
 	return ""
-}
-
-// isAdminPath reports whether path is an admin route where API-key
-// authentication is allowed. It matches any path containing the "/admin/"
-// segment (e.g. /api/v1/admin/zone-types).
-func isAdminPath(path string) bool {
-	return strings.Contains(path, "/admin/") || strings.HasSuffix(path, "/admin")
 }
 
 // authenticateSession validates a session cookie value and returns the user,
@@ -202,10 +189,10 @@ func authenticateAdminAPIKey(raw string) (*models.User, error) {
 		return nil, nil
 	}
 
-	// Best-effort last_used_at update
-	go func(id int) {
-		_, _ = db.Exec(`UPDATE api_keys SET last_used_at = $1 WHERE id = $2`, time.Now(), id)
-	}(id)
+	// Update last_used_at synchronously (single indexed UPDATE).
+	if _, err := db.Exec(`UPDATE api_keys SET last_used_at = $1 WHERE id = $2`, time.Now(), id); err != nil {
+		log.Printf("WARN [WarehouseCore]: failed to update last_used_at for admin API key %q (id=%d): %v", name, id, err)
+	}
 
 	authDebugLog("DEBUG [WarehouseCore]: Admin API key authenticated: %q (id=%d)", name, id)
 

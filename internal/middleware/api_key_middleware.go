@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -32,6 +33,9 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 
 func isAPIKeyValid(raw string) bool {
 	db := repository.GetSQLDB()
+	if db == nil {
+		return false
+	}
 	hash := hashAPIKey(raw)
 
 	var id int
@@ -40,10 +44,10 @@ func isAPIKeyValid(raw string) bool {
 		return false
 	}
 
-	// Best effort last_used_at update
-	go func(id int) {
-		_, _ = db.Exec("UPDATE api_keys SET last_used_at = $1 WHERE id = $2", time.Now(), id)
-	}(id)
+	// Update last_used_at synchronously (single indexed UPDATE).
+	if _, err := db.Exec("UPDATE api_keys SET last_used_at = $1 WHERE id = $2", time.Now(), id); err != nil {
+		log.Printf("WARN [WarehouseCore]: failed to update last_used_at for API key (id=%d): %v", id, err)
+	}
 
 	return true
 }
