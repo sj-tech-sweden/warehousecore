@@ -1,14 +1,11 @@
 package middleware
 
 import (
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"warehousecore/internal/repository"
-
-	"gorm.io/gorm"
 )
 
 func TestExtractAPIKey_XAPIKeyHeader(t *testing.T) {
@@ -187,7 +184,3 @@ func TestAuthMiddleware_SessionCookie_NoDB(t *testing.T) {
 		t.Errorf("expected 500 when DB is nil with session cookie, got %d", rr.Code)
 	}
 }
-
-// dummy vars to suppress "imported and not used" when only importing types
-var _ *sql.DB
-var _ *gorm.DB
