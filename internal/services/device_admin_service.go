@@ -463,6 +463,8 @@ func (s *DeviceAdminService) FetchDevice(ctx context.Context, deviceID string) (
 		       COALESCE(z.code, '') AS zone_code,
 		       dc.caseID,
 		       COALESCE(c.name, '') AS case_name,
+		       d.cable_id,
+		       COALESCE(cab.name, '') AS cable_name,
 		       jd.jobID,
 		       COALESCE(CAST(jd.jobID AS TEXT), '') AS job_number
 		FROM devices d
@@ -471,6 +473,7 @@ func (s *DeviceAdminService) FetchDevice(ctx context.Context, deviceID string) (
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
+		LEFT JOIN cables cab ON d.cable_id = cab.cableID
 		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID
 		WHERE d.deviceID = $1
 		LIMIT 1
@@ -499,6 +502,8 @@ func (s *DeviceAdminService) FetchDevice(ctx context.Context, deviceID string) (
 		&device.ZoneCode,
 		&device.CaseID,
 		&device.CaseName,
+		&device.CableID,
+		&device.CableName,
 		&device.CurrentJobID,
 		&device.JobNumber,
 	)

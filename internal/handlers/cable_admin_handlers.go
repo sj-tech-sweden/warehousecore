@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 )
@@ -513,6 +515,8 @@ func GetCableDevices(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(z.code, '') AS zone_code,
 		       dc.caseID,
 		       COALESCE(cs.name, '') AS case_name,
+		       d.cable_id,
+		       COALESCE(cab.name, '') AS cable_name,
 		       lj.jobID,
 		       COALESCE(CAST(lj.jobID AS TEXT), '') AS job_number
 		FROM devices d
@@ -521,6 +525,7 @@ func GetCableDevices(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases cs ON dc.caseID = cs.caseID
+		LEFT JOIN cables cab ON d.cable_id = cab.cableID
 		LEFT JOIN latest_job lj ON lj.deviceID = d.deviceID
 		WHERE d.cable_id = $1
 		ORDER BY d.deviceID ASC
@@ -562,6 +567,8 @@ func GetCableDevices(w http.ResponseWriter, r *http.Request) {
 			&device.ZoneCode,
 			&device.CaseID,
 			&device.CaseName,
+			&device.CableID,
+			&device.CableName,
 			&device.CurrentJobID,
 			&device.JobNumber,
 		)
@@ -619,42 +626,45 @@ func CreateDevicesForCable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find existing IDs with this prefix to avoid collisions
-	usedIDs := make(map[string]struct{})
-	existRows, err := db.Query("SELECT deviceID FROM devices WHERE deviceID LIKE $1", prefix+"%")
-	if err == nil {
-		defer existRows.Close()
-		for existRows.Next() {
-			var id string
-			if err := existRows.Scan(&id); err == nil {
-				usedIDs[id] = struct{}{}
-			}
-		}
-	}
-
+	// Use DB-side approach to find the next available counter for the prefix
 	var createdIDs []string
-	counter := 1
 	for i := 0; i < req.Quantity; i++ {
 		inserted := false
 		for attempt := 0; attempt < 1000; attempt++ {
-			candidateID := fmt.Sprintf("%s%03d", prefix, counter)
-			counter++
-			if _, exists := usedIDs[candidateID]; exists {
-				continue
+			var nextCounter int
+			err := db.QueryRow(`
+				SELECT gs
+				FROM generate_series(1, 999) AS gs
+				WHERE NOT EXISTS (
+					SELECT 1
+					FROM devices
+					WHERE deviceID = $1 || LPAD(gs::text, 3, '0')
+				)
+				ORDER BY gs
+				LIMIT 1
+			`, prefix).Scan(&nextCounter)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					log.Printf("[CABLE DEVICE CREATE] No available device IDs remain for prefix %s", prefix)
+				} else {
+					log.Printf("[CABLE DEVICE CREATE] Failed to find next device ID for prefix %s: %v", prefix, err)
+				}
+				break
 			}
-			_, err := db.Exec(
+
+			candidateID := fmt.Sprintf("%s%03d", prefix, nextCounter)
+			_, err = db.Exec(
 				"INSERT INTO devices (deviceID, cable_id, status) VALUES ($1, $2, 'in_storage')",
 				candidateID, cableID,
 			)
 			if err != nil {
-				if strings.Contains(strings.ToLower(err.Error()), "duplicate key") {
-					usedIDs[candidateID] = struct{}{}
+				var pqErr *pq.Error
+				if errors.As(err, &pqErr) && pqErr.Code == "23505" { // unique_violation
 					continue
 				}
 				log.Printf("[CABLE DEVICE CREATE] Failed to insert device %s: %v", candidateID, err)
 				break
 			}
-			usedIDs[candidateID] = struct{}{}
 			createdIDs = append(createdIDs, candidateID)
 			inserted = true
 			break

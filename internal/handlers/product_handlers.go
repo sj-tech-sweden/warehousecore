@@ -1747,7 +1747,7 @@ func ConvertProductToCable(w http.ResponseWriter, r *http.Request) {
 
 	var cableID int64
 	err = db.QueryRow(
-		`INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING cable_id`,
+		`INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING cableID`,
 		input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, productName,
 	).Scan(&cableID)
 	if err != nil {

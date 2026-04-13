@@ -892,7 +892,7 @@
       },
       "manageDevices": "Geräte verwalten",
       "devicesTitle": "Geräte für Kabel #{{id}}",
-      "noDevices": "Keine Geräte diesem Kabel zugewiesen.",
+      "noDevices": "Diesem Kabel sind keine Geräte zugewiesen.",
       "addDevices": "Geräte hinzufügen",
       "devicePrefix": "Geräte-Präfix",
       "devicePrefixPlaceholder": "z.B. CBL",
