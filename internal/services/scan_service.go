@@ -17,10 +17,15 @@ import (
 // to 'pending'; scanning it out again must restore it to 'issued'. Using an
 // explicit constant lets tests verify the SQL without running a real database.
 const upsertJobDeviceSQL = `
-	INSERT INTO jobdevices (deviceID, jobID, pack_status, pack_ts)
-	VALUES ($1, $2, 'issued', NOW())
-	ON CONFLICT (deviceID, jobID) DO UPDATE
+	WITH u AS (
+		UPDATE job_devices
 		SET pack_status = 'issued', pack_ts = NOW()
+		WHERE jobid = $2 AND deviceid = $1
+		RETURNING 1
+	)
+	INSERT INTO job_devices (jobid, deviceid, pack_status, pack_ts)
+	SELECT $2, $1, 'issued', NOW()
+	WHERE NOT EXISTS (SELECT 1 FROM u)
 `
 
 // ScanService handles all scan-related business logic
@@ -134,10 +139,10 @@ func (s *ScanService) processIntake(tx *sql.Tx, device *models.Device, zoneID *i
 	// Since this is intake (returning to warehouse), we should not be inserting into jobdevices.
 	// Commenting out this section as it conflicts with the reset logic below.
 	/*
-		_, err := tx.Exec(`
-			INSERT INTO jobdevices (deviceID, jobID, pack_status)
+		_, err = tx.Exec(`
+			INSERT INTO public.job_devices (deviceid, jobid, pack_status)
 			VALUES ($1, $2, 'issued')
-			ON CONFLICT (deviceID, jobID) DO UPDATE SET pack_status = 'issued'
+			ON CONFLICT (deviceid, jobid) DO UPDATE SET pack_status = 'issued'
 		`, device.DeviceID, *jobID)
 		if err != nil {
 			return nil, nil, err
@@ -200,19 +205,7 @@ func (s *ScanService) processOuttake(tx *sql.Tx, device *models.Device, jobID *i
 	}
 
 	// Update device status to on_job
-	_, err := tx.Exec(`
-		UPDATE devices
-		SET status = 'on_job', zone_id = NULL
-		WHERE deviceID = $1
-	`, device.DeviceID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Assign to job and update pack_status to issued. Uses ON CONFLICT so that
-	// re-scanning after an intake (which resets pack_status to 'pending')
-	// correctly marks the device as issued again without failing on the
-	// unique constraint.
+	var err error
 	_, err = tx.Exec(upsertJobDeviceSQL, device.DeviceID, *jobID)
 	if err != nil {
 		return nil, nil, err
