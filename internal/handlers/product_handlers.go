@@ -931,6 +931,184 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// BulkDeleteProducts deletes multiple products and their associated devices
+func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []int `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No product IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot delete more than 100 products at once"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+	tx, err := db.Begin()
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start transaction"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Filter out package-managed products
+	var skippedPackages []int
+	var deletableIDs []int
+	for _, id := range req.IDs {
+		var packageID int
+		err := tx.QueryRow("SELECT package_id FROM product_packages WHERE product_id = $1", id).Scan(&packageID)
+		if err == nil {
+			skippedPackages = append(skippedPackages, id)
+		} else {
+			deletableIDs = append(deletableIDs, id)
+		}
+	}
+
+	if len(deletableIDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "All selected products are managed by packages and cannot be deleted directly"})
+		return
+	}
+
+	// Delete devices for all products
+	totalDevicesDeleted := 0
+	for _, id := range deletableIDs {
+		result, err := tx.Exec("DELETE FROM devices WHERE productID = $1", id)
+		if err != nil {
+			log.Printf("[BULK PRODUCT DELETE] Failed to delete devices for product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to delete devices for product %d", id)})
+			return
+		}
+		deleted, _ := result.RowsAffected()
+		totalDevicesDeleted += int(deleted)
+	}
+
+	// Delete products
+	totalProductsDeleted := 0
+	for _, id := range deletableIDs {
+		result, err := tx.Exec("DELETE FROM products WHERE productID = $1", id)
+		if err != nil {
+			log.Printf("[BULK PRODUCT DELETE] Failed to delete product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to delete product %d", id)})
+			return
+		}
+		deleted, _ := result.RowsAffected()
+		totalProductsDeleted += int(deleted)
+	}
+
+	if err := tx.Commit(); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit transaction"})
+		return
+	}
+
+	log.Printf("[BULK PRODUCT DELETE] Deleted %d products and %d devices", totalProductsDeleted, totalDevicesDeleted)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":          fmt.Sprintf("Deleted %d product(s) and %d device(s)", totalProductsDeleted, totalDevicesDeleted),
+		"deleted_products": totalProductsDeleted,
+		"deleted_devices":  totalDevicesDeleted,
+		"skipped_packages": len(skippedPackages),
+	})
+}
+
+// BulkUpdateProducts updates common fields on multiple products
+func BulkUpdateProducts(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs     []int `json:"ids"`
+		Updates struct {
+			CategoryID     *int     `json:"category_id"`
+			BrandID        *int     `json:"brand_id"`
+			ManufacturerID *int     `json:"manufacturer_id"`
+			ItemCostPerDay *float64 `json:"item_cost_per_day"`
+		} `json:"updates"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No product IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot update more than 100 products at once"})
+		return
+	}
+
+	// Build SET clauses
+	var setClauses []string
+	var args []interface{}
+	paramCount := 0
+
+	if req.Updates.CategoryID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("categoryID = $%d", paramCount))
+		args = append(args, *req.Updates.CategoryID)
+	}
+	if req.Updates.BrandID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("brandID = $%d", paramCount))
+		args = append(args, *req.Updates.BrandID)
+	}
+	if req.Updates.ManufacturerID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("manufacturerID = $%d", paramCount))
+		args = append(args, *req.Updates.ManufacturerID)
+	}
+	if req.Updates.ItemCostPerDay != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("item_cost_per_day = $%d", paramCount))
+		args = append(args, *req.Updates.ItemCostPerDay)
+	}
+
+	if len(setClauses) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No fields to update"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+	tx, err := db.Begin()
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start transaction"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	totalUpdated := 0
+	for _, id := range req.IDs {
+		updateArgs := make([]interface{}, len(args))
+		copy(updateArgs, args)
+		updateArgs = append(updateArgs, id)
+		query := fmt.Sprintf("UPDATE products SET %s WHERE productID = $%d",
+			strings.Join(setClauses, ", "), paramCount+1)
+		result, err := tx.Exec(query, updateArgs...)
+		if err != nil {
+			log.Printf("[BULK PRODUCT UPDATE] Failed for product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to update product %d", id)})
+			return
+		}
+		affected, _ := result.RowsAffected()
+		totalUpdated += int(affected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit transaction"})
+		return
+	}
+
+	log.Printf("[BULK PRODUCT UPDATE] Updated %d products", totalUpdated)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":          fmt.Sprintf("Updated %d product(s)", totalUpdated),
+		"updated_products": totalUpdated,
+	})
+}
+
 // CreateDevicesForProduct creates multiple devices for a product
 func CreateDevicesForProduct(w http.ResponseWriter, r *http.Request) {
 	// Extract product ID from URL path

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -269,6 +270,152 @@ func DeleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Device deleted successfully"})
+}
+
+// BulkDeleteDevices deletes multiple devices
+func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No device IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot delete more than 100 devices at once"})
+		return
+	}
+
+	service := services.NewDeviceAdminService()
+	var deleted, failed int
+	var failedIDs []string
+
+	for _, id := range req.IDs {
+		err := service.DeleteDevice(r.Context(), id)
+		if err != nil {
+			log.Printf("[BULK DEVICE DELETE] Failed for %s: %v", id, err)
+			failed++
+			failedIDs = append(failedIDs, id)
+		} else {
+			deleted++
+		}
+	}
+
+	if deleted == 0 && failed > 0 {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"error":      "Failed to delete all devices",
+			"failed_ids": failedIDs,
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":         fmt.Sprintf("Deleted %d device(s)", deleted),
+		"deleted_devices": deleted,
+		"failed_devices":  failed,
+		"failed_ids":      failedIDs,
+	})
+}
+
+// BulkUpdateDevices updates common fields on multiple devices
+func BulkUpdateDevices(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs     []string `json:"ids"`
+		Updates struct {
+			Status          *string `json:"status"`
+			ZoneID          *int    `json:"zone_id"`
+			CurrentLocation *string `json:"current_location"`
+			ConditionRating *int    `json:"condition_rating"`
+		} `json:"updates"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No device IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot update more than 100 devices at once"})
+		return
+	}
+
+	// Build SET clauses
+	var setClauses []string
+	var args []interface{}
+	paramCount := 0
+
+	if req.Updates.Status != nil {
+		status := strings.ToLower(strings.TrimSpace(*req.Updates.Status))
+		if status == "free" {
+			status = "in_storage"
+		}
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", paramCount))
+		args = append(args, status)
+	}
+	if req.Updates.ZoneID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("zone_id = $%d", paramCount))
+		args = append(args, *req.Updates.ZoneID)
+	}
+	if req.Updates.CurrentLocation != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("current_location = $%d", paramCount))
+		args = append(args, *req.Updates.CurrentLocation)
+	}
+	if req.Updates.ConditionRating != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("condition_rating = $%d", paramCount))
+		args = append(args, *req.Updates.ConditionRating)
+	}
+
+	if len(setClauses) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No fields to update"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+	tx, err := db.Begin()
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start transaction"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	totalUpdated := 0
+	for _, id := range req.IDs {
+		updateArgs := make([]interface{}, len(args))
+		copy(updateArgs, args)
+		updateArgs = append(updateArgs, id)
+		query := fmt.Sprintf("UPDATE devices SET %s WHERE deviceID = $%d",
+			strings.Join(setClauses, ", "), paramCount+1)
+		result, err := tx.Exec(query, updateArgs...)
+		if err != nil {
+			log.Printf("[BULK DEVICE UPDATE] Failed for device %s: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to update device %s", id)})
+			return
+		}
+		affected, _ := result.RowsAffected()
+		totalUpdated += int(affected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit transaction"})
+		return
+	}
+
+	log.Printf("[BULK DEVICE UPDATE] Updated %d devices", totalUpdated)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":         fmt.Sprintf("Updated %d device(s)", totalUpdated),
+		"updated_devices": totalUpdated,
+	})
 }
 
 // GetDeviceAdmin retrieves a single device with full details
