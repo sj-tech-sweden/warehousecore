@@ -39,7 +39,7 @@ esphome:
   includes:
     - ArduinoJson.h
   on_boot:
-    priority: -100
+    priority: 600
     then:
       - lambda: |-
           // Build controller_id from MAC suffix
@@ -309,33 +309,25 @@ script:
           topic: !lambda |-
             return "${topic_prefix}/" + id(topic_suffix) + "/status";
           payload: !lambda |-
-            char buf[512];
-            snprintf(buf, sizeof(buf),
-              "{\"status\":\"online\""
-              ",\"controller_id\":\"%s\""
-              ",\"topic_suffix\":\"%s\""
-              ",\"warehouse_id\":\"${warehouse_id}\""
-              ",\"active_leds\":%d"
-              ",\"wifi_rssi\":%d"
-              ",\"uptime_seconds\":%lu"
-              ",\"ip_address\":\"%s\""
-              ",\"hostname\":\"%s\""
-              ",\"firmware_version\":\"${firmware_version}\""
-              ",\"firmware_type\":\"esphome\""
-              ",\"mac_address\":\"%s\""
-              ",\"led_count\":${led_count}"
-              ",\"chipset\":\"SK6812_GRBW\""
-              "}",
-              id(controller_id).c_str(),
-              id(topic_suffix).c_str(),
-              id(active_led_count),
-              WiFi.RSSI(),
-              (unsigned long)(millis() / 1000),
-              WiFi.localIP().toString().c_str(),
-              App.get_name().c_str(),
-              id(mac_address).c_str()
-            );
-            return std::string(buf);
+            DynamicJsonDocument doc(768);
+            doc["status"] = "online";
+            doc["controller_id"] = id(controller_id);
+            doc["topic_suffix"] = id(topic_suffix);
+            doc["warehouse_id"] = "${warehouse_id}";
+            doc["active_leds"] = id(active_led_count);
+            doc["wifi_rssi"] = WiFi.RSSI();
+            doc["uptime_seconds"] = (unsigned long)(millis() / 1000);
+            doc["ip_address"] = WiFi.localIP().toString();
+            doc["hostname"] = App.get_name();
+            doc["firmware_version"] = "${firmware_version}";
+            doc["firmware_type"] = "esphome";
+            doc["mac_address"] = id(mac_address);
+            doc["led_count"] = ${led_count};
+            doc["chipset"] = "SK6812_GRBW";
+
+            std::string payload;
+            serializeJson(doc, payload);
+            return payload;
 
 # Sensors exposed to Home Assistant
 sensor:
