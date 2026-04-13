@@ -60,6 +60,8 @@ esphome:
 esp32:
   board: esp32dev
   framework:
+    # NOTE: For XIAO ESP32-C6, change to: type: esp-idf
+    # See the Board-Specific Configuration section in README.md
     type: arduino
 
 logger:

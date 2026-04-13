@@ -60,10 +60,12 @@ substitutions:
   warehouse_id: "WDL"               # Must match LED_WAREHOUSE_ID
   led_count: "600"                  # Number of LEDs in your strip
   led_pin: "GPIO5"                  # Data pin (GPIO5 for ESP32, GPIO0 for XIAO-C6)
-  chipset: "SK6812_GRBW"            # LED chipset type
   heartbeat_interval: "15"          # Heartbeat interval in seconds
   firmware_version: "1.0.0"         # Your firmware version
 ```
+
+> **Note:** The LED chipset (SK6812 GRBW) is configured in the `light` section of the YAML.
+> To change chipset, edit the `type` and `variant` under the `neopixelbus` light platform.
 
 ### 4. Flash the firmware
 
