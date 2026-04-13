@@ -12,6 +12,23 @@ import (
 	"warehousecore/internal/repository"
 )
 
+// validFirmwareTypes is the whitelist of accepted firmware_type values.
+var validFirmwareTypes = map[string]bool{
+	"arduino": true,
+	"esphome": true,
+}
+
+// normalizeFirmwareType trims, lowercases, and validates a firmware type
+// string. It returns the normalised value and true when valid, or an empty
+// string and false when the input is unknown/empty.
+func normalizeFirmwareType(raw string) (string, bool) {
+	ft := strings.ToLower(strings.TrimSpace(raw))
+	if validFirmwareTypes[ft] {
+		return ft, true
+	}
+	return "", false
+}
+
 // LEDControllerService manages LED controller records
 type LEDControllerService struct {
 	db *gorm.DB
@@ -172,8 +189,7 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string, payload *model
 			updates["firmware_version"] = payload.FirmwareVersion
 		}
 		if payload.FirmwareType != "" {
-			ft := strings.ToLower(strings.TrimSpace(payload.FirmwareType))
-			if ft == "arduino" || ft == "esphome" {
+			if ft, ok := normalizeFirmwareType(payload.FirmwareType); ok {
 				updates["firmware_type"] = ft
 			}
 		}
@@ -273,8 +289,7 @@ func (s *LEDControllerService) RecordHeartbeat(identifier string, payload *model
 				controller.FirmwareVersion = &value
 			}
 			if payload.FirmwareType != "" {
-				ft := strings.ToLower(strings.TrimSpace(payload.FirmwareType))
-				if ft == "arduino" || ft == "esphome" {
+				if ft, ok := normalizeFirmwareType(payload.FirmwareType); ok {
 					controller.FirmwareType = ft
 				}
 			}

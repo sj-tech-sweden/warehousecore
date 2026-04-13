@@ -1004,6 +1004,7 @@
       "mac": "MAC",
       "firmware": "Firmware",
       "firmwareType": "Type",
+      "esphomeBadge": "ESPHome",
       "leds": "LEDs",
       "wifiRssi": "WiFi RSSI",
       "uptime": "Uptime",

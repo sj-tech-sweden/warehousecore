@@ -115,8 +115,6 @@ mqtt:
   username: !secret mqtt_user
   password: !secret mqtt_password
   discovery: true
-  birth_message:
-  will_message:
   on_connect:
     - lambda: |-
         ESP_LOGI("mqtt", "Connected, subscribing to command topic");
@@ -182,9 +180,8 @@ mqtt:
                 ESP_LOGI("cmd", "Config received (compile-time in ESPHome)");
 
               } else if (strcmp(op, "restart") == 0) {
-                ESP_LOGI("cmd", "Restart in 2 seconds...");
-                delay(2000);
-                App.safe_reboot();
+                ESP_LOGI("cmd", "Restart scheduled...");
+                id(schedule_restart).execute();
 
               } else {
                 ESP_LOGW("cmd", "Unknown op: %s", op);
@@ -209,7 +206,8 @@ light:
           update_interval: 16ms
           lambda: |-
             static std::string current_cmd;
-            static std::vector<std::tuple<int, uint8_t, uint8_t, uint8_t, std::string, uint8_t>> pixels;
+            static std::vector<std::tuple<int, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>> pixels;
+            // Pattern enum: 0=breathe, 1=solid, 2=blink
 
             if (id(command_updated)) {
               id(command_updated) = false;
@@ -226,6 +224,10 @@ light:
                   const char* hex = bin_obj["color"] | "#FF2A2A";
                   const char* pat = bin_obj["pattern"] | "breathe";
                   uint8_t inten = bin_obj["intensity"] | 180;
+                  // Encode pattern as enum: 0=breathe, 1=solid, 2=blink
+                  uint8_t pat_id = 0;
+                  if (strcmp(pat, "solid") == 0) pat_id = 1;
+                  else if (strcmp(pat, "blink") == 0) pat_id = 2;
 
                   long cv = strtol(hex + 1, nullptr, 16);
                   uint8_t r = (cv >> 16) & 0xFF;
@@ -236,7 +238,7 @@ light:
                   for (JsonVariant px : px_arr) {
                     int idx = px.as<int>();
                     if (idx >= 0 && idx < it.size()) {
-                      pixels.push_back(std::make_tuple(idx, r, g, b, std::string(pat), inten));
+                      pixels.push_back(std::make_tuple(idx, r, g, b, pat_id, inten));
                     }
                   }
                 }
@@ -247,11 +249,11 @@ light:
             unsigned long now = millis();
             for (auto& [idx, r, g, b, pattern, intensity] : pixels) {
               uint8_t pr = r, pg = g, pb = b;
-              if (pattern == "solid") {
+              if (pattern == 1) { // solid
                 pr = (r * intensity) / 255;
                 pg = (g * intensity) / 255;
                 pb = (b * intensity) / 255;
-              } else if (pattern == "blink") {
+              } else if (pattern == 2) { // blink
                 if ((now / 500) % 2 == 0) {
                   pr = (r * intensity) / 255;
                   pg = (g * intensity) / 255;
@@ -259,7 +261,7 @@ light:
                 } else {
                   pr = pg = pb = 0;
                 }
-              } else if (pattern == "breathe") {
+              } else if (pattern == 0) { // breathe
                 float phase = (now / 2000.0f) * 2.0f * 3.14159265f;
                 float breath = (sin(phase) + 1.0f) / 2.0f;
                 uint8_t bi = (uint8_t)(breath * intensity);
@@ -325,9 +327,15 @@ script:
             doc["led_count"] = ${led_count};
             doc["chipset"] = "SK6812_GRBW";
 
-            std::string payload;
+            String payload;
             serializeJson(doc, payload);
-            return payload;
+            return std::string(payload.c_str());
+
+  - id: schedule_restart
+    then:
+      - delay: 2s
+      - lambda: |-
+          App.safe_reboot();
 
 # Sensors exposed to Home Assistant
 sensor:

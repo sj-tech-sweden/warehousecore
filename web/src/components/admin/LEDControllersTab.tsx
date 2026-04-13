@@ -563,7 +563,7 @@ export function LEDControllersTab() {
                       <h3 className="text-white font-semibold text-sm sm:text-base flex items-center gap-2 flex-wrap">
                         <span className="truncate">{controller.display_name}</span>
                         {controller.firmware_type === 'esphome' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 font-semibold flex-shrink-0">ESPHome</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 font-semibold flex-shrink-0">{t('admin.ledControllers.esphomeBadge', 'ESPHome')}</span>
                         )}
                         {!controller.is_active && <span className="text-xs text-gray-500 flex-shrink-0">{t('admin.ledControllers.deactivated')}</span>}
                       </h3>
