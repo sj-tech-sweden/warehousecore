@@ -665,12 +665,6 @@ func CreateDevicesForCable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if enough IDs are available (3-digit format caps at 999)
-	if startCounter+int64(req.Quantity)-1 > 999 {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "No free device IDs remaining for prefix"})
-		return
-	}
-
 	var createdIDs []string
 	for i := 0; i < req.Quantity; i++ {
 		deviceID := fmt.Sprintf("%s%03d", prefix, startCounter+int64(i))
