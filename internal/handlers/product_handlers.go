@@ -892,44 +892,39 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Cascade delete: Delete all associated devices first
+	// Cascade delete: Delete all associated devices using DELETE ... RETURNING
+	// to atomically get label paths only for rows that were actually deleted.
 	var labelPaths []string
+	var deletedDevices int64
 	if deviceCount > 0 {
-		// Get device IDs and label paths for logging and cleanup
-		var deviceIDs []string
-		rows, err := tx.Query("SELECT deviceID, label_path FROM devices WHERE productID = $1", id)
-		if err != nil {
-			log.Printf("[PRODUCT DELETE] Failed to query device label paths for product %d: %v", id, err)
-		}
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var deviceID string
-				var labelPath sql.NullString
-				if err := rows.Scan(&deviceID, &labelPath); err == nil {
-					deviceIDs = append(deviceIDs, deviceID)
-					if labelPath.Valid && labelPath.String != "" {
-						labelPaths = append(labelPaths, labelPath.String)
-					}
-				}
-			}
-		}
-
-		log.Printf("[PRODUCT DELETE] Deleting %d devices: %v", len(deviceIDs), deviceIDs)
-
-		// Delete all devices for this product
-		result, err := tx.Exec("DELETE FROM devices WHERE productID = $1", id)
+		rows, err := tx.Query("DELETE FROM devices WHERE productID = $1 RETURNING deviceID, label_path", id)
 		if err != nil {
 			log.Printf("[PRODUCT DELETE ERROR] Failed to delete devices for product %d: %v", id, err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{
 				"error":   "Failed to delete associated devices",
-				"message": fmt.Sprintf("Error deleting %d device(s) before product deletion", deviceCount),
+				"message": "Error deleting device(s) before product deletion",
 			})
 			return
 		}
-
-		deletedDevices, _ := result.RowsAffected()
-		log.Printf("[PRODUCT DELETE] Successfully deleted %d devices for product %d", deletedDevices, id)
+		defer rows.Close()
+		var deviceIDs []string
+		for rows.Next() {
+			var deviceID string
+			var labelPath sql.NullString
+			if err := rows.Scan(&deviceID, &labelPath); err == nil {
+				deviceIDs = append(deviceIDs, deviceID)
+				if labelPath.Valid && labelPath.String != "" {
+					labelPaths = append(labelPaths, labelPath.String)
+				}
+			}
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[PRODUCT DELETE ERROR] Error iterating deleted devices for product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete associated devices"})
+			return
+		}
+		deletedDevices = int64(len(deviceIDs))
+		log.Printf("[PRODUCT DELETE] Deleted %d devices: %v", deletedDevices, deviceIDs)
 	}
 
 	// Now delete the product (within the same transaction)
@@ -957,15 +952,15 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	// Clean up device label files after successful commit
 	cleanupDeviceLabelFiles(labelPaths, "PRODUCT DELETE")
 
-	// Include device count in response
+	// Include device count in response (based on actual DELETE result, not pre-tx COUNT)
 	message := "Product deleted successfully"
-	if deviceCount > 0 {
-		message = fmt.Sprintf("Product deleted successfully along with %d device(s)", deviceCount)
+	if deletedDevices > 0 {
+		message = fmt.Sprintf("Product deleted successfully along with %d device(s)", deletedDevices)
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message":         message,
-		"deleted_devices": fmt.Sprintf("%d", deviceCount),
+		"deleted_devices": fmt.Sprintf("%d", deletedDevices),
 	})
 }
 
