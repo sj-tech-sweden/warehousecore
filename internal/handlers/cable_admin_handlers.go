@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -673,22 +674,18 @@ func CreateDevicesForCable(w http.ResponseWriter, r *http.Request) {
 	startCounter, err := services.AllocateDeviceCounter(ctx, tx, prefix)
 	if err != nil {
 		log.Printf("[CABLE DEVICE CREATE] Failed to allocate device counter for prefix %s: %v", prefix, err)
-		if err == sql.ErrNoRows {
-			respondJSON(w, http.StatusConflict, map[string]string{"error": "No free device IDs remaining for prefix"})
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "22003" {
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "Counter overflow for prefix"})
 			return
 		}
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) {
-			if pqErr.Code == "22003" {
-				respondJSON(w, http.StatusConflict, map[string]string{"error": "Counter overflow for prefix"})
-				return
-			}
-			if pqErr.Code == "23505" {
-				respondJSON(w, http.StatusConflict, map[string]string{"error": "Device ID already exists for prefix"})
-				return
-			}
-		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to allocate device IDs"})
+		return
+	}
+
+	// Guard against int64 overflow when computing device IDs for the batch
+	if startCounter > math.MaxInt64-int64(req.Quantity-1) {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "Counter overflow for prefix"})
 		return
 	}
 
