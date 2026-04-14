@@ -524,7 +524,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       setCableConvertModal({ productId, productName });
     } catch (error) {
       console.error('Failed to load cable metadata:', error);
-      window.alert(t('admin.products.errors.convertToCable'));
+      window.alert(t('admin.products.errors.loadCableMetadata'));
     }
   };
 

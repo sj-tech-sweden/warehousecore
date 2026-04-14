@@ -1162,7 +1162,8 @@
         "deviceCreate": "Product created, but devices could not be created.",
         "save": "Failed to save product.",
         "convertToCase": "Failed to convert product to case.",
-        "convertToCable": "Failed to convert product to cable."
+        "convertToCable": "Failed to convert product to cable.",
+        "loadCableMetadata": "Failed to load cable connectors/types."
       },
       "convertToCase": "Convert to case",
       "convertToCable": "Convert to cable",

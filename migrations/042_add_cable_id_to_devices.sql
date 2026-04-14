@@ -1,4 +1,4 @@
--- Migration: 041_add_cable_id_to_devices.sql
+-- Migration: 042_add_cable_id_to_devices.sql
 -- Description: Add cable_id column to devices table so devices can be associated with cables
 -- Date: 2026-04-13
 

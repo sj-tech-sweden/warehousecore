@@ -1162,7 +1162,8 @@
         "deviceCreate": "Produkt erstellt, aber Geräte konnten nicht erstellt werden.",
         "save": "Produkt konnte nicht gespeichert werden.",
         "convertToCase": "Produkt konnte nicht in Case umgewandelt werden.",
-        "convertToCable": "Produkt konnte nicht in Kabel umgewandelt werden."
+        "convertToCable": "Produkt konnte nicht in Kabel umgewandelt werden.",
+        "loadCableMetadata": "Kabelstecker/Typen konnten nicht geladen werden."
       },
       "convertToCase": "In Case umwandeln",
       "convertToCable": "In Kabel umwandeln",
