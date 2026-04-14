@@ -412,9 +412,9 @@ func (s *DeviceAdminService) deleteDeviceInTx(ctx context.Context, tx *sql.Tx, d
 	return "", nil
 }
 
-// removeLabelFile removes a device label file from disk.
+// RemoveLabelFile removes a device label file from disk.
 // Paths are sanitized to prevent path traversal outside the web/dist directory.
-func removeLabelFile(labelPath string) {
+func RemoveLabelFile(labelPath string) {
 	if labelPath == "" {
 		return
 	}
@@ -429,7 +429,7 @@ func removeLabelFile(labelPath string) {
 		log.Printf("[DEVICE] Skipping label path outside base dir: %s", labelPath)
 		return
 	}
-	if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("[DEVICE] Failed to remove label %s: %v", fullPath, err)
 	}
 }
@@ -457,7 +457,7 @@ func (s *DeviceAdminService) DeleteDevice(ctx context.Context, deviceID string) 
 		return fmt.Errorf("failed to commit delete: %w", err)
 	}
 
-	removeLabelFile(labelPath)
+	RemoveLabelFile(labelPath)
 	return nil
 }
 
@@ -517,7 +517,7 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		}
 		// Clean up label files after successful commit
 		for _, lp := range labelPaths {
-			removeLabelFile(lp)
+			RemoveLabelFile(lp)
 		}
 	}
 

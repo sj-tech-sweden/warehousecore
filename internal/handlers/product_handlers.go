@@ -8,8 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,26 +26,10 @@ var errPicturesUnavailable = errors.New("product pictures not available")
 var websiteRevalidator = services.NewRevalidatorFromEnv()
 
 // cleanupDeviceLabelFiles removes label files from disk for the given label_path values.
-// Paths are sanitized to prevent path traversal outside the web/dist directory.
+// Delegates to services.RemoveLabelFile for path sanitization and traversal protection.
 func cleanupDeviceLabelFiles(labelPaths []string, logPrefix string) {
-	if len(labelPaths) == 0 {
-		return
-	}
-	baseDir, err := filepath.Abs(filepath.Join("web", "dist"))
-	if err != nil {
-		log.Printf("[%s] Failed to resolve base dir for label cleanup: %v", logPrefix, err)
-		return
-	}
 	for _, lp := range labelPaths {
-		cleaned := filepath.Clean(strings.TrimPrefix(lp, "/"))
-		fullPath := filepath.Join(baseDir, cleaned)
-		if !strings.HasPrefix(fullPath, baseDir+string(os.PathSeparator)) {
-			log.Printf("[%s] Skipping label path outside base dir: %s", logPrefix, lp)
-			continue
-		}
-		if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Printf("[%s] Failed to remove label %s: %v", logPrefix, fullPath, err)
-		}
+		services.RemoveLabelFile(lp)
 	}
 }
 

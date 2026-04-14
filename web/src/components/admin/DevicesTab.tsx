@@ -5,6 +5,7 @@ import {
   Eye,
   LayoutGrid,
   List,
+  MinusSquare,
   Package,
   Pencil,
   Plus,
@@ -641,13 +642,19 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
                     <button
                       type="button"
                       role="checkbox"
-                      aria-checked={allFilteredSelected}
+                      aria-checked={
+                        allFilteredSelected
+                          ? true
+                          : filteredDevices.some((device) => selectedDevices.has(device.device_id))
+                            ? 'mixed'
+                            : false
+                      }
                       onClick={toggleSelectAll}
                       className="text-gray-400 hover:text-white"
                       aria-label={allFilteredSelected ? t('admin.devices.deselectAll') : t('admin.devices.selectAll')}
                       title={allFilteredSelected ? t('admin.devices.deselectAll') : t('admin.devices.selectAll')}
                     >
-                      {allFilteredSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      {allFilteredSelected ? <CheckSquare className="w-4 h-4" /> : selectedDevices.size > 0 ? <MinusSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">ID</th>

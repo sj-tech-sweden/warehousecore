@@ -7,6 +7,7 @@ import {
   GitBranch,
   LayoutGrid,
   List,
+  MinusSquare,
   Package,
   Pencil,
   Plus,
@@ -874,13 +875,19 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     <button
                       type="button"
                       role="checkbox"
-                      aria-checked={allProductsSelected}
+                      aria-checked={
+                        allProductsSelected
+                          ? true
+                          : selectedProducts.size > 0 && selectedProducts.size < sortedProducts.length
+                            ? 'mixed'
+                            : false
+                      }
                       onClick={toggleSelectAllProducts}
                       className="text-gray-400 hover:text-white"
                       aria-label={allProductsSelected ? t('admin.products.deselectAll') : t('admin.products.selectAll')}
                       title={allProductsSelected ? t('admin.products.deselectAll') : t('admin.products.selectAll')}
                     >
-                      {allProductsSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      {allProductsSelected ? <CheckSquare className="w-4 h-4" /> : selectedProducts.size > 0 ? <MinusSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left font-semibold">{t('products.title')}</th>

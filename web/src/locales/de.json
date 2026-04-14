@@ -818,8 +818,8 @@
       "errors": {
         "delete": "Fehler beim Löschen des Geräts",
         "save": "Fehler beim Speichern des Geräts",
-        "bulkDelete": "Ausgewählte Geräte konnten nicht gelöscht werden.",
-        "bulkUpdate": "Ausgewählte Geräte konnten nicht aktualisiert werden."
+        "bulkDelete": "Ausgewählte Geräte konnten nicht gelöscht werden",
+        "bulkUpdate": "Ausgewählte Geräte konnten nicht aktualisiert werden"
       },
       "filters": {
         "allStatuses": "Alle Status",

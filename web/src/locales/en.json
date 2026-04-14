@@ -818,8 +818,8 @@
       "errors": {
         "delete": "Failed to delete device",
         "save": "Failed to save device",
-        "bulkDelete": "Failed to delete selected devices.",
-        "bulkUpdate": "Failed to update selected devices."
+        "bulkDelete": "Failed to delete selected devices",
+        "bulkUpdate": "Failed to update selected devices"
       },
       "filters": {
         "allStatuses": "All statuses",
