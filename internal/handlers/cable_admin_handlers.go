@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 	"warehousecore/internal/services"
@@ -497,6 +499,18 @@ func GetCableDevices(w http.ResponseWriter, r *http.Request) {
 
 	db := repository.GetSQLDB()
 
+	// Verify cable exists
+	var cableExists bool
+	if err = db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cables WHERE cableID = $1)`, cableID).Scan(&cableExists); err != nil {
+		log.Printf("[CABLE DEVICES] Error checking cable existence: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify cable"})
+		return
+	}
+	if !cableExists {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Cable not found"})
+		return
+	}
+
 	query := `
 		WITH latest_job AS (
 			SELECT jd.deviceID, MAX(jd.jobID) AS jobID
@@ -579,6 +593,10 @@ func GetCableDevices(w http.ResponseWriter, r *http.Request) {
 		responses = append(responses, toDeviceAdminResponse(&device))
 	}
 
+	if responses == nil {
+		responses = []DeviceAdminResponse{}
+	}
+
 	respondJSON(w, http.StatusOK, responses)
 }
 
@@ -655,6 +673,15 @@ func CreateDevicesForCable(w http.ResponseWriter, r *http.Request) {
 	startCounter, err := services.AllocateDeviceCounter(ctx, tx, prefix)
 	if err != nil {
 		log.Printf("[CABLE DEVICE CREATE] Failed to allocate device counter for prefix %s: %v", prefix, err)
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && (pqErr.Code == "22003" || pqErr.Code == "23505") {
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "No free device IDs remaining for prefix"})
+			return
+		}
+		if err == sql.ErrNoRows {
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "No free device IDs remaining for prefix"})
+			return
+		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to allocate device IDs"})
 		return
 	}
@@ -668,6 +695,11 @@ func CreateDevicesForCable(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Printf("[CABLE DEVICE CREATE] Failed to insert device %s: %v", deviceID, err)
+			var pqErr *pq.Error
+			if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+				respondJSON(w, http.StatusConflict, map[string]string{"error": fmt.Sprintf("Device ID %s already exists", deviceID)})
+				return
+			}
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to create device %s", deviceID)})
 			return
 		}
