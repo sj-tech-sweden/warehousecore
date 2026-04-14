@@ -904,7 +904,8 @@
       "deviceQuantity": "Anzahl",
       "deviceQuantityPlaceholder": "z.B. 5",
       "createDevices": "Geräte erstellen",
-      "devicesCreated": "{{count}} Gerät(e) erfolgreich erstellt."
+      "devicesCreated": "{{count}} Gerät erfolgreich erstellt.",
+      "devicesCreated_other": "{{count}} Geräte erfolgreich erstellt."
     },
     "deviceTree": {
       "title": "Geräteverwaltung",

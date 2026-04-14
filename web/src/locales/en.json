@@ -904,7 +904,8 @@
       "deviceQuantity": "Quantity",
       "deviceQuantityPlaceholder": "e.g. 5",
       "createDevices": "Create devices",
-      "devicesCreated": "{{count}} device(s) created successfully."
+      "devicesCreated": "{{count}} device created successfully.",
+      "devicesCreated_other": "{{count}} devices created successfully."
     },
     "deviceTree": {
       "title": "Device Management",

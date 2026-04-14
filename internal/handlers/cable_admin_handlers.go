@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/lib/pq"
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
 	"warehousecore/internal/services"
@@ -646,67 +644,54 @@ func CreateDevicesForCable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use DB-side approach to find the next available counter for the prefix
-	var createdIDs []string
-	prefixExhausted := false
-	for i := 0; i < req.Quantity; i++ {
-		inserted := false
-		for attempt := 0; attempt < 1000; attempt++ {
-			var nextCounter int
-			err := db.QueryRow(`
-				SELECT gs
-				FROM generate_series(1, 999) AS gs
-				WHERE NOT EXISTS (
-					SELECT 1
-					FROM devices
-					WHERE deviceID = $1 || LPAD(gs::text, 3, '0')
-				)
-				ORDER BY gs
-				LIMIT 1
-			`, prefix).Scan(&nextCounter)
-			if err != nil {
-				if err == sql.ErrNoRows {
-					log.Printf("[CABLE DEVICE CREATE] No available device IDs remain for prefix %s", prefix)
-					prefixExhausted = true
-				} else {
-					log.Printf("[CABLE DEVICE CREATE] Failed to find next device ID for prefix %s: %v", prefix, err)
-				}
-				break
-			}
-
-			candidateID := fmt.Sprintf("%s%03d", prefix, nextCounter)
-			_, err = db.Exec(
-				"INSERT INTO devices (deviceID, cable_id, status) VALUES ($1, $2, 'in_storage')",
-				candidateID, cableID,
-			)
-			if err != nil {
-				var pqErr *pq.Error
-				if errors.As(err, &pqErr) && pqErr.Code == "23505" { // unique_violation
-					continue
-				}
-				log.Printf("[CABLE DEVICE CREATE] Failed to insert device %s: %v", candidateID, err)
-				break
-			}
-			createdIDs = append(createdIDs, candidateID)
-			inserted = true
-			break
-		}
-		if !inserted {
-			log.Printf("[CABLE DEVICE CREATE] Could not insert device %d/%d for cable %d", i+1, req.Quantity, cableID)
-			if prefixExhausted {
-				break
-			}
-		}
-	}
-
-	if len(createdIDs) == 0 {
-		if prefixExhausted {
-			respondJSON(w, http.StatusConflict, map[string]string{"error": "No free device IDs remaining for prefix"})
-		} else {
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create any devices"})
-		}
+	// Use a transaction with AllocateDeviceCounter for safe, all-or-nothing device creation
+	ctx := r.Context()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("[CABLE DEVICE CREATE] Failed to begin transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create devices"})
 		return
 	}
+	defer func() {
+		if tx != nil {
+			tx.Rollback()
+		}
+	}()
+
+	startCounter, err := services.AllocateDeviceCounter(ctx, tx, prefix)
+	if err != nil {
+		log.Printf("[CABLE DEVICE CREATE] Failed to allocate device counter for prefix %s: %v", prefix, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to allocate device IDs"})
+		return
+	}
+
+	// Check if enough IDs are available (3-digit format caps at 999)
+	if startCounter+int64(req.Quantity)-1 > 999 {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "No free device IDs remaining for prefix"})
+		return
+	}
+
+	var createdIDs []string
+	for i := 0; i < req.Quantity; i++ {
+		deviceID := fmt.Sprintf("%s%03d", prefix, startCounter+int64(i))
+		_, err := tx.ExecContext(ctx,
+			"INSERT INTO devices (deviceID, cable_id, status) VALUES ($1, $2, 'in_storage')",
+			deviceID, cableID,
+		)
+		if err != nil {
+			log.Printf("[CABLE DEVICE CREATE] Failed to insert device %s: %v", deviceID, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to create device %s", deviceID)})
+			return
+		}
+		createdIDs = append(createdIDs, deviceID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("[CABLE DEVICE CREATE] Failed to commit transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create devices"})
+		return
+	}
+	tx = nil // prevent deferred rollback
 
 	// Auto-generate labels for all created devices in the background
 	go func() {
