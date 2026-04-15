@@ -437,7 +437,12 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
         const failedIds = data.failed_ids && data.failed_ids.length > 0
           ? `\n${t('admin.devices.failedIds')}: ${data.failed_ids.join(', ')}`
           : '';
-        alert(t('admin.devices.bulkDeletePartial', { deleted: data.deleted_devices, failed: data.failed_devices }) + failedIds);
+        // Use backend message when all deletions failed for the real server-side reason
+        if (data.deleted_devices === 0 && data.message) {
+          alert(data.message + failedIds);
+        } else {
+          alert(t('admin.devices.bulkDeletePartial', { deleted: data.deleted_devices, failed: data.failed_devices }) + failedIds);
+        }
       } else {
         alert(t('admin.devices.bulkDeleteSuccess', { count: data.deleted_devices }));
       }

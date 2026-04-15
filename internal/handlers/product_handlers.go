@@ -873,15 +873,7 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Count devices to be deleted
-	var deviceCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM devices WHERE productID = $1", id).Scan(&deviceCount)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to check product devices"})
-		return
-	}
-
-	log.Printf("[PRODUCT DELETE] Deleting product %d (%s) with %d associated device(s)", id, productName, deviceCount)
+	log.Printf("[PRODUCT DELETE] Deleting product %d (%s)", id, productName)
 
 	// Start a transaction for atomic device + product deletion
 	tx, err := db.Begin()
@@ -894,42 +886,42 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 
 	// Cascade delete: Delete all associated devices using DELETE ... RETURNING
 	// to atomically get label paths only for rows that were actually deleted.
+	// Always run unconditionally inside the transaction to avoid race conditions.
 	var labelPaths []string
-	var deletedDevices int64
-	if deviceCount > 0 {
-		rows, err := tx.Query("DELETE FROM devices WHERE productID = $1 RETURNING deviceID, label_path", id)
-		if err != nil {
-			log.Printf("[PRODUCT DELETE ERROR] Failed to delete devices for product %d: %v", id, err)
+	rows, err := tx.Query("DELETE FROM devices WHERE productID = $1 RETURNING deviceID, label_path", id)
+	if err != nil {
+		log.Printf("[PRODUCT DELETE ERROR] Failed to delete devices for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error":   "Failed to delete associated devices",
+			"message": "Error deleting device(s) before product deletion",
+		})
+		return
+	}
+	defer rows.Close()
+	var deviceIDs []string
+	for rows.Next() {
+		var deviceID string
+		var labelPath sql.NullString
+		if err := rows.Scan(&deviceID, &labelPath); err != nil {
+			log.Printf("[PRODUCT DELETE ERROR] Failed to scan deleted device row for product %d: %v", id, err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{
 				"error":   "Failed to delete associated devices",
-				"message": "Error deleting device(s) before product deletion",
+				"message": "Error reading deleted device data",
 			})
 			return
 		}
-		defer rows.Close()
-		var deviceIDs []string
-		for rows.Next() {
-			var deviceID string
-			var labelPath sql.NullString
-			if err := rows.Scan(&deviceID, &labelPath); err != nil {
-				log.Printf("[PRODUCT DELETE ERROR] Failed to scan deleted device row for product %d: %v", id, err)
-				respondJSON(w, http.StatusInternalServerError, map[string]string{
-					"error":   "Failed to delete associated devices",
-					"message": "Error reading deleted device data",
-				})
-				return
-			}
-			deviceIDs = append(deviceIDs, deviceID)
-			if labelPath.Valid && labelPath.String != "" {
-				labelPaths = append(labelPaths, labelPath.String)
-			}
+		deviceIDs = append(deviceIDs, deviceID)
+		if labelPath.Valid && labelPath.String != "" {
+			labelPaths = append(labelPaths, labelPath.String)
 		}
-		if err := rows.Err(); err != nil {
-			log.Printf("[PRODUCT DELETE ERROR] Error iterating deleted devices for product %d: %v", id, err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete associated devices"})
-			return
-		}
-		deletedDevices = int64(len(deviceIDs))
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[PRODUCT DELETE ERROR] Error iterating deleted devices for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete associated devices"})
+		return
+	}
+	deletedDevices := int64(len(deviceIDs))
+	if deletedDevices > 0 {
 		log.Printf("[PRODUCT DELETE] Deleted %d devices: %v", deletedDevices, deviceIDs)
 	}
 
@@ -988,6 +980,17 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Deduplicate IDs to prevent inflated counts and redundant SQL placeholders
+	seen := make(map[int]struct{}, len(req.IDs))
+	uniqueIDs := make([]int, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			uniqueIDs = append(uniqueIDs, id)
+		}
+	}
+	req.IDs = uniqueIDs
+
 	db := repository.GetSQLDB()
 	tx, err := db.Begin()
 	if err != nil {
@@ -1017,11 +1020,11 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
 		return
 	}
+	defer pkgRows.Close()
 	packageManaged := make(map[int]struct{}, len(req.IDs))
 	for pkgRows.Next() {
 		var productID int
 		if err := pkgRows.Scan(&productID); err != nil {
-			_ = pkgRows.Close()
 			log.Printf("[BULK PRODUCT DELETE] Failed to scan package mapping: %v", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
 			return
@@ -1033,7 +1036,6 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
 		return
 	}
-	_ = pkgRows.Close()
 
 	for _, id := range req.IDs {
 		if _, ok := packageManaged[id]; ok {
@@ -1072,10 +1074,10 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
 			return
 		}
+		defer rows.Close()
 		for rows.Next() {
 			var lp string
 			if err := rows.Scan(&lp); err != nil {
-				_ = rows.Close()
 				log.Printf("[BULK PRODUCT DELETE] Failed to scan label path: %v", err)
 				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
 				return
@@ -1089,7 +1091,6 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
 			return
 		}
-		_ = rows.Close()
 	}
 
 	// Delete devices for all products in a single statement
