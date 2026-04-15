@@ -513,11 +513,6 @@ func GetCableDevices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `
-		WITH latest_job AS (
-			SELECT jd.deviceID, MAX(jd.jobID) AS jobID
-			FROM jobdevices jd
-			GROUP BY jd.deviceID
-		)
 		SELECT d.deviceID, d.productID, d.serialnumber, d.barcode, d.qr_code, d.rfid, d.status,
 		       d.current_location, d.zone_id,
 		       COALESCE(d.condition_rating, 0), COALESCE(d.usage_hours, 0), d.purchaseDate, d.retire_date, d.warranty_end_date,
@@ -540,7 +535,13 @@ func GetCableDevices(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases cs ON dc.caseID = cs.caseID
 		LEFT JOIN cables cab ON d.cable_id = cab.cableID
-		LEFT JOIN latest_job lj ON lj.deviceID = d.deviceID
+		LEFT JOIN LATERAL (
+			SELECT jd.jobID
+			FROM jobdevices jd
+			WHERE jd.deviceID = d.deviceID
+			ORDER BY jd.jobID DESC
+			LIMIT 1
+		) lj ON true
 		WHERE d.cable_id = $1
 		ORDER BY d.deviceID ASC
 	`

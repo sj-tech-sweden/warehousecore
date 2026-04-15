@@ -890,6 +890,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                           onClick={() => handleConvertToCase(product.product_id, product.name)}
                           className="rounded-lg bg-amber-600/80 p-2 text-white transition hover:bg-amber-600"
                           title={t('admin.products.convertToCase')}
+                          aria-label={t('admin.products.convertToCase')}
                         >
                           <PackageOpen className="h-4 w-4" />
                         </button>
@@ -897,6 +898,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                           onClick={() => handleOpenCableConvertModal(product.product_id, product.name)}
                           className="rounded-lg bg-teal-600/80 p-2 text-white transition hover:bg-teal-600"
                           title={t('admin.products.convertToCable')}
+                          aria-label={t('admin.products.convertToCable')}
                         >
                           <Cable className="h-4 w-4" />
                         </button>
@@ -971,6 +973,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     onClick={() => handleConvertToCase(product.product_id, product.name)}
                     className="rounded-lg bg-amber-600/80 p-2 text-white transition hover:bg-amber-600"
                     title={t('admin.products.convertToCase')}
+                    aria-label={t('admin.products.convertToCase')}
                   >
                     <PackageOpen className="h-4 w-4" />
                   </button>
@@ -978,6 +981,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     onClick={() => handleOpenCableConvertModal(product.product_id, product.name)}
                     className="rounded-lg bg-teal-600/80 p-2 text-white transition hover:bg-teal-600"
                     title={t('admin.products.convertToCable')}
+                    aria-label={t('admin.products.convertToCable')}
                   >
                     <Cable className="h-4 w-4" />
                   </button>
@@ -1727,8 +1731,9 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     onClick={handleConvertToCable}
                     disabled={convertSubmitting || cableFormData.connector1 <= 0 || cableFormData.connector2 <= 0 || cableFormData.typ <= 0 || cableFormData.length <= 0}
                     className="rounded-lg bg-teal-600 px-4 py-2 text-white hover:bg-teal-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-busy={convertSubmitting}
                   >
-                    {convertSubmitting ? '...' : t('admin.products.convertToCable')}
+                    {convertSubmitting ? <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" /> : t('admin.products.convertToCable')}
                   </button>
                 </div>
               </div>

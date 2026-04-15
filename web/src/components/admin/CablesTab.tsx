@@ -1080,8 +1080,9 @@ export function CablesTab() {
                     onClick={handleCreateCableDevices}
                     disabled={creatingDevices || !devicePrefix.trim() || deviceQuantity <= 0}
                     className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-busy={creatingDevices}
                   >
-                    {creatingDevices ? '...' : t('admin.cables.createDevices')}
+                    {creatingDevices ? <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" /> : t('admin.cables.createDevices')}
                   </button>
                 </div>
               </div>
