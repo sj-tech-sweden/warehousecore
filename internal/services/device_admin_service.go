@@ -502,6 +502,8 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 			failedIDs = append(failedIDs, id)
 			if _, rbErr := tx.ExecContext(ctx, fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", sp)); rbErr != nil {
 				log.Printf("[BULK DEVICE DELETE] Failed to rollback savepoint for %s: %v", id, rbErr)
+			} else if _, relErr := tx.ExecContext(ctx, fmt.Sprintf("RELEASE SAVEPOINT %s", sp)); relErr != nil {
+				log.Printf("[BULK DEVICE DELETE] Failed to release savepoint after rollback for %s: %v", id, relErr)
 			}
 			continue
 		}

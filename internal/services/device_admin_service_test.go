@@ -160,6 +160,7 @@ func TestBulkDeleteDevices_PartialFailure_NotFound(t *testing.T) {
 		WithArgs("NOTFOUND").
 		WillReturnRows(sqlmock.NewRows([]string{"label_path"})) // 0 rows = ErrNoRows
 	mock.ExpectExec("ROLLBACK TO SAVEPOINT device_delete_1").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("RELEASE SAVEPOINT device_delete_1").WillReturnResult(sqlmock.NewResult(0, 0))
 
 	// Device 3: FK violation
 	mock.ExpectExec("SAVEPOINT device_delete_2").WillReturnResult(sqlmock.NewResult(0, 0))
@@ -167,6 +168,7 @@ func TestBulkDeleteDevices_PartialFailure_NotFound(t *testing.T) {
 		WithArgs("DEV_FK").
 		WillReturnError(fmt.Errorf("pq: update or delete on table \"devices\" violates foreign key constraint"))
 	mock.ExpectExec("ROLLBACK TO SAVEPOINT device_delete_2").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("RELEASE SAVEPOINT device_delete_2").WillReturnResult(sqlmock.NewResult(0, 0))
 
 	mock.ExpectCommit()
 

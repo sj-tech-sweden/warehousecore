@@ -911,11 +911,17 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var deviceID string
 			var labelPath sql.NullString
-			if err := rows.Scan(&deviceID, &labelPath); err == nil {
-				deviceIDs = append(deviceIDs, deviceID)
-				if labelPath.Valid && labelPath.String != "" {
-					labelPaths = append(labelPaths, labelPath.String)
-				}
+			if err := rows.Scan(&deviceID, &labelPath); err != nil {
+				log.Printf("[PRODUCT DELETE ERROR] Failed to scan deleted device row for product %d: %v", id, err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{
+					"error":   "Failed to delete associated devices",
+					"message": "Error reading deleted device data",
+				})
+				return
+			}
+			deviceIDs = append(deviceIDs, deviceID)
+			if labelPath.Valid && labelPath.String != "" {
+				labelPaths = append(labelPaths, labelPath.String)
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -990,20 +996,50 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Filter out package-managed products
+	// Filter out package-managed products (single query instead of N+1)
 	var skippedPackages []int
 	var deletableIDs []int
-	for _, id := range req.IDs {
-		var packageID int
-		err := tx.QueryRow("SELECT package_id FROM product_packages WHERE product_id = $1", id).Scan(&packageID)
-		if err == nil {
-			skippedPackages = append(skippedPackages, id)
-		} else if err == sql.ErrNoRows {
-			deletableIDs = append(deletableIDs, id)
-		} else {
-			log.Printf("[BULK PRODUCT DELETE] Failed to check package mapping for product %d: %v", id, err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to verify package mapping for product %d", id)})
+
+	placeholders := make([]string, len(req.IDs))
+	args := make([]interface{}, len(req.IDs))
+	for i, id := range req.IDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+	pkgQuery := fmt.Sprintf(
+		"SELECT DISTINCT product_id FROM product_packages WHERE product_id IN (%s)",
+		strings.Join(placeholders, ", "),
+	)
+	pkgRows, err := tx.Query(pkgQuery, args...)
+	if err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed to check package mappings: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
+		return
+	}
+	packageManaged := make(map[int]struct{}, len(req.IDs))
+	for pkgRows.Next() {
+		var productID int
+		if err := pkgRows.Scan(&productID); err != nil {
+			_ = pkgRows.Close()
+			log.Printf("[BULK PRODUCT DELETE] Failed to scan package mapping: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
 			return
+		}
+		packageManaged[productID] = struct{}{}
+	}
+	if err := pkgRows.Err(); err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed while reading package mappings: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
+		return
+	}
+	_ = pkgRows.Close()
+
+	for _, id := range req.IDs {
+		if _, ok := packageManaged[id]; ok {
+			skippedPackages = append(skippedPackages, id)
+		} else {
+			deletableIDs = append(deletableIDs, id)
 		}
 	}
 
@@ -1017,56 +1053,64 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build placeholders for deletable IDs (reused by label collection, device delete, product delete)
+	delPlaceholders := make([]string, len(deletableIDs))
+	delArgs := make([]interface{}, len(deletableIDs))
+	for i, id := range deletableIDs {
+		delPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+		delArgs[i] = id
+	}
+	inClause := strings.Join(delPlaceholders, ",")
+
 	// Collect label paths for devices about to be deleted
 	var labelPaths []string
-	if len(deletableIDs) > 0 {
-		placeholders := make([]string, len(deletableIDs))
-		args := make([]interface{}, len(deletableIDs))
-		for i, id := range deletableIDs {
-			placeholders[i] = fmt.Sprintf("$%d", i+1)
-			args[i] = id
-		}
-		query := fmt.Sprintf("SELECT label_path FROM devices WHERE productID IN (%s) AND label_path IS NOT NULL AND label_path != ''", strings.Join(placeholders, ","))
-		rows, err := tx.Query(query, args...)
+	{
+		query := fmt.Sprintf("SELECT label_path FROM devices WHERE productID IN (%s) AND label_path IS NOT NULL AND label_path != ''", inClause)
+		rows, err := tx.Query(query, delArgs...)
 		if err != nil {
 			log.Printf("[BULK PRODUCT DELETE] Failed to collect label paths: %v", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
 			return
 		}
-		defer rows.Close()
 		for rows.Next() {
 			var lp string
-			if err := rows.Scan(&lp); err == nil && lp != "" {
+			if err := rows.Scan(&lp); err != nil {
+				_ = rows.Close()
+				log.Printf("[BULK PRODUCT DELETE] Failed to scan label path: %v", err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
+				return
+			}
+			if lp != "" {
 				labelPaths = append(labelPaths, lp)
 			}
 		}
-	}
-
-	// Delete devices for all products
-	totalDevicesDeleted := 0
-	for _, id := range deletableIDs {
-		result, err := tx.Exec("DELETE FROM devices WHERE productID = $1", id)
-		if err != nil {
-			log.Printf("[BULK PRODUCT DELETE] Failed to delete devices for product %d: %v", id, err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to delete devices for product %d", id)})
+		if err := rows.Err(); err != nil {
+			log.Printf("[BULK PRODUCT DELETE] Failed while iterating label paths: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
 			return
 		}
-		deleted, _ := result.RowsAffected()
-		totalDevicesDeleted += int(deleted)
+		_ = rows.Close()
 	}
 
-	// Delete products
-	totalProductsDeleted := 0
-	for _, id := range deletableIDs {
-		result, err := tx.Exec("DELETE FROM products WHERE productID = $1", id)
-		if err != nil {
-			log.Printf("[BULK PRODUCT DELETE] Failed to delete product %d: %v", id, err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to delete product %d", id)})
-			return
-		}
-		deleted, _ := result.RowsAffected()
-		totalProductsDeleted += int(deleted)
+	// Delete devices for all products in a single statement
+	devDeleteQuery := fmt.Sprintf("DELETE FROM devices WHERE productID IN (%s)", inClause)
+	devResult, err := tx.Exec(devDeleteQuery, delArgs...)
+	if err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed to delete devices: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
+		return
 	}
+	totalDevicesDeleted, _ := devResult.RowsAffected()
+
+	// Delete products in a single statement
+	prodDeleteQuery := fmt.Sprintf("DELETE FROM products WHERE productID IN (%s)", inClause)
+	prodResult, err := tx.Exec(prodDeleteQuery, delArgs...)
+	if err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed to delete products: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete products"})
+		return
+	}
+	totalProductsDeleted, _ := prodResult.RowsAffected()
 
 	if err := tx.Commit(); err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit transaction"})

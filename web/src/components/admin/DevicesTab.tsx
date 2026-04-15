@@ -458,8 +458,8 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     if (selectedDevices.size === 0) return;
 
     const updates: { status?: string; zone_id?: number } = {};
-    if (bulkEditData.status) updates.status = bulkEditData.status;
-    if (bulkEditData.zone_id) updates.zone_id = bulkEditData.zone_id;
+    if (bulkEditData.status !== undefined) updates.status = bulkEditData.status;
+    if (bulkEditData.zone_id !== undefined) updates.zone_id = bulkEditData.zone_id;
 
     if (Object.keys(updates).length === 0) {
       setBulkEditOpen(false);

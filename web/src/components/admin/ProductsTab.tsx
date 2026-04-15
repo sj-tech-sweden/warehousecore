@@ -662,9 +662,9 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     if (selectedProducts.size === 0) return;
 
     const updates: { category_id?: number; brand_id?: number; manufacturer_id?: number; item_cost_per_day?: number } = {};
-    if (bulkEditData.category_id) updates.category_id = bulkEditData.category_id;
-    if (bulkEditData.brand_id) updates.brand_id = bulkEditData.brand_id;
-    if (bulkEditData.manufacturer_id) updates.manufacturer_id = bulkEditData.manufacturer_id;
+    if (bulkEditData.category_id !== undefined) updates.category_id = bulkEditData.category_id;
+    if (bulkEditData.brand_id !== undefined) updates.brand_id = bulkEditData.brand_id;
+    if (bulkEditData.manufacturer_id !== undefined) updates.manufacturer_id = bulkEditData.manufacturer_id;
     if (bulkEditData.item_cost_per_day !== undefined) updates.item_cost_per_day = bulkEditData.item_cost_per_day;
 
     if (Object.keys(updates).length === 0) {
