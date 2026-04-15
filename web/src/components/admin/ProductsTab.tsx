@@ -678,9 +678,10 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       setBulkEditData({});
       setSelectedProducts(new Set());
       await fetchProducts(debouncedSearch, categoryFilter);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to bulk update products:', error);
-      window.alert(t('admin.products.errors.bulkUpdate'));
+      const backendMsg = error?.response?.data?.error || error?.response?.data?.message;
+      window.alert(backendMsg || t('admin.products.errors.bulkUpdate'));
     }
   };
 

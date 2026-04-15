@@ -1064,44 +1064,36 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 	}
 	inClause := strings.Join(delPlaceholders, ",")
 
-	// Collect label paths for devices about to be deleted
+	// Delete devices for all products in a single statement, collecting label paths atomically
 	var labelPaths []string
+	var totalDevicesDeleted int64
 	{
-		query := fmt.Sprintf("SELECT label_path FROM devices WHERE productID IN (%s) AND label_path IS NOT NULL AND label_path != ''", inClause)
-		rows, err := tx.Query(query, delArgs...)
+		devDeleteQuery := fmt.Sprintf("DELETE FROM devices WHERE productID IN (%s) RETURNING label_path", inClause)
+		rows, err := tx.Query(devDeleteQuery, delArgs...)
 		if err != nil {
-			log.Printf("[BULK PRODUCT DELETE] Failed to collect label paths: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
+			log.Printf("[BULK PRODUCT DELETE] Failed to delete devices: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
 			return
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var lp string
+			var lp sql.NullString
 			if err := rows.Scan(&lp); err != nil {
 				log.Printf("[BULK PRODUCT DELETE] Failed to scan label path: %v", err)
-				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
 				return
 			}
-			if lp != "" {
-				labelPaths = append(labelPaths, lp)
+			totalDevicesDeleted++
+			if lp.Valid && lp.String != "" {
+				labelPaths = append(labelPaths, lp.String)
 			}
 		}
 		if err := rows.Err(); err != nil {
-			log.Printf("[BULK PRODUCT DELETE] Failed while iterating label paths: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to collect device label paths"})
+			log.Printf("[BULK PRODUCT DELETE] Failed while iterating deleted device rows: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
 			return
 		}
 	}
-
-	// Delete devices for all products in a single statement
-	devDeleteQuery := fmt.Sprintf("DELETE FROM devices WHERE productID IN (%s)", inClause)
-	devResult, err := tx.Exec(devDeleteQuery, delArgs...)
-	if err != nil {
-		log.Printf("[BULK PRODUCT DELETE] Failed to delete devices: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
-		return
-	}
-	totalDevicesDeleted, _ := devResult.RowsAffected()
 
 	// Delete products in a single statement
 	prodDeleteQuery := fmt.Sprintf("DELETE FROM products WHERE productID IN (%s)", inClause)
@@ -1154,6 +1146,17 @@ func BulkUpdateProducts(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot update more than 100 products at once"})
 		return
 	}
+
+	// Deduplicate IDs to prevent inflated counts and redundant updates
+	seenProd := make(map[int]struct{}, len(req.IDs))
+	uniqueProdIDs := make([]int, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if _, dup := seenProd[id]; !dup {
+			seenProd[id] = struct{}{}
+			uniqueProdIDs = append(uniqueProdIDs, id)
+		}
+	}
+	req.IDs = uniqueProdIDs
 
 	// Build SET clauses
 	var setClauses []string

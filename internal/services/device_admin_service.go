@@ -467,9 +467,10 @@ func (s *DeviceAdminService) DeleteDevice(ctx context.Context, deviceID string) 
 
 // BulkDeleteDeviceResult contains the results of a bulk device deletion.
 type BulkDeleteDeviceResult struct {
-	Deleted   int
-	Failed    int
-	FailedIDs []string
+	Deleted      int
+	Failed       int
+	FailedIDs    []string
+	FailedErrors map[string]string // per-device failure reasons (device ID → error message)
 }
 
 // BulkDeleteDevices deletes multiple devices within a single transaction.
@@ -486,6 +487,7 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 
 	labelPaths := make([]string, 0)
 	failedIDs := make([]string, 0)
+	failedErrors := make(map[string]string)
 	deleted := 0
 
 	for i, id := range ids {
@@ -493,6 +495,7 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf("SAVEPOINT %s", sp)); err != nil {
 			log.Printf("[BULK DEVICE DELETE] Failed to create savepoint for %s: %v", id, err)
 			failedIDs = append(failedIDs, id)
+			failedErrors[id] = fmt.Sprintf("savepoint error: %v", err)
 			continue
 		}
 
@@ -500,6 +503,7 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		if err != nil {
 			log.Printf("[BULK DEVICE DELETE] Failed for %s: %v", id, err)
 			failedIDs = append(failedIDs, id)
+			failedErrors[id] = err.Error()
 			if _, rbErr := tx.ExecContext(ctx, fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", sp)); rbErr != nil {
 				log.Printf("[BULK DEVICE DELETE] Failed to rollback savepoint for %s: %v", id, rbErr)
 			} else if _, relErr := tx.ExecContext(ctx, fmt.Sprintf("RELEASE SAVEPOINT %s", sp)); relErr != nil {
@@ -528,9 +532,10 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 	}
 
 	return &BulkDeleteDeviceResult{
-		Deleted:   deleted,
-		Failed:    len(failedIDs),
-		FailedIDs: failedIDs,
+		Deleted:      deleted,
+		Failed:       len(failedIDs),
+		FailedIDs:    failedIDs,
+		FailedErrors: failedErrors,
 	}, nil
 }
 

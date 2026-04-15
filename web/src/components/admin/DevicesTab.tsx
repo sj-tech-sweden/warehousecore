@@ -477,9 +477,10 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
       setBulkEditData({});
       setSelectedDevices(new Set());
       await fetchDevices();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to bulk update devices:', error);
-      alert(t('admin.devices.errors.bulkUpdate'));
+      const backendMsg = error?.response?.data?.error || error?.response?.data?.message;
+      alert(backendMsg || t('admin.devices.errors.bulkUpdate'));
     }
   };
 

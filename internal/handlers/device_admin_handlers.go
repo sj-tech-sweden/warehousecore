@@ -305,7 +305,16 @@ func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
 
 	message := fmt.Sprintf("Deleted %d device(s)", result.Deleted)
 	if result.Deleted == 0 && result.Failed > 0 {
-		message = "No devices were deleted"
+		// Build a summary from per-device failure reasons
+		reasons := make([]string, 0, len(result.FailedErrors))
+		for id, reason := range result.FailedErrors {
+			reasons = append(reasons, fmt.Sprintf("%s: %s", id, reason))
+		}
+		if len(reasons) > 0 {
+			message = fmt.Sprintf("No devices were deleted. Errors: %s", strings.Join(reasons, "; "))
+		} else {
+			message = "No devices were deleted"
+		}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -339,6 +348,17 @@ func BulkUpdateDevices(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot update more than 100 devices at once"})
 		return
 	}
+
+	// Deduplicate IDs to prevent inflated counts and redundant updates
+	seenDevices := make(map[string]struct{}, len(req.IDs))
+	uniqueDeviceIDs := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if _, dup := seenDevices[id]; !dup {
+			seenDevices[id] = struct{}{}
+			uniqueDeviceIDs = append(uniqueDeviceIDs, id)
+		}
+	}
+	req.IDs = uniqueDeviceIDs
 
 	// Build SET clauses
 	var setClauses []string
