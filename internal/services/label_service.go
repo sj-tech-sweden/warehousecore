@@ -751,6 +751,8 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		if info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("invalid file path: target is a symlink")
 		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("failed to check target file: %w", err)
 	}
 
 	// Write to a temporary file created inside the resolved labels directory
