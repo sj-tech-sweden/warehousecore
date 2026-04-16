@@ -546,7 +546,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
         connector2: cableFormData.connector2,
         typ: cableFormData.typ,
         length: cableFormData.length,
-        mm2: cableFormData.mm2 || undefined,
+        mm2: cableFormData.mm2 ?? undefined,
       });
       setCableConvertModal(null);
       window.alert(t('admin.products.convertToCableSuccess'));

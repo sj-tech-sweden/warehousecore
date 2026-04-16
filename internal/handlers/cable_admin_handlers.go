@@ -261,6 +261,10 @@ func CreateCable(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1, Connector2, and Type are required"})
 		return
 	}
+	if input.MM2 != nil && *input.MM2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "MM2 must be greater than 0"})
+		return
+	}
 
 	db := repository.GetSQLDB()
 
@@ -320,6 +324,22 @@ func UpdateCable(w http.ResponseWriter, r *http.Request) {
 	// Validation
 	if input.Length != nil && *input.Length <= 0 {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Length must be greater than 0"})
+		return
+	}
+	if input.MM2 != nil && *input.MM2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "MM2 must be greater than 0"})
+		return
+	}
+	if input.Connector1 != nil && *input.Connector1 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1 must be greater than 0"})
+		return
+	}
+	if input.Connector2 != nil && *input.Connector2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector2 must be greater than 0"})
+		return
+	}
+	if input.Typ != nil && *input.Typ <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Typ must be greater than 0"})
 		return
 	}
 
