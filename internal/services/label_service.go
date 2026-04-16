@@ -749,19 +749,39 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		return "", fmt.Errorf("invalid file path: outside allowed directory")
 	}
 
-	// Refuse to write if the target path is a symlink file — prevents
-	// an attacker who can place a symlink inside the labels directory
-	// from redirecting writes outside it.
-	if fi, err := os.Lstat(resolvedFilePath); err == nil {
-		if fi.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("refusing to write: target path is a symlink")
+	// Write to a temporary file created inside the validated directory and
+	// atomically rename it into place. This avoids the TOCTOU race between
+	// checking the destination path and writing to it.
+	tempFile, err := os.CreateTemp(resolvedTargetDir, filename+".*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary label file: %w", err)
+	}
+	tempFilePath := tempFile.Name()
+	cleanupTempFile := true
+	defer func() {
+		if cleanupTempFile {
+			_ = os.Remove(tempFilePath)
 		}
+	}()
+
+	if err := tempFile.Chmod(0644); err != nil {
+		tempFile.Close()
+		return "", fmt.Errorf("failed to set temporary label file permissions: %w", err)
 	}
 
-	if err := os.WriteFile(resolvedFilePath, imageData, 0644); err != nil {
-		return "", fmt.Errorf("failed to write label file: %w", err)
+	if _, err := tempFile.Write(imageData); err != nil {
+		tempFile.Close()
+		return "", fmt.Errorf("failed to write temporary label file: %w", err)
 	}
 
+	if err := tempFile.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temporary label file: %w", err)
+	}
+
+	if err := os.Rename(tempFilePath, resolvedFilePath); err != nil {
+		return "", fmt.Errorf("failed to move label file into place: %w", err)
+	}
+	cleanupTempFile = false
 	// Update device record with label path
 	labelPath := fmt.Sprintf("/labels/%s", filename)
 	db := repository.GetDB()
