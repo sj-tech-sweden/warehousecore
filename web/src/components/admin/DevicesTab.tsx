@@ -221,6 +221,13 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     setSelectedDevices(new Set());
   }, [debouncedSearch, statusFilter, productFilter, zoneFilter]);
 
+  // Selection is only available in table view, so clear it when leaving that mode
+  useEffect(() => {
+    if (viewMode !== 'table') {
+      setSelectedDevices(new Set());
+    }
+  }, [viewMode]);
+
   // Prune stale selections when the device list changes (e.g. after refresh)
   useEffect(() => {
     setSelectedDevices(prev => {

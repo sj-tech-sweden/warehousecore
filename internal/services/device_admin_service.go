@@ -516,10 +516,7 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		normalizedID := strings.TrimSpace(id)
 		if normalizedID == "" {
 			log.Printf("[BULK DEVICE DELETE] Empty device ID at index %d", i)
-			failedID := id
-			if failedID == "" {
-				failedID = fmt.Sprintf("<empty-id-%d>", i)
-			}
+			failedID := fmt.Sprintf("<empty-id-%d>", i)
 			failedIDs = append(failedIDs, failedID)
 			failedErrors[failedID] = "device ID cannot be empty"
 			continue
