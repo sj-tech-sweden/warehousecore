@@ -1714,7 +1714,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                       onChange={e =>
                         setCableFormData({
                           ...cableFormData,
-                          mm2: e.target.value === '' ? 0 : parseFloat(e.target.value),
+                          mm2: e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0),
                         })
                       }
                       className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
