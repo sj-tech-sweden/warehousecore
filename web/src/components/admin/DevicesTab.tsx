@@ -434,14 +434,19 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     try {
       const { data } = await devicesAdminApi.bulkDelete(Array.from(selectedDevices));
       if (data.failed_devices > 0) {
-        const failedIds = data.failed_ids && data.failed_ids.length > 0
-          ? `\n${t('admin.devices.failedIds')}: ${data.failed_ids.join(', ')}`
-          : '';
-        // Use backend message when all deletions failed for the real server-side reason
-        if (data.deleted_devices === 0 && data.message) {
-          alert(data.message + failedIds);
+        // Build per-device error details from the structured failed_errors map when available
+        let failedDetails = '';
+        if (data.failed_errors && typeof data.failed_errors === 'object') {
+          const entries = Object.entries(data.failed_errors as Record<string, string>)
+            .sort(([a], [b]) => a.localeCompare(b));
+          failedDetails = '\n' + entries.map(([id, reason]) => `${id}: ${reason}`).join('\n');
+        } else if (data.failed_ids && data.failed_ids.length > 0) {
+          failedDetails = `\n${t('admin.devices.failedIds')}: ${data.failed_ids.join(', ')}`;
+        }
+        if (data.deleted_devices === 0) {
+          alert(data.message + failedDetails);
         } else {
-          alert(t('admin.devices.bulkDeletePartial', { deleted: data.deleted_devices, failed: data.failed_devices }) + failedIds);
+          alert(t('admin.devices.bulkDeletePartial', { deleted: data.deleted_devices, failed: data.failed_devices }) + failedDetails);
         }
       } else {
         alert(t('admin.devices.bulkDeleteSuccess', { count: data.deleted_devices }));

@@ -465,6 +465,22 @@ func (s *DeviceAdminService) DeleteDevice(ctx context.Context, deviceID string) 
 	return nil
 }
 
+// sanitizeDeviceDeleteError converts deleteDeviceInTx errors into user-friendly messages
+// suitable for API responses. Known error types (not found, FK violation) already have
+// safe messages; anything else is replaced with a generic message to avoid leaking
+// internal DB/driver details (table names, constraint names, etc.).
+func sanitizeDeviceDeleteError(err error) string {
+	if errors.Is(err, repository.ErrNotFound) {
+		return "device not found"
+	}
+	msg := err.Error()
+	// The FK-violation branch in deleteDeviceInTx produces a known user-friendly message.
+	if strings.Contains(msg, "still linked to") {
+		return msg
+	}
+	return "internal error deleting device"
+}
+
 // BulkDeleteDeviceResult contains the results of a bulk device deletion.
 type BulkDeleteDeviceResult struct {
 	Deleted      int
@@ -495,7 +511,7 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf("SAVEPOINT %s", sp)); err != nil {
 			log.Printf("[BULK DEVICE DELETE] Failed to create savepoint for %s: %v", id, err)
 			failedIDs = append(failedIDs, id)
-			failedErrors[id] = fmt.Sprintf("savepoint error: %v", err)
+			failedErrors[id] = "internal error processing device"
 			continue
 		}
 
@@ -503,7 +519,7 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		if err != nil {
 			log.Printf("[BULK DEVICE DELETE] Failed for %s: %v", id, err)
 			failedIDs = append(failedIDs, id)
-			failedErrors[id] = err.Error()
+			failedErrors[id] = sanitizeDeviceDeleteError(err)
 			if _, rbErr := tx.ExecContext(ctx, fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", sp)); rbErr != nil {
 				log.Printf("[BULK DEVICE DELETE] Failed to rollback savepoint for %s: %v", id, rbErr)
 			} else if _, relErr := tx.ExecContext(ctx, fmt.Sprintf("RELEASE SAVEPOINT %s", sp)); relErr != nil {
@@ -537,6 +553,92 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		FailedIDs:    failedIDs,
 		FailedErrors: failedErrors,
 	}, nil
+}
+
+// BulkUpdateDeviceInput holds the optional fields that can be bulk-updated on devices.
+type BulkUpdateDeviceInput struct {
+	Status          *string
+	ZoneID          *int
+	CurrentLocation *string
+	ConditionRating *float64
+}
+
+// BulkUpdateDeviceResult contains the results of a bulk device update.
+type BulkUpdateDeviceResult struct {
+	Updated int
+}
+
+// BulkUpdateDevices updates common fields on multiple devices within a single transaction.
+// It applies the same normalization as UpdateDevice (e.g. nullableStringPtr for current_location,
+// status trimming / "free" → "in_storage" consolidation) to keep behavior consistent.
+func (s *DeviceAdminService) BulkUpdateDevices(ctx context.Context, ids []string, input *BulkUpdateDeviceInput) (*BulkUpdateDeviceResult, error) {
+	if input == nil {
+		return nil, errors.New("input cannot be nil")
+	}
+
+	var setClauses []string
+	var args []interface{}
+	paramCount := 0
+
+	if input.Status != nil {
+		status := strings.ToLower(strings.TrimSpace(*input.Status))
+		if status == "" {
+			return nil, errors.New("status cannot be empty")
+		}
+		if status == "free" {
+			status = string(models.StatusInStorage)
+		}
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", paramCount))
+		args = append(args, status)
+	}
+	if input.ZoneID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("zone_id = $%d", paramCount))
+		args = append(args, *input.ZoneID)
+	}
+	if input.CurrentLocation != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("current_location = $%d", paramCount))
+		args = append(args, nullableStringPtr(input.CurrentLocation))
+	}
+	if input.ConditionRating != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("condition_rating = $%d", paramCount))
+		args = append(args, *input.ConditionRating)
+	}
+
+	if len(setClauses) == 0 {
+		return nil, errors.New("no fields to update")
+	}
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	totalUpdated := 0
+	for _, id := range ids {
+		updateArgs := make([]interface{}, len(args))
+		copy(updateArgs, args)
+		updateArgs = append(updateArgs, id)
+		query := fmt.Sprintf("UPDATE devices SET %s WHERE deviceID = $%d",
+			strings.Join(setClauses, ", "), paramCount+1)
+		result, err := tx.ExecContext(ctx, query, updateArgs...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update device %s: %w", id, err)
+		}
+		affected, _ := result.RowsAffected()
+		totalUpdated += int(affected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Printf("[BULK DEVICE UPDATE] Updated %d devices", totalUpdated)
+	return &BulkUpdateDeviceResult{Updated: totalUpdated}, nil
 }
 
 // RegenerateLabel allows manual regeneration of a device label using the default or provided template.

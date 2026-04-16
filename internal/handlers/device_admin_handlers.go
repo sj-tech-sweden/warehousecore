@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -317,29 +316,21 @@ func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
 
 	message := fmt.Sprintf("Deleted %d device(s)", result.Deleted)
 	if result.Deleted == 0 && result.Failed > 0 {
-		// Build a summary from per-device failure reasons, sorted by device ID for stable output
-		deviceIDs := make([]string, 0, len(result.FailedErrors))
-		for id := range result.FailedErrors {
-			deviceIDs = append(deviceIDs, id)
-		}
-		sort.Strings(deviceIDs)
-		reasons := make([]string, 0, len(deviceIDs))
-		for _, id := range deviceIDs {
-			reasons = append(reasons, fmt.Sprintf("%s: %s", id, result.FailedErrors[id]))
-		}
-		if len(reasons) > 0 {
-			message = fmt.Sprintf("No devices were deleted. Errors: %s", strings.Join(reasons, "; "))
-		} else {
-			message = "No devices were deleted"
-		}
+		message = "No devices were deleted due to errors"
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+	response := map[string]interface{}{
 		"message":         message,
 		"deleted_devices": result.Deleted,
 		"failed_devices":  result.Failed,
 		"failed_ids":      result.FailedIDs,
-	})
+	}
+	if len(result.FailedErrors) > 0 {
+		// Return structured per-device errors for client display (already sanitized by service)
+		response["failed_errors"] = result.FailedErrors
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // BulkUpdateDevices updates common fields on multiple devices
@@ -377,80 +368,27 @@ func BulkUpdateDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	req.IDs = uniqueDeviceIDs
 
-	// Build SET clauses
-	var setClauses []string
-	var args []interface{}
-	paramCount := 0
-
-	if req.Updates.Status != nil {
-		status := strings.ToLower(strings.TrimSpace(*req.Updates.Status))
-		if status == "" {
-			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Status cannot be empty"})
-			return
-		}
-		if status == "free" {
-			status = "in_storage"
-		}
-		paramCount++
-		setClauses = append(setClauses, fmt.Sprintf("status = $%d", paramCount))
-		args = append(args, status)
-	}
-	if req.Updates.ZoneID != nil {
-		paramCount++
-		setClauses = append(setClauses, fmt.Sprintf("zone_id = $%d", paramCount))
-		args = append(args, *req.Updates.ZoneID)
-	}
-	if req.Updates.CurrentLocation != nil {
-		paramCount++
-		setClauses = append(setClauses, fmt.Sprintf("current_location = $%d", paramCount))
-		args = append(args, *req.Updates.CurrentLocation)
-	}
-	if req.Updates.ConditionRating != nil {
-		paramCount++
-		setClauses = append(setClauses, fmt.Sprintf("condition_rating = $%d", paramCount))
-		args = append(args, *req.Updates.ConditionRating)
-	}
-
-	if len(setClauses) == 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No fields to update"})
-		return
-	}
-
-	db := repository.GetSQLDB()
-	tx, err := db.Begin()
+	service := services.NewDeviceAdminService()
+	result, err := service.BulkUpdateDevices(r.Context(), req.IDs, &services.BulkUpdateDeviceInput{
+		Status:          req.Updates.Status,
+		ZoneID:          req.Updates.ZoneID,
+		CurrentLocation: req.Updates.CurrentLocation,
+		ConditionRating: req.Updates.ConditionRating,
+	})
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start transaction"})
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	totalUpdated := 0
-	for _, id := range req.IDs {
-		updateArgs := make([]interface{}, len(args))
-		copy(updateArgs, args)
-		updateArgs = append(updateArgs, id)
-		query := fmt.Sprintf("UPDATE devices SET %s WHERE deviceID = $%d",
-			strings.Join(setClauses, ", "), paramCount+1)
-		result, err := tx.Exec(query, updateArgs...)
-		if err != nil {
-			log.Printf("[BULK DEVICE UPDATE] Failed for device %s: %v", id, err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to update device %s", id)})
+		log.Printf("[BULK DEVICE UPDATE] Error: %v", err)
+		errorMsg := "Failed to update devices"
+		if strings.Contains(err.Error(), "status cannot be empty") || strings.Contains(err.Error(), "no fields to update") {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		affected, _ := result.RowsAffected()
-		totalUpdated += int(affected)
-	}
-
-	if err := tx.Commit(); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit transaction"})
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": errorMsg})
 		return
 	}
-
-	log.Printf("[BULK DEVICE UPDATE] Updated %d devices", totalUpdated)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":         fmt.Sprintf("Updated %d device(s)", totalUpdated),
-		"updated_devices": totalUpdated,
+		"message":         fmt.Sprintf("Updated %d device(s)", result.Updated),
+		"updated_devices": result.Updated,
 	})
 }
 

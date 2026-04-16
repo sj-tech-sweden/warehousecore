@@ -189,6 +189,18 @@ func TestBulkDeleteDevices_PartialFailure_NotFound(t *testing.T) {
 		t.Errorf("expected 2 FailedIDs, got %v", result.FailedIDs)
 	}
 
+	// Verify error messages are sanitized (no raw DB/driver details)
+	if reason, ok := result.FailedErrors["NOTFOUND"]; !ok {
+		t.Error("expected FailedErrors to contain NOTFOUND")
+	} else if reason != "device not found" {
+		t.Errorf("expected 'device not found' for NOTFOUND, got: %s", reason)
+	}
+	if reason, ok := result.FailedErrors["DEV_FK"]; !ok {
+		t.Error("expected FailedErrors to contain DEV_FK")
+	} else if reason != "internal error deleting device" {
+		t.Errorf("expected 'internal error deleting device' for DEV_FK (generic error), got: %s", reason)
+	}
+
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)
 	}
