@@ -507,29 +507,37 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 	deleted := 0
 
 	for i, id := range ids {
-		sp := fmt.Sprintf("device_delete_%d", i)
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf("SAVEPOINT %s", sp)); err != nil {
-			log.Printf("[BULK DEVICE DELETE] Failed to create savepoint for %s: %v", id, err)
+		normalizedID := strings.TrimSpace(id)
+		if normalizedID == "" {
+			log.Printf("[BULK DEVICE DELETE] Empty device ID at index %d", i)
 			failedIDs = append(failedIDs, id)
-			failedErrors[id] = "internal error processing device"
+			failedErrors[id] = "device ID cannot be empty"
 			continue
 		}
 
-		lp, err := s.deleteDeviceInTx(ctx, tx, id)
+		sp := fmt.Sprintf("device_delete_%d", i)
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf("SAVEPOINT %s", sp)); err != nil {
+			log.Printf("[BULK DEVICE DELETE] Failed to create savepoint for %s: %v", normalizedID, err)
+			failedIDs = append(failedIDs, normalizedID)
+			failedErrors[normalizedID] = "internal error processing device"
+			continue
+		}
+
+		lp, err := s.deleteDeviceInTx(ctx, tx, normalizedID)
 		if err != nil {
-			log.Printf("[BULK DEVICE DELETE] Failed for %s: %v", id, err)
-			failedIDs = append(failedIDs, id)
-			failedErrors[id] = sanitizeDeviceDeleteError(err)
+			log.Printf("[BULK DEVICE DELETE] Failed for %s: %v", normalizedID, err)
+			failedIDs = append(failedIDs, normalizedID)
+			failedErrors[normalizedID] = sanitizeDeviceDeleteError(err)
 			if _, rbErr := tx.ExecContext(ctx, fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", sp)); rbErr != nil {
-				log.Printf("[BULK DEVICE DELETE] Failed to rollback savepoint for %s: %v", id, rbErr)
+				log.Printf("[BULK DEVICE DELETE] Failed to rollback savepoint for %s: %v", normalizedID, rbErr)
 			} else if _, relErr := tx.ExecContext(ctx, fmt.Sprintf("RELEASE SAVEPOINT %s", sp)); relErr != nil {
-				log.Printf("[BULK DEVICE DELETE] Failed to release savepoint after rollback for %s: %v", id, relErr)
+				log.Printf("[BULK DEVICE DELETE] Failed to release savepoint after rollback for %s: %v", normalizedID, relErr)
 			}
 			continue
 		}
 
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf("RELEASE SAVEPOINT %s", sp)); err != nil {
-			log.Printf("[BULK DEVICE DELETE] Failed to release savepoint for %s: %v", id, err)
+			log.Printf("[BULK DEVICE DELETE] Failed to release savepoint for %s: %v", normalizedID, err)
 		}
 		deleted++
 		if lp != "" {

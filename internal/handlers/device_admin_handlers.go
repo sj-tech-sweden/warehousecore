@@ -290,13 +290,18 @@ func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deduplicate IDs to prevent inflated failure counts and redundant delete attempts
+	// Normalize, validate, and deduplicate IDs
 	seenIDs := make(map[string]struct{}, len(req.IDs))
 	uniqueIDs := make([]string, 0, len(req.IDs))
 	for _, id := range req.IDs {
-		if _, dup := seenIDs[id]; !dup {
-			seenIDs[id] = struct{}{}
-			uniqueIDs = append(uniqueIDs, id)
+		trimmedID := strings.TrimSpace(id)
+		if trimmedID == "" {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Device IDs must not be empty"})
+			return
+		}
+		if _, dup := seenIDs[trimmedID]; !dup {
+			seenIDs[trimmedID] = struct{}{}
+			uniqueIDs = append(uniqueIDs, trimmedID)
 		}
 	}
 	req.IDs = uniqueIDs
@@ -357,13 +362,18 @@ func BulkUpdateDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deduplicate IDs to prevent inflated counts and redundant updates
+	// Normalize, validate, and deduplicate IDs
 	seenDevices := make(map[string]struct{}, len(req.IDs))
 	uniqueDeviceIDs := make([]string, 0, len(req.IDs))
 	for _, id := range req.IDs {
-		if _, dup := seenDevices[id]; !dup {
-			seenDevices[id] = struct{}{}
-			uniqueDeviceIDs = append(uniqueDeviceIDs, id)
+		trimmedID := strings.TrimSpace(id)
+		if trimmedID == "" {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Device IDs must not be empty"})
+			return
+		}
+		if _, dup := seenDevices[trimmedID]; !dup {
+			seenDevices[trimmedID] = struct{}{}
+			uniqueDeviceIDs = append(uniqueDeviceIDs, trimmedID)
 		}
 	}
 	req.IDs = uniqueDeviceIDs

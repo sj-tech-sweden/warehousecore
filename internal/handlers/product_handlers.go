@@ -980,10 +980,14 @@ func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deduplicate IDs to prevent inflated counts and redundant SQL placeholders
+	// Validate and deduplicate IDs
 	seen := make(map[int]struct{}, len(req.IDs))
 	uniqueIDs := make([]int, 0, len(req.IDs))
 	for _, id := range req.IDs {
+		if id <= 0 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Product IDs must be positive integers"})
+			return
+		}
 		if _, dup := seen[id]; !dup {
 			seen[id] = struct{}{}
 			uniqueIDs = append(uniqueIDs, id)
@@ -1147,10 +1151,14 @@ func BulkUpdateProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deduplicate IDs to prevent inflated counts and redundant updates
+	// Validate and deduplicate IDs
 	seenProd := make(map[int]struct{}, len(req.IDs))
 	uniqueProdIDs := make([]int, 0, len(req.IDs))
 	for _, id := range req.IDs {
+		if id <= 0 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Product IDs must be positive integers"})
+			return
+		}
 		if _, dup := seenProd[id]; !dup {
 			seenProd[id] = struct{}{}
 			uniqueProdIDs = append(uniqueProdIDs, id)
