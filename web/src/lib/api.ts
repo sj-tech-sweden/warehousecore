@@ -332,7 +332,7 @@ export const devicesAdminApi = {
   downloadQR: (id: string) => `/api/v1/admin/devices/${id}/qr`,
   downloadBarcode: (id: string) => `/api/v1/admin/devices/${id}/barcode`,
   bulkDelete: (ids: string[]) =>
-    api.post<{ message: string; deleted_devices: number; failed_devices: number; failed_ids: string[] }>('/admin/devices/bulk-delete', { ids }),
+    api.post<{ message: string; deleted_devices: number; failed_devices: number; failed_ids: string[]; failed_errors?: Record<string, string> }>('/admin/devices/bulk-delete', { ids }),
   bulkUpdate: (ids: string[], updates: { status?: string; zone_id?: number; current_location?: string; condition_rating?: number }) =>
     api.put<{ message: string; updated_devices: number }>('/admin/devices/bulk-update', { ids, updates }),
 };
