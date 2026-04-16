@@ -3,20 +3,23 @@ import { useTranslation } from 'react-i18next';
 import {
   Box,
   Cable,
+  CheckSquare,
   Eye,
   GitBranch,
   LayoutGrid,
   List,
+  MinusSquare,
   Package,
   PackageOpen,
   Pencil,
   Plus,
   RefreshCcw,
   Search,
+  Square,
   Trash2,
   X,
 } from 'lucide-react';
-import { api, cablesAdminApi, ledApi, productConvertApi } from '../../lib/api';
+import { api, cablesAdminApi, ledApi, productConvertApi, productsAdminApi } from '../../lib/api';
 import type { CableConnector, CableType as CableTypeData, Device } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
 import { DeviceTreeTab } from './DeviceTreeTab';
@@ -201,6 +204,9 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
   const [devicesModalDevices, setDevicesModalDevices] = useState<Device[]>([]);
   const [loadingDevicesModal, setLoadingDevicesModal] = useState(false);
   const [deviceDetail, setDeviceDetail] = useState<Device | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditData, setBulkEditData] = useState<{ category_id?: number; brand_id?: number; manufacturer_id?: number; item_cost_per_day?: number }>({});
 
   // Convert-to-cable modal state
   const [cableConvertModal, setCableConvertModal] = useState<{ productId: number; productName: string } | null>(null);
@@ -225,7 +231,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
-    const anyModalOpen = modalOpen || !!viewProduct;
+    const anyModalOpen = modalOpen || !!viewProduct || bulkEditOpen;
     if (anyModalOpen) {
       // scrollPosition.current = window.scrollY || window.pageYOffset || 0; // Not needed if we don't fix body
       html.classList.add('modal-open');
@@ -249,7 +255,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     }
 
     return undefined;
-  }, [modalOpen, viewProduct]);
+  }, [modalOpen, viewProduct, bulkEditOpen]);
 
   const fetchProducts = useCallback(
     async (searchValue?: string, categoryId?: number | '') => {
@@ -650,6 +656,97 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     products,
   ]);
 
+  const toggleProductSelection = (productId: number) => {
+    setSelectedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  // Clear selection when filters/search change so invisible items aren't left selected
+  useEffect(() => {
+    setSelectedProducts(new Set());
+  }, [debouncedSearch, categoryFilter]);
+
+  // Prune stale selections when the product list changes (e.g. after refresh)
+  useEffect(() => {
+    setSelectedProducts(prev => {
+      if (prev.size === 0) return prev;
+      const currentIDs = new Set(sortedProducts.map(p => p.product_id));
+      const pruned = new Set([...prev].filter(id => currentIDs.has(id)));
+      return pruned.size === prev.size ? prev : pruned;
+    });
+  }, [sortedProducts]);
+
+  const toggleSelectAllProducts = () => {
+    if (selectedProducts.size === sortedProducts.length) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(sortedProducts.map(p => p.product_id)));
+    }
+  };
+
+  const allProductsSelected = useMemo(
+    () => sortedProducts.length > 0 && selectedProducts.size === sortedProducts.length,
+    [sortedProducts, selectedProducts],
+  );
+
+  const handleBulkDeleteProducts = async () => {
+    if (selectedProducts.size === 0) return;
+    if (!window.confirm(t('admin.products.confirmBulkDelete', { count: selectedProducts.size }))) return;
+
+    try {
+      const { data } = await productsAdminApi.bulkDelete(Array.from(selectedProducts));
+      let msg = t('admin.products.bulkDeleteSuccess', { products: data.deleted_products, devices: data.deleted_devices });
+      if (data.skipped_packages > 0) {
+        msg += ' ' + t('admin.products.skippedPackages', { count: data.skipped_packages });
+      }
+      window.alert(msg);
+      setSelectedProducts(new Set());
+      await fetchProducts(debouncedSearch, categoryFilter);
+    } catch (error) {
+      console.error('Failed to bulk delete products:', error);
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string } } };
+      const errorMessage =
+        axiosErr?.response?.data?.error ||
+        axiosErr?.response?.data?.message ||
+        t('admin.products.errors.bulkDelete');
+      window.alert(errorMessage);
+    }
+  };
+
+  const handleBulkEditProductsSubmit = async () => {
+    if (selectedProducts.size === 0) return;
+
+    const updates: { category_id?: number; brand_id?: number; manufacturer_id?: number; item_cost_per_day?: number } = {};
+    if (bulkEditData.category_id !== undefined) updates.category_id = bulkEditData.category_id;
+    if (bulkEditData.brand_id !== undefined) updates.brand_id = bulkEditData.brand_id;
+    if (bulkEditData.manufacturer_id !== undefined) updates.manufacturer_id = bulkEditData.manufacturer_id;
+    if (bulkEditData.item_cost_per_day !== undefined) updates.item_cost_per_day = bulkEditData.item_cost_per_day;
+
+    if (Object.keys(updates).length === 0) {
+      setBulkEditOpen(false);
+      return;
+    }
+
+    try {
+      await productsAdminApi.bulkUpdate(Array.from(selectedProducts), updates);
+      setBulkEditOpen(false);
+      setBulkEditData({});
+      setSelectedProducts(new Set());
+      await fetchProducts(debouncedSearch, categoryFilter);
+    } catch (error: any) {
+      console.error('Failed to bulk update products:', error);
+      const backendMsg = error?.response?.data?.error || error?.response?.data?.message;
+      window.alert(backendMsg || t('admin.products.errors.bulkUpdate'));
+    }
+  };
+
   const hasActiveFilters = debouncedSearch.trim() !== '' || categoryFilter !== '';
 
   const categoryPath = (product: Product) =>
@@ -800,6 +897,37 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedProducts.size > 0 && (
+        <div className="rounded-xl border border-accent-red/30 bg-white/5 p-3 flex items-center justify-between">
+          <span className="text-sm text-white font-medium">
+            {t('admin.products.selectedCount', { count: selectedProducts.size })}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setBulkEditData({}); setBulkEditOpen(true); }}
+              className="px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 rounded-lg text-sm text-white transition-colors flex items-center gap-1"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              {t('admin.products.bulkEdit')}
+            </button>
+            <button
+              onClick={handleBulkDeleteProducts}
+              className="px-3 py-1.5 bg-red-600/80 hover:bg-red-600 rounded-lg text-sm text-white transition-colors flex items-center gap-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t('admin.products.bulkDelete')}
+            </button>
+            <button
+              onClick={() => setSelectedProducts(new Set())}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-gray-300 transition-colors"
+            >
+              {t('admin.products.deselectAll')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {loadingProducts ? (
         <div className="glass rounded-xl p-8 text-center text-gray-400">
           {t('admin.products.loading')}
@@ -816,6 +944,29 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
             <table className="min-w-full divide-y divide-white/10 text-sm text-gray-200">
               <thead className="bg-white/5 text-xs uppercase tracking-wide text-gray-400">
                 <tr>
+                  <th className="w-10 px-3 py-3">
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={
+                        allProductsSelected
+                          ? true
+                          : selectedProducts.size > 0 && selectedProducts.size < sortedProducts.length
+                            ? 'mixed'
+                            : false
+                      }
+                      onClick={toggleSelectAllProducts}
+                      className="text-gray-400 hover:text-white"
+                      aria-label={allProductsSelected ? t('admin.products.deselectAll') : t('admin.products.selectAll')}
+                      title={allProductsSelected ? t('admin.products.deselectAll') : t('admin.products.selectAll')}
+                    >
+                      {(() => {
+                        if (allProductsSelected) return <CheckSquare className="w-4 h-4" />;
+                        if (selectedProducts.size > 0) return <MinusSquare className="w-4 h-4" />;
+                        return <Square className="w-4 h-4" />;
+                      })()}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left font-semibold">{t('products.title')}</th>
                   <th className="px-4 py-3 text-left font-semibold">{t('products.category')}</th>
                   <th className="px-4 py-3 text-left font-semibold">{t('admin.products.brandManufacturer')}</th>
@@ -825,7 +976,19 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
               </thead>
               <tbody className="divide-y divide-white/10">
                 {sortedProducts.map(product => (
-                  <tr key={product.product_id} className="hover:bg-white/5">
+                  <tr key={product.product_id} className={`hover:bg-white/5 ${selectedProducts.has(product.product_id) ? 'bg-white/5' : ''}`}>
+                    <td className="w-10 px-3 py-3 align-top">
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={selectedProducts.has(product.product_id)}
+                        onClick={() => toggleProductSelection(product.product_id)}
+                        className="text-gray-400 hover:text-white"
+                        aria-label={selectedProducts.has(product.product_id) ? t('admin.products.deselectProduct', { name: product.name }) : t('admin.products.selectProduct', { name: product.name })}
+                      >
+                        {selectedProducts.has(product.product_id) ? <CheckSquare className="w-4 h-4 text-accent-red" /> : <Square className="w-4 h-4" />}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex flex-col">
                         <span className="text-white font-medium">{product.name}</span>
@@ -1741,6 +1904,100 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     {convertSubmitting ? <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" /> : t('admin.products.convertToCable')}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* Bulk Edit Products Modal */}
+      {bulkEditOpen && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
+            <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-lg w-full">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">{t('admin.products.bulkEditTitle')}</h3>
+                <button onClick={() => setBulkEditOpen(false)} className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors" aria-label={t('common.close')} title={t('common.close')}>
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-400 mb-4">
+                {t('admin.products.bulkEditDescription', { count: selectedProducts.size })}
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('products.category')}</label>
+                  <SearchableSelect
+                    value={bulkEditData.category_id ? String(bulkEditData.category_id) : ''}
+                    onChange={v => setBulkEditData({ ...bulkEditData, category_id: v ? Number(v) : undefined })}
+                    options={[
+                      { value: '', label: '—' },
+                      ...categories.map(c => ({ value: String(c.category_id), label: c.name })),
+                    ]}
+                    className="w-full"
+                    title={t('products.category')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('admin.brandsManufacturers.levels.brands')}</label>
+                  <SearchableSelect
+                    value={bulkEditData.brand_id ? String(bulkEditData.brand_id) : ''}
+                    onChange={v => setBulkEditData({ ...bulkEditData, brand_id: v ? Number(v) : undefined })}
+                    options={[
+                      { value: '', label: '—' },
+                      ...brands.map(b => ({ value: String(b.brand_id), label: b.name })),
+                    ]}
+                    className="w-full"
+                    title={t('admin.brandsManufacturers.levels.brands')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('admin.brandsManufacturers.levels.manufacturers')}</label>
+                  <SearchableSelect
+                    value={bulkEditData.manufacturer_id ? String(bulkEditData.manufacturer_id) : ''}
+                    onChange={v => setBulkEditData({ ...bulkEditData, manufacturer_id: v ? Number(v) : undefined })}
+                    options={[
+                      { value: '', label: '—' },
+                      ...manufacturers.map(m => ({ value: String(m.manufacturer_id), label: m.name })),
+                    ]}
+                    className="w-full"
+                    title={t('admin.brandsManufacturers.levels.manufacturers')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('products.pricePerDay')}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={bulkEditData.item_cost_per_day ?? ''}
+                    onChange={e => {
+                      const { value } = e.target;
+                      const parsedValue = value === '' ? undefined : Number(value);
+                      setBulkEditData({
+                        ...bulkEditData,
+                        item_cost_per_day:
+                          parsedValue === undefined || Number.isFinite(parsedValue) ? parsedValue : undefined,
+                      });
+                    }}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-gray-500"
+                    placeholder="—"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setBulkEditOpen(false)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-white transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={handleBulkEditProductsSubmit}
+                  className="px-4 py-2 bg-accent-red hover:bg-accent-red/80 rounded-lg text-sm text-white font-semibold transition-colors"
+                >
+                  {t('common.save')}
+                </button>
               </div>
             </div>
           </div>

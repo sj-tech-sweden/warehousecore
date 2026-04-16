@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  CheckSquare,
   Download,
   Eye,
   LayoutGrid,
   List,
+  MinusSquare,
   Package,
   Pencil,
   Plus,
@@ -11,6 +13,7 @@ import {
   RefreshCcw,
   ScanLine,
   Search,
+  Square,
   Trash2,
   X,
 } from 'lucide-react';
@@ -122,9 +125,12 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
   const [zoneFilter, setZoneFilter] = useState<number | ''>('');
   const [refreshing, setRefreshing] = useState(false);
   const [scanFieldTarget, setScanFieldTarget] = useState<keyof Pick<DeviceFormData, 'rfid' | 'serial_number' | 'barcode' | 'qr_code'> | null>(null);
+  const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditData, setBulkEditData] = useState<{ status?: string; zone_id?: number }>({});
 
   // Block body scroll when any modal is open
-  useBlockBodyScroll(modalOpen);
+  useBlockBodyScroll(modalOpen || bulkEditOpen);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
@@ -209,6 +215,28 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
 
     return matchesSearch && matchesStatus && matchesProduct && matchesZone;
   });
+
+  // Clear selection when filters/search change so invisible items aren't left selected
+  useEffect(() => {
+    setSelectedDevices(new Set());
+  }, [debouncedSearch, statusFilter, productFilter, zoneFilter]);
+
+  // Selection is only available in table view, so clear it when leaving that mode
+  useEffect(() => {
+    if (viewMode !== 'table') {
+      setSelectedDevices(new Set());
+    }
+  }, [viewMode]);
+
+  // Prune stale selections when the device list changes (e.g. after refresh)
+  useEffect(() => {
+    setSelectedDevices(prev => {
+      if (prev.size === 0) return prev;
+      const currentIDs = new Set(filteredDevices.map(d => d.device_id));
+      const pruned = new Set([...prev].filter(id => currentIDs.has(id)));
+      return pruned.size === prev.size ? prev : pruned;
+    });
+  }, [filteredDevices]);
 
   const statusLabel = (status?: string) => {
     if (!status) return '-';
@@ -381,6 +409,93 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
     window.open(devicesAdminApi.downloadBarcode(deviceId), '_blank');
   };
 
+  const toggleDeviceSelection = (deviceId: string) => {
+    setSelectedDevices(prev => {
+      const next = new Set(prev);
+      if (next.has(deviceId)) {
+        next.delete(deviceId);
+      } else {
+        next.add(deviceId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedDevices.size === filteredDevices.length) {
+      setSelectedDevices(new Set());
+    } else {
+      setSelectedDevices(new Set(filteredDevices.map(d => d.device_id)));
+    }
+  };
+
+  const allFilteredSelected = useMemo(
+    () => filteredDevices.length > 0 && selectedDevices.size === filteredDevices.length,
+    [filteredDevices, selectedDevices],
+  );
+
+  const handleBulkDelete = async () => {
+    if (selectedDevices.size === 0) return;
+    if (!window.confirm(t('admin.devices.confirmBulkDelete', { count: selectedDevices.size }))) return;
+
+    try {
+      const { data } = await devicesAdminApi.bulkDelete(Array.from(selectedDevices));
+      if (data.failed_devices > 0) {
+        // Build per-device error details from the structured failed_errors map when available
+        let failedDetails = '';
+        if (data.failed_errors && typeof data.failed_errors === 'object') {
+          const entries = Object.entries(data.failed_errors as Record<string, string>)
+            .sort(([a], [b]) => a.localeCompare(b));
+          failedDetails = '\n' + entries.map(([id, reason]) => `${id}: ${reason}`).join('\n');
+        } else if (data.failed_ids && data.failed_ids.length > 0) {
+          failedDetails = `\n${t('admin.devices.failedIds')}: ${data.failed_ids.join(', ')}`;
+        }
+        if (data.deleted_devices === 0) {
+          alert(data.message + failedDetails);
+        } else {
+          alert(t('admin.devices.bulkDeletePartial', { deleted: data.deleted_devices, failed: data.failed_devices }) + failedDetails);
+        }
+      } else {
+        alert(t('admin.devices.bulkDeleteSuccess', { count: data.deleted_devices }));
+      }
+      setSelectedDevices(new Set());
+      await fetchDevices();
+    } catch (error) {
+      console.error('Failed to bulk delete devices:', error);
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string } } };
+      const errorMessage =
+        axiosErr?.response?.data?.error ||
+        axiosErr?.response?.data?.message ||
+        t('admin.devices.errors.bulkDelete');
+      alert(errorMessage);
+    }
+  };
+
+  const handleBulkEditSubmit = async () => {
+    if (selectedDevices.size === 0) return;
+
+    const updates: { status?: string; zone_id?: number } = {};
+    if (bulkEditData.status !== undefined) updates.status = bulkEditData.status;
+    if (bulkEditData.zone_id !== undefined) updates.zone_id = bulkEditData.zone_id;
+
+    if (Object.keys(updates).length === 0) {
+      setBulkEditOpen(false);
+      return;
+    }
+
+    try {
+      await devicesAdminApi.bulkUpdate(Array.from(selectedDevices), updates);
+      setBulkEditOpen(false);
+      setBulkEditData({});
+      setSelectedDevices(new Set());
+      await fetchDevices();
+    } catch (error: any) {
+      console.error('Failed to bulk update devices:', error);
+      const backendMsg = error?.response?.data?.error || error?.response?.data?.message;
+      alert(backendMsg || t('admin.devices.errors.bulkUpdate'));
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -505,6 +620,37 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedDevices.size > 0 && (
+        <div className="glass-dark rounded-xl p-3 flex items-center justify-between border border-accent-red/30">
+          <span className="text-sm text-white font-medium">
+            {t('admin.devices.selectedCount', { count: selectedDevices.size })}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setBulkEditData({}); setBulkEditOpen(true); }}
+              className="px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 rounded-lg text-sm text-white transition-colors flex items-center gap-1"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              {t('admin.devices.bulkEdit')}
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              className="px-3 py-1.5 bg-red-600/80 hover:bg-red-600 rounded-lg text-sm text-white transition-colors flex items-center gap-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t('admin.devices.bulkDelete')}
+            </button>
+            <button
+              onClick={() => setSelectedDevices(new Set())}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-gray-300 transition-colors"
+            >
+              {t('admin.devices.deselectAll')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Device List */}
       {loadingDevices ? (
         <div className="text-center py-12 text-gray-400">{t('admin.devices.loading')}</div>
@@ -520,6 +666,29 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
             <table className="w-full">
               <thead className="bg-white/5">
                 <tr>
+                  <th className="w-10 px-3 py-3">
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={
+                        allFilteredSelected
+                          ? true
+                          : filteredDevices.some((device) => selectedDevices.has(device.device_id))
+                            ? 'mixed'
+                            : false
+                      }
+                      onClick={toggleSelectAll}
+                      className="text-gray-400 hover:text-white"
+                      aria-label={allFilteredSelected ? t('admin.devices.deselectAll') : t('admin.devices.selectAll')}
+                      title={allFilteredSelected ? t('admin.devices.deselectAll') : t('admin.devices.selectAll')}
+                    >
+                      {(() => {
+                        if (allFilteredSelected) return <CheckSquare className="w-4 h-4" />;
+                        if (selectedDevices.size > 0) return <MinusSquare className="w-4 h-4" />;
+                        return <Square className="w-4 h-4" />;
+                      })()}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">ID</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">{t('zoneDetail.columns.product')}</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">{t('admin.devices.serialShort')}</th>
@@ -533,7 +702,19 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
               {filteredDevices.map((device) => {
                   const ns = normalizeDeviceStatus(device.status);
                   return (
-                  <tr key={device.device_id} className="hover:bg-white/5 transition-colors">
+                  <tr key={device.device_id} className={`hover:bg-white/5 transition-colors ${selectedDevices.has(device.device_id) ? 'bg-white/5' : ''}`}>
+                    <td className="w-10 px-3 py-3">
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={selectedDevices.has(device.device_id)}
+                        onClick={() => toggleDeviceSelection(device.device_id)}
+                        className="text-gray-400 hover:text-white"
+                        aria-label={selectedDevices.has(device.device_id) ? t('admin.devices.deselectDevice', { id: device.device_id }) : t('admin.devices.selectDevice', { id: device.device_id })}
+                      >
+                        {selectedDevices.has(device.device_id) ? <CheckSquare className="w-4 h-4 text-accent-red" /> : <Square className="w-4 h-4" />}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-300">{device.device_id}</td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex flex-col">
@@ -1197,6 +1378,73 @@ export function DevicesTab({ initialProductFilter, initialEditDeviceId, onEditCo
         onClose={() => setViewDevice(null)}
         onEdit={(device) => openEditModal(device)}
       />
+
+      {/* Bulk Edit Modal */}
+      {bulkEditOpen && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
+            <div className="glass-dark rounded-2xl p-6 max-w-lg w-full">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">{t('admin.devices.bulkEditTitle')}</h3>
+                <button onClick={() => setBulkEditOpen(false)} aria-label={t('common.close')} title={t('common.close')}>
+                  <X className="w-6 h-6 text-gray-400" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-400 mb-4">
+                {t('admin.devices.bulkEditDescription', { count: selectedDevices.size })}
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('devices.status')}</label>
+                  <select
+                    value={bulkEditData.status || ''}
+                    onChange={(e) => setBulkEditData({ ...bulkEditData, status: e.target.value || undefined })}
+                    className="input-field w-full"
+                    title={t('devices.status')}
+                  >
+                    <option value="">—</option>
+                    <option value="in_storage">{t('admin.devices.statuses.in_storage')}</option>
+                    <option value="on_job">{t('admin.devices.statuses.on_job')}</option>
+                    <option value="defective">{t('admin.devices.statuses.defective')}</option>
+                    <option value="maintenance">{t('admin.devices.statuses.maintenance')}</option>
+                    <option value="retired">{t('admin.devices.statuses.retired')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">{t('devices.zone')}</label>
+                  <SearchableSelect
+                    value={bulkEditData.zone_id ? String(bulkEditData.zone_id) : ''}
+                    onChange={(v) => setBulkEditData({ ...bulkEditData, zone_id: v ? Number(v) : undefined })}
+                    options={[
+                      { value: '', label: '—' },
+                      ...zones.map((zone) => ({
+                        value: String(zone.zone_id),
+                        label: `${zone.code} - ${zone.name}`,
+                      })),
+                    ]}
+                    className="input-field p-0 border-0 w-full"
+                    title={t('devices.zone')}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setBulkEditOpen(false)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-white transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={handleBulkEditSubmit}
+                  className="px-4 py-2 bg-accent-red hover:bg-accent-red/80 rounded-lg text-sm text-white font-semibold transition-colors"
+                >
+                  {t('common.save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
       {/* Scan Field Modal */}
       {(() => {

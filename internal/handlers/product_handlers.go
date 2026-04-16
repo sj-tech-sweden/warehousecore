@@ -27,6 +27,18 @@ var productPictureService = services.NewProductPictureServiceFromEnv()
 var errPicturesUnavailable = errors.New("product pictures not available")
 var websiteRevalidator = services.NewRevalidatorFromEnv()
 
+// cleanupDeviceLabelFiles removes label files from disk for the given label_path values.
+// Delegates to services.RemoveLabelFile for path sanitization and traversal protection.
+func cleanupDeviceLabelFiles(labelPaths []string, logPrefix string) {
+	for _, lp := range labelPaths {
+		if strings.TrimSpace(lp) == "" {
+			log.Printf("%s: skipping empty label path during cleanup", logPrefix)
+			continue
+		}
+		services.RemoveLabelFile(lp)
+	}
+}
+
 // Product represents a product (item type)
 type Product struct {
 	ProductID           int      `json:"product_id"`
@@ -863,50 +875,60 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Count devices to be deleted
-	var deviceCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM devices WHERE productID = $1", id).Scan(&deviceCount)
+	log.Printf("[PRODUCT DELETE] Deleting product %d (%s)", id, productName)
+
+	// Start a transaction for atomic device + product deletion
+	tx, err := db.Begin()
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to check product devices"})
+		log.Printf("[PRODUCT DELETE ERROR] Failed to start transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete product"})
 		return
 	}
+	defer func() { _ = tx.Rollback() }()
 
-	log.Printf("[PRODUCT DELETE] Deleting product %d (%s) with %d associated device(s)", id, productName, deviceCount)
-
-	// Cascade delete: Delete all associated devices first
-	if deviceCount > 0 {
-		// Get device IDs for detailed logging
-		var deviceIDs []string
-		rows, err := db.Query("SELECT deviceID FROM devices WHERE productID = $1", id)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var deviceID string
-				if err := rows.Scan(&deviceID); err == nil {
-					deviceIDs = append(deviceIDs, deviceID)
-				}
-			}
-		}
-
-		log.Printf("[PRODUCT DELETE] Deleting %d devices: %v", len(deviceIDs), deviceIDs)
-
-		// Delete all devices for this product
-		result, err := db.Exec("DELETE FROM devices WHERE productID = $1", id)
-		if err != nil {
-			log.Printf("[PRODUCT DELETE ERROR] Failed to delete devices for product %d: %v", id, err)
+	// Cascade delete: Delete all associated devices using DELETE ... RETURNING
+	// to atomically get label paths only for rows that were actually deleted.
+	// Always run unconditionally inside the transaction to avoid race conditions.
+	var labelPaths []string
+	rows, err := tx.Query("DELETE FROM devices WHERE productID = $1 RETURNING deviceID, label_path", id)
+	if err != nil {
+		log.Printf("[PRODUCT DELETE ERROR] Failed to delete devices for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error":   "Failed to delete associated devices",
+			"message": "Error deleting device(s) before product deletion",
+		})
+		return
+	}
+	defer rows.Close()
+	var deviceIDs []string
+	for rows.Next() {
+		var deviceID string
+		var labelPath sql.NullString
+		if err := rows.Scan(&deviceID, &labelPath); err != nil {
+			log.Printf("[PRODUCT DELETE ERROR] Failed to scan deleted device row for product %d: %v", id, err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{
 				"error":   "Failed to delete associated devices",
-				"message": fmt.Sprintf("Error deleting %d device(s) before product deletion", deviceCount),
+				"message": "Error reading deleted device data",
 			})
 			return
 		}
-
-		deletedDevices, _ := result.RowsAffected()
-		log.Printf("[PRODUCT DELETE] Successfully deleted %d devices for product %d", deletedDevices, id)
+		deviceIDs = append(deviceIDs, deviceID)
+		if labelPath.Valid && labelPath.String != "" {
+			labelPaths = append(labelPaths, labelPath.String)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[PRODUCT DELETE ERROR] Error iterating deleted devices for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete associated devices"})
+		return
+	}
+	deletedDevices := int64(len(deviceIDs))
+	if deletedDevices > 0 {
+		log.Printf("[PRODUCT DELETE] Deleted %d devices: %v", deletedDevices, deviceIDs)
 	}
 
-	// Now delete the product
-	result, err := db.Exec("DELETE FROM products WHERE productID = $1", id)
+	// Now delete the product (within the same transaction)
+	result, err := tx.Exec("DELETE FROM products WHERE productID = $1", id)
 	if err != nil {
 		log.Printf("[PRODUCT DELETE ERROR] Failed to delete product %d: %v", id, err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete product"})
@@ -919,17 +941,318 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := tx.Commit(); err != nil {
+		log.Printf("[PRODUCT DELETE ERROR] Failed to commit transaction for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete product"})
+		return
+	}
+
 	log.Printf("[PRODUCT DELETE] Successfully deleted product %d (%s)", id, productName)
 
-	// Include device count in response
+	// Clean up device label files after successful commit
+	cleanupDeviceLabelFiles(labelPaths, "PRODUCT DELETE")
+
+	// Include device count in response (based on actual DELETE result, not pre-tx COUNT)
 	message := "Product deleted successfully"
-	if deviceCount > 0 {
-		message = fmt.Sprintf("Product deleted successfully along with %d device(s)", deviceCount)
+	if deletedDevices > 0 {
+		message = fmt.Sprintf("Product deleted successfully along with %d device(s)", deletedDevices)
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message":         message,
-		"deleted_devices": fmt.Sprintf("%d", deviceCount),
+		"deleted_devices": fmt.Sprintf("%d", deletedDevices),
+	})
+}
+
+// BulkDeleteProducts deletes multiple products and their associated devices
+func BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []int `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No product IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot delete more than 100 products at once"})
+		return
+	}
+
+	// Validate and deduplicate IDs
+	seen := make(map[int]struct{}, len(req.IDs))
+	uniqueIDs := make([]int, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if id <= 0 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Product IDs must be positive integers"})
+			return
+		}
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			uniqueIDs = append(uniqueIDs, id)
+		}
+	}
+	req.IDs = uniqueIDs
+
+	db := repository.GetSQLDB()
+	tx, err := db.Begin()
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start transaction"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Filter out package-managed products (single query instead of N+1)
+	var skippedPackages []int
+	var deletableIDs []int
+
+	placeholders := make([]string, len(req.IDs))
+	args := make([]interface{}, len(req.IDs))
+	for i, id := range req.IDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+	pkgQuery := fmt.Sprintf(
+		"SELECT DISTINCT product_id FROM product_packages WHERE product_id IN (%s)",
+		strings.Join(placeholders, ", "),
+	)
+	pkgRows, err := tx.Query(pkgQuery, args...)
+	if err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed to check package mappings: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
+		return
+	}
+	defer pkgRows.Close()
+	packageManaged := make(map[int]struct{}, len(req.IDs))
+	for pkgRows.Next() {
+		var productID int
+		if err := pkgRows.Scan(&productID); err != nil {
+			log.Printf("[BULK PRODUCT DELETE] Failed to scan package mapping: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
+			return
+		}
+		packageManaged[productID] = struct{}{}
+	}
+	if err := pkgRows.Err(); err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed while reading package mappings: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify package mappings"})
+		return
+	}
+
+	for _, id := range req.IDs {
+		if _, ok := packageManaged[id]; ok {
+			skippedPackages = append(skippedPackages, id)
+		} else {
+			deletableIDs = append(deletableIDs, id)
+		}
+	}
+
+	if len(deletableIDs) == 0 {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"message":          fmt.Sprintf("No products deleted (%d skipped as package-managed)", len(skippedPackages)),
+			"deleted_products": 0,
+			"deleted_devices":  0,
+			"skipped_packages": len(skippedPackages),
+		})
+		return
+	}
+
+	// Build placeholders for deletable IDs (reused by label collection, device delete, product delete)
+	delPlaceholders := make([]string, len(deletableIDs))
+	delArgs := make([]interface{}, len(deletableIDs))
+	for i, id := range deletableIDs {
+		delPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+		delArgs[i] = id
+	}
+	inClause := strings.Join(delPlaceholders, ",")
+
+	// Delete devices for all products in a single statement, collecting label paths atomically
+	var labelPaths []string
+	var totalDevicesDeleted int64
+	{
+		devDeleteQuery := fmt.Sprintf("DELETE FROM devices WHERE productID IN (%s) RETURNING label_path", inClause)
+		rows, err := tx.Query(devDeleteQuery, delArgs...)
+		if err != nil {
+			log.Printf("[BULK PRODUCT DELETE] Failed to delete devices: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var lp sql.NullString
+			if err := rows.Scan(&lp); err != nil {
+				log.Printf("[BULK PRODUCT DELETE] Failed to scan label path: %v", err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
+				return
+			}
+			totalDevicesDeleted++
+			if lp.Valid && lp.String != "" {
+				labelPaths = append(labelPaths, lp.String)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[BULK PRODUCT DELETE] Failed while iterating deleted device rows: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete devices"})
+			return
+		}
+	}
+
+	// Delete products in a single statement
+	prodDeleteQuery := fmt.Sprintf("DELETE FROM products WHERE productID IN (%s)", inClause)
+	prodResult, err := tx.Exec(prodDeleteQuery, delArgs...)
+	if err != nil {
+		log.Printf("[BULK PRODUCT DELETE] Failed to delete products: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete products"})
+		return
+	}
+	totalProductsDeleted, _ := prodResult.RowsAffected()
+
+	if err := tx.Commit(); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit transaction"})
+		return
+	}
+
+	// Clean up label files after successful commit
+	cleanupDeviceLabelFiles(labelPaths, "BULK PRODUCT DELETE")
+
+	log.Printf("[BULK PRODUCT DELETE] Deleted %d products and %d devices", totalProductsDeleted, totalDevicesDeleted)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":          fmt.Sprintf("Deleted %d product(s) and %d device(s)", totalProductsDeleted, totalDevicesDeleted),
+		"deleted_products": totalProductsDeleted,
+		"deleted_devices":  totalDevicesDeleted,
+		"skipped_packages": len(skippedPackages),
+	})
+}
+
+// BulkUpdateProducts updates common fields on multiple products
+func BulkUpdateProducts(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs     []int `json:"ids"`
+		Updates struct {
+			CategoryID     *int     `json:"category_id"`
+			BrandID        *int     `json:"brand_id"`
+			ManufacturerID *int     `json:"manufacturer_id"`
+			ItemCostPerDay *float64 `json:"item_cost_per_day"`
+		} `json:"updates"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No product IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot update more than 100 products at once"})
+		return
+	}
+
+	// Validate and deduplicate IDs
+	seenProd := make(map[int]struct{}, len(req.IDs))
+	uniqueProdIDs := make([]int, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if id <= 0 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Product IDs must be positive integers"})
+			return
+		}
+		if _, dup := seenProd[id]; !dup {
+			seenProd[id] = struct{}{}
+			uniqueProdIDs = append(uniqueProdIDs, id)
+		}
+	}
+	req.IDs = uniqueProdIDs
+
+	// Build SET clauses
+	var setClauses []string
+	var args []interface{}
+	paramCount := 0
+
+	if req.Updates.CategoryID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("categoryID = $%d", paramCount))
+		args = append(args, *req.Updates.CategoryID)
+	}
+	if req.Updates.BrandID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("brandID = $%d", paramCount))
+		args = append(args, *req.Updates.BrandID)
+	}
+	if req.Updates.ManufacturerID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("manufacturerID = $%d", paramCount))
+		args = append(args, *req.Updates.ManufacturerID)
+	}
+	if req.Updates.ItemCostPerDay != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("itemcostperday = $%d", paramCount))
+		args = append(args, *req.Updates.ItemCostPerDay)
+	}
+
+	if len(setClauses) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No fields to update"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+	tx, err := db.Begin()
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start transaction"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	totalUpdated := 0
+	for _, id := range req.IDs {
+		updateArgs := make([]interface{}, len(args))
+		copy(updateArgs, args)
+		updateArgs = append(updateArgs, id)
+		query := fmt.Sprintf("UPDATE products SET %s WHERE productID = $%d",
+			strings.Join(setClauses, ", "), paramCount+1)
+		result, err := tx.Exec(query, updateArgs...)
+		if err != nil {
+			log.Printf("[BULK PRODUCT UPDATE] Failed for product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to update product %d", id)})
+			return
+		}
+		affected, _ := result.RowsAffected()
+		totalUpdated += int(affected)
+	}
+
+	// Sync product_packages.price for package-managed products when price is updated
+	if req.Updates.ItemCostPerDay != nil && len(req.IDs) > 0 {
+		placeholders := make([]string, len(req.IDs))
+		syncArgs := make([]interface{}, 0, len(req.IDs)+1)
+		syncArgs = append(syncArgs, *req.Updates.ItemCostPerDay)
+		for i, id := range req.IDs {
+			placeholders[i] = fmt.Sprintf("$%d", i+2)
+			syncArgs = append(syncArgs, id)
+		}
+		syncQuery := fmt.Sprintf(`
+			UPDATE product_packages SET price = $1
+			WHERE product_id IN (%s)`, strings.Join(placeholders, ","))
+		if _, err := tx.Exec(syncQuery, syncArgs...); err != nil {
+			log.Printf("[BULK PRODUCT UPDATE] Failed to sync product_packages.price: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to sync package pricing"})
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit transaction"})
+		return
+	}
+
+	log.Printf("[BULK PRODUCT UPDATE] Updated %d products", totalUpdated)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":          fmt.Sprintf("Updated %d product(s)", totalUpdated),
+		"updated_products": totalUpdated,
 	})
 }
 

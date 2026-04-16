@@ -3,6 +3,7 @@ module warehousecore
 go 1.25.0
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/boombuler/barcode v1.1.0
 	github.com/chai2010/webp v1.4.0
 	github.com/chromedp/chromedp v0.14.2

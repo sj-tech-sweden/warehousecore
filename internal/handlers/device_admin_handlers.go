@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -278,6 +279,138 @@ func DeleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Device deleted successfully"})
+}
+
+// BulkDeleteDevices deletes multiple devices.
+// Returns 400 for request-level validation failures (invalid JSON, empty/whitespace IDs, >100 IDs).
+// Returns 200 with deleted_devices/failed_devices counts for per-device results.
+func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No device IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot delete more than 100 devices at once"})
+		return
+	}
+
+	// Normalize, validate, and deduplicate IDs
+	seenIDs := make(map[string]struct{}, len(req.IDs))
+	uniqueIDs := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		trimmedID := strings.TrimSpace(id)
+		if trimmedID == "" {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Device IDs must not be empty"})
+			return
+		}
+		if _, dup := seenIDs[trimmedID]; !dup {
+			seenIDs[trimmedID] = struct{}{}
+			uniqueIDs = append(uniqueIDs, trimmedID)
+		}
+	}
+	req.IDs = uniqueIDs
+
+	service := services.NewDeviceAdminService()
+	result, err := service.BulkDeleteDevices(r.Context(), req.IDs)
+	if err != nil {
+		log.Printf("[BULK DEVICE DELETE] Transaction error: %v", err)
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"message":         "Failed to process bulk delete due to a server error",
+			"deleted_devices": 0,
+			"failed_devices":  len(req.IDs),
+			"failed_ids":      req.IDs,
+		})
+		return
+	}
+
+	message := fmt.Sprintf("Deleted %d device(s)", result.Deleted)
+	if result.Deleted == 0 && result.Failed > 0 {
+		message = "No devices were deleted due to errors"
+	}
+
+	response := map[string]interface{}{
+		"message":         message,
+		"deleted_devices": result.Deleted,
+		"failed_devices":  result.Failed,
+		"failed_ids":      result.FailedIDs,
+	}
+	if len(result.FailedErrors) > 0 {
+		// Return structured per-device errors for client display (already sanitized by service)
+		response["failed_errors"] = result.FailedErrors
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+// BulkUpdateDevices updates common fields on multiple devices
+func BulkUpdateDevices(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs     []string `json:"ids"`
+		Updates struct {
+			Status          *string  `json:"status"`
+			ZoneID          *int     `json:"zone_id"`
+			CurrentLocation *string  `json:"current_location"`
+			ConditionRating *float64 `json:"condition_rating"`
+		} `json:"updates"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if len(req.IDs) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No device IDs provided"})
+		return
+	}
+	if len(req.IDs) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot update more than 100 devices at once"})
+		return
+	}
+
+	// Normalize, validate, and deduplicate IDs
+	seenDevices := make(map[string]struct{}, len(req.IDs))
+	uniqueDeviceIDs := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		trimmedID := strings.TrimSpace(id)
+		if trimmedID == "" {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Device IDs must not be empty"})
+			return
+		}
+		if _, dup := seenDevices[trimmedID]; !dup {
+			seenDevices[trimmedID] = struct{}{}
+			uniqueDeviceIDs = append(uniqueDeviceIDs, trimmedID)
+		}
+	}
+	req.IDs = uniqueDeviceIDs
+
+	service := services.NewDeviceAdminService()
+	result, err := service.BulkUpdateDevices(r.Context(), req.IDs, &services.BulkUpdateDeviceInput{
+		Status:          req.Updates.Status,
+		ZoneID:          req.Updates.ZoneID,
+		CurrentLocation: req.Updates.CurrentLocation,
+		ConditionRating: req.Updates.ConditionRating,
+	})
+	if err != nil {
+		log.Printf("[BULK DEVICE UPDATE] Error: %v", err)
+		errorMsg := "Failed to update devices"
+		if strings.Contains(err.Error(), "status cannot be empty") || strings.Contains(err.Error(), "no fields to update") {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": errorMsg})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":         fmt.Sprintf("Updated %d device(s)", result.Updated),
+		"updated_devices": result.Updated,
+	})
 }
 
 // GetDeviceAdmin retrieves a single device with full details

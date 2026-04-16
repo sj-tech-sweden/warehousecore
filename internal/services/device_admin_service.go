@@ -389,6 +389,61 @@ func (s *DeviceAdminService) UpdateDevice(ctx context.Context, deviceID string, 
 	return s.FetchDevice(ctx, newDeviceID)
 }
 
+// deleteDeviceInTx deletes a single device within the provided transaction.
+// It returns the device's label_path (if any) for post-commit cleanup.
+// Uses DELETE ... RETURNING to atomically delete and retrieve the label path.
+func (s *DeviceAdminService) deleteDeviceInTx(ctx context.Context, tx *sql.Tx, deviceID string) (string, error) {
+	var labelPath sql.NullString
+	err := tx.QueryRowContext(ctx, `DELETE FROM devices WHERE deviceID = $1 RETURNING label_path`, deviceID).Scan(&labelPath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", repository.ErrNotFound
+	}
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23503" { // foreign_key_violation
+			return "", fmt.Errorf("device %s is still linked to cases, jobs, or history entries", deviceID)
+		}
+		return "", fmt.Errorf("failed to delete device: %w", err)
+	}
+
+	if labelPath.Valid {
+		return labelPath.String, nil
+	}
+	return "", nil
+}
+
+// labelBaseDir is the base directory for label files.
+// It defaults to "web/dist" and can be overridden in tests.
+var labelBaseDir = filepath.Join("web", "dist")
+
+// RemoveLabelFile removes a device label file from disk.
+// Paths are sanitized to prevent path traversal outside the label base directory.
+func RemoveLabelFile(labelPath string) {
+	if labelPath == "" {
+		return
+	}
+	baseDir, err := filepath.Abs(labelBaseDir)
+	if err != nil {
+		log.Printf("[DEVICE] Failed to resolve base dir for label cleanup: %v", err)
+		return
+	}
+	cleaned := filepath.Clean(strings.TrimPrefix(labelPath, "/"))
+	fullPath := filepath.Join(baseDir, cleaned)
+	resolvedPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		log.Printf("[DEVICE] Failed to resolve label path for cleanup: %v", err)
+		return
+	}
+	relPath, err := filepath.Rel(baseDir, resolvedPath)
+	if err != nil || relPath == "." || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) {
+		log.Printf("[DEVICE] Skipping label path outside base dir: %s", labelPath)
+		return
+	}
+	if err := os.Remove(resolvedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("[DEVICE] Failed to remove label %s: %v", resolvedPath, err)
+	}
+}
+
 // DeleteDevice removes a device and its label file if no dependencies exist.
 func (s *DeviceAdminService) DeleteDevice(ctx context.Context, deviceID string) error {
 	if deviceID == "" {
@@ -403,41 +458,202 @@ func (s *DeviceAdminService) DeleteDevice(ctx context.Context, deviceID string) 
 		_ = tx.Rollback()
 	}()
 
-	var labelPath sql.NullString
-	err = tx.QueryRowContext(ctx, `SELECT label_path FROM devices WHERE deviceID = $1`, deviceID).Scan(&labelPath)
-	if errors.Is(err, sql.ErrNoRows) {
-		return repository.ErrNotFound
-	}
+	labelPath, err := s.deleteDeviceInTx(ctx, tx, deviceID)
 	if err != nil {
-		return fmt.Errorf("failed to load device: %w", err)
-	}
-
-	result, err := tx.ExecContext(ctx, `DELETE FROM devices WHERE deviceID = $1`, deviceID)
-	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23503" { // foreign_key_violation
-			return fmt.Errorf("device %s is still linked to cases, jobs, or history entries", deviceID)
-		}
-		return fmt.Errorf("failed to delete device: %w", err)
-	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return repository.ErrNotFound
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit delete: %w", err)
 	}
 
-	if labelPath.Valid {
-		fullPath := filepath.Join("web", "dist", strings.TrimPrefix(labelPath.String, "/"))
-		if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Printf("[DEVICE] Failed to remove label %s: %v", fullPath, err)
+	RemoveLabelFile(labelPath)
+	return nil
+}
+
+// sanitizeDeviceDeleteError converts deleteDeviceInTx errors into user-friendly messages
+// suitable for API responses. Known error types (not found, FK violation) already have
+// safe messages; anything else is replaced with a generic message to avoid leaking
+// internal DB/driver details (table names, constraint names, etc.).
+func sanitizeDeviceDeleteError(err error) string {
+	if errors.Is(err, repository.ErrNotFound) {
+		return "device not found"
+	}
+	msg := err.Error()
+	// The FK-violation branch in deleteDeviceInTx produces a known user-friendly message.
+	if strings.Contains(msg, "still linked to") {
+		return msg
+	}
+	return "internal error deleting device"
+}
+
+// BulkDeleteDeviceResult contains the results of a bulk device deletion.
+type BulkDeleteDeviceResult struct {
+	Deleted      int
+	Failed       int
+	FailedIDs    []string
+	FailedErrors map[string]string // per-device failure reasons (device ID → error message)
+}
+
+// BulkDeleteDevices deletes multiple devices within a single transaction.
+// Each device deletion uses a SAVEPOINT so individual failures (FK violations, not found)
+// do not abort the entire transaction. Label files are removed after a successful commit.
+func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string) (*BulkDeleteDeviceResult, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	labelPaths := make([]string, 0)
+	failedIDs := make([]string, 0)
+	failedErrors := make(map[string]string)
+	deleted := 0
+
+	for i, id := range ids {
+		normalizedID := strings.TrimSpace(id)
+		if normalizedID == "" {
+			log.Printf("[BULK DEVICE DELETE] Empty device ID at index %d", i)
+			failedID := fmt.Sprintf("<empty-id-%d>", i)
+			failedIDs = append(failedIDs, failedID)
+			failedErrors[failedID] = "device ID cannot be empty"
+			continue
+		}
+
+		sp := fmt.Sprintf("device_delete_%d", i)
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf("SAVEPOINT %s", sp)); err != nil {
+			log.Printf("[BULK DEVICE DELETE] Failed to create savepoint for %s: %v", normalizedID, err)
+			failedIDs = append(failedIDs, normalizedID)
+			failedErrors[normalizedID] = "internal error processing device"
+			continue
+		}
+
+		lp, err := s.deleteDeviceInTx(ctx, tx, normalizedID)
+		if err != nil {
+			log.Printf("[BULK DEVICE DELETE] Failed for %s: %v", normalizedID, err)
+			failedIDs = append(failedIDs, normalizedID)
+			failedErrors[normalizedID] = sanitizeDeviceDeleteError(err)
+			if _, rbErr := tx.ExecContext(ctx, fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", sp)); rbErr != nil {
+				log.Printf("[BULK DEVICE DELETE] Failed to rollback savepoint for %s: %v", normalizedID, rbErr)
+			} else if _, relErr := tx.ExecContext(ctx, fmt.Sprintf("RELEASE SAVEPOINT %s", sp)); relErr != nil {
+				log.Printf("[BULK DEVICE DELETE] Failed to release savepoint after rollback for %s: %v", normalizedID, relErr)
+			}
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf("RELEASE SAVEPOINT %s", sp)); err != nil {
+			log.Printf("[BULK DEVICE DELETE] Failed to release savepoint for %s: %v", normalizedID, err)
+		}
+		deleted++
+		if lp != "" {
+			labelPaths = append(labelPaths, lp)
 		}
 	}
 
-	return nil
+	if deleted > 0 {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("failed to commit bulk delete: %w", err)
+		}
+		// Clean up label files after successful commit
+		for _, lp := range labelPaths {
+			RemoveLabelFile(lp)
+		}
+	}
+
+	return &BulkDeleteDeviceResult{
+		Deleted:      deleted,
+		Failed:       len(failedIDs),
+		FailedIDs:    failedIDs,
+		FailedErrors: failedErrors,
+	}, nil
+}
+
+// BulkUpdateDeviceInput holds the optional fields that can be bulk-updated on devices.
+type BulkUpdateDeviceInput struct {
+	Status          *string
+	ZoneID          *int
+	CurrentLocation *string
+	ConditionRating *float64
+}
+
+// BulkUpdateDeviceResult contains the results of a bulk device update.
+type BulkUpdateDeviceResult struct {
+	Updated int
+}
+
+// BulkUpdateDevices updates common fields on multiple devices within a single transaction.
+// It applies the same normalization as UpdateDevice (e.g. nullableStringPtr for current_location,
+// status trimming / "free" → "in_storage" consolidation) to keep behavior consistent.
+func (s *DeviceAdminService) BulkUpdateDevices(ctx context.Context, ids []string, input *BulkUpdateDeviceInput) (*BulkUpdateDeviceResult, error) {
+	if input == nil {
+		return nil, errors.New("input cannot be nil")
+	}
+
+	var setClauses []string
+	var args []interface{}
+	paramCount := 0
+
+	if input.Status != nil {
+		status := strings.ToLower(strings.TrimSpace(*input.Status))
+		if status == "" {
+			return nil, errors.New("status cannot be empty")
+		}
+		if status == "free" {
+			status = string(models.StatusInStorage)
+		}
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", paramCount))
+		args = append(args, status)
+	}
+	if input.ZoneID != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("zone_id = $%d", paramCount))
+		args = append(args, *input.ZoneID)
+	}
+	if input.CurrentLocation != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("current_location = $%d", paramCount))
+		args = append(args, nullableStringPtr(input.CurrentLocation))
+	}
+	if input.ConditionRating != nil {
+		paramCount++
+		setClauses = append(setClauses, fmt.Sprintf("condition_rating = $%d", paramCount))
+		args = append(args, *input.ConditionRating)
+	}
+
+	if len(setClauses) == 0 {
+		return nil, errors.New("no fields to update")
+	}
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	totalUpdated := 0
+	for _, id := range ids {
+		updateArgs := make([]interface{}, len(args))
+		copy(updateArgs, args)
+		updateArgs = append(updateArgs, id)
+		query := fmt.Sprintf("UPDATE devices SET %s WHERE deviceID = $%d",
+			strings.Join(setClauses, ", "), paramCount+1)
+		result, err := tx.ExecContext(ctx, query, updateArgs...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update device %s: %w", id, err)
+		}
+		affected, _ := result.RowsAffected()
+		totalUpdated += int(affected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Printf("[BULK DEVICE UPDATE] Updated %d devices", totalUpdated)
+	return &BulkUpdateDeviceResult{Updated: totalUpdated}, nil
 }
 
 // RegenerateLabel allows manual regeneration of a device label using the default or provided template.

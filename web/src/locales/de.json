@@ -817,7 +817,9 @@
       "confirmDelete": "Möchten Sie dieses Gerät wirklich löschen?",
       "errors": {
         "delete": "Fehler beim Löschen des Geräts",
-        "save": "Fehler beim Speichern des Geräts"
+        "save": "Fehler beim Speichern des Geräts",
+        "bulkDelete": "Ausgewählte Geräte konnten nicht gelöscht werden",
+        "bulkUpdate": "Ausgewählte Geräte konnten nicht aktualisiert werden"
       },
       "filters": {
         "allStatuses": "Alle Status",
@@ -834,7 +836,22 @@
       },
       "retireDate": "Außerdienststellungsdatum",
       "warrantyEndDate": "Garantieende",
-      "deviceIdHint": "Geräte-ID ändern, um ein vorhandenes Etikett zu verwenden. Vorsicht – dies aktualisiert auch alle Verweise."
+      "deviceIdHint": "Geräte-ID ändern, um ein vorhandenes Etikett zu verwenden. Vorsicht – dies aktualisiert auch alle Verweise.",
+      "bulkActions": "Massenaktionen",
+      "bulkDelete": "Ausgewählte löschen",
+      "bulkEdit": "Ausgewählte bearbeiten",
+      "selectedCount": "{{count}} ausgewählt",
+      "selectAll": "Alle auswählen",
+      "deselectAll": "Auswahl aufheben",
+      "selectDevice": "Gerät {{id}} auswählen",
+      "deselectDevice": "Gerät {{id}} abwählen",
+      "confirmBulkDelete": "{{count}} ausgewählte(s) Gerät(e) löschen?",
+      "bulkEditTitle": "Geräte bearbeiten",
+      "bulkEditDescription": "Änderungen auf {{count}} ausgewählte(s) Gerät(e) anwenden. Nur ausgefüllte Felder werden aktualisiert.",
+      "bulkDeleteSuccess": "{{count}} Gerät(e) gelöscht.",
+      "bulkUpdateSuccess": "{{count}} Gerät(e) aktualisiert.",
+      "bulkDeletePartial": "{{deleted}} Gerät(e) gelöscht, {{failed}} fehlgeschlagen.",
+      "failedIds": "Fehlgeschlagene IDs"
     },
     "cases": {
       "title": "Cases-Verwaltung",
@@ -1164,14 +1181,30 @@
         "save": "Produkt konnte nicht gespeichert werden.",
         "convertToCase": "Produkt konnte nicht in Case umgewandelt werden.",
         "convertToCable": "Produkt konnte nicht in Kabel umgewandelt werden.",
-        "loadCableMetadata": "Kabelstecker/Typen konnten nicht geladen werden."
+        "loadCableMetadata": "Kabelstecker/Typen konnten nicht geladen werden.",
+        "bulkDelete": "Ausgewählte Produkte konnten nicht gelöscht werden.",
+        "bulkUpdate": "Ausgewählte Produkte konnten nicht aktualisiert werden."
       },
       "convertToCase": "In Case umwandeln",
       "convertToCable": "In Kabel umwandeln",
       "convertToCaseConfirm": "Produkt \"{{name}}\" in ein Case umwandeln? Es wird ein neues Case mit dem Namen, der Beschreibung und den Maßen des Produkts erstellt.",
       "convertToCaseSuccess": "Produkt erfolgreich in Case umgewandelt.",
       "convertToCableSuccess": "Produkt erfolgreich in Kabel umgewandelt.",
-      "convertToCableTitle": "\"{{name}}\" in Kabel umwandeln"
+      "convertToCableTitle": "\"{{name}}\" in Kabel umwandeln",
+      "bulkActions": "Massenaktionen",
+      "bulkDelete": "Ausgewählte löschen",
+      "bulkEdit": "Ausgewählte bearbeiten",
+      "selectedCount": "{{count}} ausgewählt",
+      "selectAll": "Alle auswählen",
+      "deselectAll": "Auswahl aufheben",
+      "selectProduct": "Produkt {{name}} auswählen",
+      "deselectProduct": "Produkt {{name}} abwählen",
+      "confirmBulkDelete": "{{count}} ausgewählte(s) Produkt(e) löschen?",
+      "bulkEditTitle": "Produkte bearbeiten",
+      "bulkEditDescription": "Änderungen auf {{count}} ausgewählte(s) Produkt(e) anwenden. Nur ausgefüllte Felder werden aktualisiert.",
+      "bulkDeleteSuccess": "{{products}} Produkt(e) und {{devices}} Gerät(e) gelöscht.",
+      "bulkUpdateSuccess": "{{count}} Produkt(e) aktualisiert.",
+      "skippedPackages": "{{count}} Paketprodukt(e) wurden übersprungen."
     }
   },
   "scan": {
