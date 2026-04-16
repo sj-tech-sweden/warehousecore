@@ -728,20 +728,28 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 	filename := fmt.Sprintf("%s_label.png", safeDeviceID)
 	filePath := filepath.Join(labelsDir, filename)
 
-	// Verify the resolved path is within the labels directory
-	absLabelsDir, err := filepath.Abs(labelsDir)
+	// Verify the resolved path is within the labels directory, including symlink resolution
+	resolvedLabelsDir, err := filepath.EvalSymlinks(labelsDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve labels directory: %w", err)
 	}
-	absFilePath, err := filepath.Abs(filePath)
+
+	targetDir := filepath.Dir(filePath)
+	resolvedTargetDir, err := filepath.EvalSymlinks(targetDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve file path: %w", err)
+		return "", fmt.Errorf("failed to resolve target directory: %w", err)
 	}
-	if !strings.HasPrefix(absFilePath, absLabelsDir+string(filepath.Separator)) {
+
+	resolvedFilePath := filepath.Join(resolvedTargetDir, filename)
+	relPath, err := filepath.Rel(resolvedLabelsDir, resolvedFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to validate file path: %w", err)
+	}
+	if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("invalid file path: outside allowed directory")
 	}
 
-	if err := os.WriteFile(absFilePath, imageData, 0644); err != nil {
+	if err := os.WriteFile(resolvedFilePath, imageData, 0644); err != nil {
 		return "", fmt.Errorf("failed to write label file: %w", err)
 	}
 

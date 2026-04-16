@@ -206,7 +206,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
   const [cableConvertModal, setCableConvertModal] = useState<{ productId: number; productName: string } | null>(null);
   const [cableConnectors, setCableConnectors] = useState<CableConnector[]>([]);
   const [cableTypes, setCableTypes] = useState<CableTypeData[]>([]);
-  const [cableFormData, setCableFormData] = useState({ connector1: 0, connector2: 0, typ: 0, length: 1, mm2: 0 });
+  const [cableFormData, setCableFormData] = useState<{ connector1: number; connector2: number; typ: number; length: number; mm2: number | undefined }>({ connector1: 0, connector2: 0, typ: 0, length: 1, mm2: undefined });
   const [convertSubmitting, setConvertSubmitting] = useState(false);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
@@ -520,7 +520,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       ]);
       setCableConnectors(connRes.data);
       setCableTypes(typRes.data);
-      setCableFormData({ connector1: 0, connector2: 0, typ: 0, length: 1, mm2: 0 });
+      setCableFormData({ connector1: 0, connector2: 0, typ: 0, length: 1, mm2: undefined });
       setCableConvertModal({ productId, productName });
     } catch (error) {
       console.error('Failed to load cable metadata:', error);
@@ -1710,11 +1710,11 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                       type="number"
                       min="0"
                       step="0.01"
-                      value={cableFormData.mm2 || ''}
+                      value={cableFormData.mm2 ?? ''}
                       onChange={e =>
                         setCableFormData({
                           ...cableFormData,
-                          mm2: e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0),
+                          mm2: e.target.value === '' ? undefined : parseFloat(e.target.value),
                         })
                       }
                       className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
