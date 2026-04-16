@@ -269,7 +269,18 @@ func CreateCable(w http.ResponseWriter, r *http.Request) {
 	err := db.QueryRow(query, input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, input.Name).Scan(&id)
 	if err != nil {
 		log.Printf("Error creating cable: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to create cable: %v", err)})
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) {
+			switch pqErr.Code {
+			case "23503":
+				respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable reference data"})
+				return
+			case "23505":
+				respondJSON(w, http.StatusConflict, map[string]string{"error": "Cable already exists"})
+				return
+			}
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create cable"})
 		return
 	}
 

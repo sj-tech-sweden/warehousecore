@@ -270,14 +270,19 @@ export function CablesTab() {
         prefix: devicePrefix.trim(),
       });
       alert(t('admin.cables.devicesCreated', { count: data.created_count }));
-      // Refresh device list
-      const { data: devices } = await cablesAdminApi.getDevices(devicesModal.cableId);
-      setCableDevices(devices || []);
     } catch (error) {
       console.error('Failed to create cable devices:', error);
       alert(t('admin.cables.errors.createDevices'));
+      return;
     } finally {
       setCreatingDevices(false);
+    }
+    // Refresh device list separately so a refresh failure doesn't mask a successful create
+    try {
+      const { data: devices } = await cablesAdminApi.getDevices(devicesModal.cableId);
+      setCableDevices(devices || []);
+    } catch (refreshError) {
+      console.error('Failed to refresh cable devices after creation:', refreshError);
     }
   };
 
