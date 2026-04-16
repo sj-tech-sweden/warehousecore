@@ -1871,15 +1871,16 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     </label>
                     <input
                       type="number"
-                      min="0"
+                      min="0.01"
                       step="0.01"
                       value={cableFormData.mm2 ?? ''}
-                      onChange={e =>
+                      onChange={e => {
+                        const parsedMm2 = parseFloat(e.target.value);
                         setCableFormData({
                           ...cableFormData,
-                          mm2: e.target.value === '' ? undefined : parseFloat(e.target.value),
-                        })
-                      }
+                          mm2: e.target.value === '' || Number.isNaN(parsedMm2) || parsedMm2 <= 0 ? undefined : parsedMm2,
+                        });
+                      }}
                       className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
                       title={t('admin.cables.crossSectionShort')}
                     />

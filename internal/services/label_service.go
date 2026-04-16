@@ -749,6 +749,15 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		return "", fmt.Errorf("invalid file path: outside allowed directory")
 	}
 
+	// Refuse to write if the target path is a symlink file — prevents
+	// an attacker who can place a symlink inside the labels directory
+	// from redirecting writes outside it.
+	if fi, err := os.Lstat(resolvedFilePath); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("refusing to write: target path is a symlink")
+		}
+	}
+
 	if err := os.WriteFile(resolvedFilePath, imageData, 0644); err != nil {
 		return "", fmt.Errorf("failed to write label file: %w", err)
 	}
