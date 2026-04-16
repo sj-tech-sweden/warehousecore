@@ -703,7 +703,7 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		return -1
 	}, deviceID)
 	if safeDeviceID == "" {
-		return "", fmt.Errorf("invalid device ID")
+		return "", fmt.Errorf("device ID must contain only alphanumeric characters, dashes, or underscores")
 	}
 
 	// Remove base64 prefix if present
@@ -737,7 +737,7 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		return "", fmt.Errorf("failed to resolve file path: %w", err)
 	}
 	if !strings.HasPrefix(absFilePath, absLabelsDir+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid device ID")
+		return "", fmt.Errorf("invalid file path: outside allowed directory")
 	}
 
 	if err := os.WriteFile(filePath, imageData, 0644); err != nil {
