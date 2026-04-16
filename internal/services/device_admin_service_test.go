@@ -23,16 +23,29 @@ func TestRemoveLabelFile_EmptyPath(t *testing.T) {
 }
 
 func TestRemoveLabelFile_PathTraversal(t *testing.T) {
-	// A path with ".." should be rejected (not remove any file).
-	// Create a temp file outside of the label base dir to make sure it survives.
-	tmpDir := t.TempDir()
-	target := filepath.Join(tmpDir, "should-not-delete.txt")
+	// Use a temp label base dir and create a target file outside it to verify traversal is blocked.
+	baseDir := t.TempDir()
+	originalBaseDir := labelBaseDir
+	labelBaseDir = baseDir
+	t.Cleanup(func() { labelBaseDir = originalBaseDir })
+
+	outsideDir := t.TempDir()
+	target := filepath.Join(outsideDir, "should-not-delete.txt")
 	if err := os.WriteFile(target, []byte("secret"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Try to traverse to the temp file — RemoveLabelFile must refuse.
-	RemoveLabelFile("/../../../" + target)
+	relTarget, err := filepath.Rel(baseDir, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relTarget = filepath.ToSlash(relTarget)
+	if !strings.HasPrefix(relTarget, "..") {
+		t.Fatalf("expected traversal path from %q to %q, got %q", baseDir, target, relTarget)
+	}
+
+	// Try to traverse from labelBaseDir to the outside file — RemoveLabelFile must refuse.
+	RemoveLabelFile("/" + relTarget)
 
 	if _, err := os.Stat(target); os.IsNotExist(err) {
 		t.Fatal("RemoveLabelFile deleted a file outside the base directory via path traversal")
@@ -297,5 +310,129 @@ func TestBulkDeleteDevices_FKViolation_UserFriendlyMessage(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+// ===========================
+// BulkUpdateDevices tests
+// ===========================
+
+func TestBulkUpdateDevices_StatusNormalization_FreeToInStorage(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	// "free" should be normalized to "in_storage"
+	mock.ExpectExec("UPDATE devices SET status = \\$1 WHERE deviceID = \\$2").
+		WithArgs("in_storage", "DEV001").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := newTestService(db)
+	status := "free"
+	result, err := svc.BulkUpdateDevices(context.Background(), []string{"DEV001"}, &BulkUpdateDeviceInput{
+		Status: &status,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Updated != 1 {
+		t.Errorf("expected 1 updated, got %d", result.Updated)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestBulkUpdateDevices_NoFieldsToUpdate(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := newTestService(db)
+	_, err = svc.BulkUpdateDevices(context.Background(), []string{"DEV001"}, &BulkUpdateDeviceInput{})
+	if err == nil {
+		t.Fatal("expected error for no fields to update, got nil")
+	}
+	if !strings.Contains(err.Error(), "no fields to update") {
+		t.Errorf("expected 'no fields to update' error, got: %v", err)
+	}
+}
+
+func TestBulkUpdateDevices_NilInput(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := newTestService(db)
+	_, err = svc.BulkUpdateDevices(context.Background(), []string{"DEV001"}, nil)
+	if err == nil {
+		t.Fatal("expected error for nil input, got nil")
+	}
+	if !strings.Contains(err.Error(), "input cannot be nil") {
+		t.Errorf("expected 'input cannot be nil' error, got: %v", err)
+	}
+}
+
+func TestBulkUpdateDevices_PerDeviceUpdateFailure_Rollback(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	// First device succeeds
+	mock.ExpectExec("UPDATE devices SET status = \\$1 WHERE deviceID = \\$2").
+		WithArgs("retired", "DEV001").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	// Second device fails — should trigger rollback
+	mock.ExpectExec("UPDATE devices SET status = \\$1 WHERE deviceID = \\$2").
+		WithArgs("retired", "DEV002").
+		WillReturnError(fmt.Errorf("connection lost"))
+	mock.ExpectRollback()
+
+	svc := newTestService(db)
+	status := "retired"
+	_, err = svc.BulkUpdateDevices(context.Background(), []string{"DEV001", "DEV002"}, &BulkUpdateDeviceInput{
+		Status: &status,
+	})
+	if err == nil {
+		t.Fatal("expected error on device update failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to update device DEV002") {
+		t.Errorf("expected device-specific error, got: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestBulkUpdateDevices_EmptyStatusRejected(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := newTestService(db)
+	emptyStatus := "   "
+	_, err = svc.BulkUpdateDevices(context.Background(), []string{"DEV001"}, &BulkUpdateDeviceInput{
+		Status: &emptyStatus,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty status, got nil")
+	}
+	if !strings.Contains(err.Error(), "status cannot be empty") {
+		t.Errorf("expected 'status cannot be empty' error, got: %v", err)
 	}
 }

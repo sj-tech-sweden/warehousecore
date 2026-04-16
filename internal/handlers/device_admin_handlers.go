@@ -272,7 +272,9 @@ func DeleteDevice(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Device deleted successfully"})
 }
 
-// BulkDeleteDevices deletes multiple devices
+// BulkDeleteDevices deletes multiple devices.
+// Returns 400 for request-level validation failures (invalid JSON, empty/whitespace IDs, >100 IDs).
+// Returns 200 with deleted_devices/failed_devices counts for per-device results.
 func BulkDeleteDevices(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs []string `json:"ids"`

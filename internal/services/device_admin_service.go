@@ -429,12 +429,18 @@ func RemoveLabelFile(labelPath string) {
 	}
 	cleaned := filepath.Clean(strings.TrimPrefix(labelPath, "/"))
 	fullPath := filepath.Join(baseDir, cleaned)
-	if !strings.HasPrefix(fullPath, baseDir+string(os.PathSeparator)) {
+	resolvedPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		log.Printf("[DEVICE] Failed to resolve label path for cleanup: %v", err)
+		return
+	}
+	relPath, err := filepath.Rel(baseDir, resolvedPath)
+	if err != nil || relPath == "." || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) {
 		log.Printf("[DEVICE] Skipping label path outside base dir: %s", labelPath)
 		return
 	}
-	if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Printf("[DEVICE] Failed to remove label %s: %v", fullPath, err)
+	if err := os.Remove(resolvedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("[DEVICE] Failed to remove label %s: %v", resolvedPath, err)
 	}
 }
 
@@ -510,8 +516,12 @@ func (s *DeviceAdminService) BulkDeleteDevices(ctx context.Context, ids []string
 		normalizedID := strings.TrimSpace(id)
 		if normalizedID == "" {
 			log.Printf("[BULK DEVICE DELETE] Empty device ID at index %d", i)
-			failedIDs = append(failedIDs, normalizedID)
-			failedErrors[normalizedID] = "device ID cannot be empty"
+			failedID := id
+			if failedID == "" {
+				failedID = fmt.Sprintf("<empty-id-%d>", i)
+			}
+			failedIDs = append(failedIDs, failedID)
+			failedErrors[failedID] = "device ID cannot be empty"
 			continue
 		}
 
