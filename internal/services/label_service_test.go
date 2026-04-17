@@ -148,8 +148,8 @@ func TestSaveLabelImage_RejectsSymlinkTarget(t *testing.T) {
 
 // TestSaveLabelImage_AtomicWriteCreatesFile verifies that SaveLabelImage's
 // actual write path creates the label file with the expected content and leaves
-// no leftover temp files. The function will panic at the DB update step (no DB
-// in tests), so we recover from that and verify the file was written.
+// no leftover temp files. Without a DB connection, SaveLabelImage returns an
+// error after writing the file; we verify the file and the error.
 func TestSaveLabelImage_AtomicWriteCreatesFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	s := &LabelService{LabelsDir: tmpDir}
@@ -165,35 +165,30 @@ func TestSaveLabelImage_AtomicWriteCreatesFile(t *testing.T) {
 	}
 	b64Image := base64.StdEncoding.EncodeToString(pngBytes)
 
-	// SaveLabelImage will write the file successfully but then panic when
-	// trying to update the DB (no DB connection in unit tests). Recover the
-	// panic so we can verify the file was written correctly, but assert that
-	// a panic actually occurred so unexpected behavior is not silently masked.
-	var recovered any
-	func() {
-		defer func() {
-			recovered = recover()
-		}()
-		s.SaveLabelImage("ATOMICTEST", b64Image)
-	}()
-	if recovered == nil {
-		t.Fatalf("SaveLabelImage(%q, <png>): expected panic when DB is nil, got none", "ATOMICTEST")
+	// SaveLabelImage writes the file atomically and then returns an error
+	// because no DB connection is available in unit tests.
+	_, err := s.SaveLabelImage("ATOMICTEST", b64Image)
+	if err == nil {
+		t.Fatal("SaveLabelImage should have returned an error when DB is nil")
+	}
+	if !strings.Contains(err.Error(), "database connection") {
+		t.Fatalf("expected database connection error, got: %v", err)
 	}
 
 	// Verify the label file was created at the expected path with correct content
 	expectedPath := filepath.Join(tmpDir, "ATOMICTEST_label.png")
-	content, err := os.ReadFile(expectedPath)
-	if err != nil {
-		t.Fatalf("ReadFile(%q) failed: %v", expectedPath, err)
+	content, readErr := os.ReadFile(expectedPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile(%q) failed: %v", expectedPath, readErr)
 	}
 	if string(content) != string(pngBytes) {
 		t.Errorf("saved file content mismatch: got %d bytes, want %d bytes", len(content), len(pngBytes))
 	}
 
 	// Verify no leftover temp files
-	matches, err := filepath.Glob(filepath.Join(tmpDir, ".label.*.tmp"))
-	if err != nil {
-		t.Fatalf("Glob failed: %v", err)
+	matches, globErr := filepath.Glob(filepath.Join(tmpDir, ".label.*.tmp"))
+	if globErr != nil {
+		t.Fatalf("Glob failed: %v", globErr)
 	}
 	if len(matches) != 0 {
 		t.Errorf("found leftover temp files after SaveLabelImage: %v", matches)

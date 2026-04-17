@@ -256,6 +256,7 @@ export function CablesTab() {
     } catch (error) {
       console.error('Failed to load cable devices:', error);
       setCableDevices([]);
+      setDevicesModal(null);
       alert(t('admin.cables.errors.loadDevices'));
     } finally {
       setLoadingDevices(false);

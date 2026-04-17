@@ -824,6 +824,9 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 	// Update device record with label path
 	labelPath := fmt.Sprintf("/labels/%s", filename)
 	db := repository.GetDB()
+	if db == nil {
+		return "", fmt.Errorf("database connection is not available")
+	}
 	result := db.Exec("UPDATE devices SET label_path = $1 WHERE deviceID = $2", labelPath, deviceID)
 	if result.Error != nil {
 		return "", fmt.Errorf("failed to update device label path: %w", result.Error)
