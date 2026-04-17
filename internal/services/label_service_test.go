@@ -166,12 +166,19 @@ func TestSaveLabelImage_AtomicWriteCreatesFile(t *testing.T) {
 	b64Image := base64.StdEncoding.EncodeToString(pngBytes)
 
 	// SaveLabelImage will write the file successfully but then panic when
-	// trying to update the DB (no DB connection in unit tests). We recover
-	// from the panic so we can verify the file was written correctly.
+	// trying to update the DB (no DB connection in unit tests). Recover the
+	// panic so we can verify the file was written correctly, but assert that
+	// a panic actually occurred so unexpected behavior is not silently masked.
+	var recovered any
 	func() {
-		defer func() { recover() }()
+		defer func() {
+			recovered = recover()
+		}()
 		s.SaveLabelImage("ATOMICTEST", b64Image)
 	}()
+	if recovered == nil {
+		t.Fatalf("SaveLabelImage(%q, <png>): expected panic when DB is nil, got none", "ATOMICTEST")
+	}
 
 	// Verify the label file was created at the expected path with correct content
 	expectedPath := filepath.Join(tmpDir, "ATOMICTEST_label.png")

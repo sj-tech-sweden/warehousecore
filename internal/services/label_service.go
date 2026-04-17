@@ -793,7 +793,7 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 
 	// Before renaming, check if the destination already exists.
 	// On Windows, os.Rename fails if the destination exists, so we need to
-	// remove it first. Also reject symlinks and directories at the destination.
+	// handle it first. Also reject symlinks and directories at the destination.
 	if destInfo, err := os.Lstat(resolvedFilePath); err == nil {
 		if destInfo.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("refusing to replace symlink label file: %s", resolvedFilePath)
@@ -801,15 +801,24 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		if destInfo.IsDir() {
 			return "", fmt.Errorf("refusing to replace directory with label file: %s", resolvedFilePath)
 		}
-		if err := os.Remove(resolvedFilePath); err != nil {
-			return "", fmt.Errorf("failed to remove existing label file: %w", err)
+		// Rename existing file to a backup so we can restore it if the
+		// subsequent os.Rename fails (e.g. permissions, AV, disk full).
+		backupPath := resolvedFilePath + ".bak"
+		if err := os.Rename(resolvedFilePath, backupPath); err != nil {
+			return "", fmt.Errorf("failed to back up existing label file: %w", err)
 		}
+		if err := os.Rename(tempFilePath, resolvedFilePath); err != nil {
+			// Restore the backup so the previous label is not lost.
+			_ = os.Rename(backupPath, resolvedFilePath)
+			return "", fmt.Errorf("failed to move label file into place: %w", err)
+		}
+		_ = os.Remove(backupPath)
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("failed to inspect existing label file: %w", err)
-	}
-
-	if err := os.Rename(tempFilePath, resolvedFilePath); err != nil {
-		return "", fmt.Errorf("failed to move label file into place: %w", err)
+	} else {
+		if err := os.Rename(tempFilePath, resolvedFilePath); err != nil {
+			return "", fmt.Errorf("failed to move label file into place: %w", err)
+		}
 	}
 	cleanupTempFile = false
 	// Update device record with label path

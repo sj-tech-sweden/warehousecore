@@ -14,6 +14,7 @@ BEGIN
         SELECT 1 FROM information_schema.table_constraints
         WHERE constraint_name = 'fk_devices_cable_id'
           AND table_name = 'devices'
+          AND table_schema = 'public'
     ) THEN
         ALTER TABLE devices
             ADD CONSTRAINT fk_devices_cable_id
