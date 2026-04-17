@@ -801,9 +801,9 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		if destInfo.IsDir() {
 			return "", fmt.Errorf("refusing to replace directory with label file: %s", resolvedFilePath)
 		}
-		// Rename existing file to a backup so we can restore it if the
+		// Rename existing file to a unique backup so we can restore it if the
 		// subsequent os.Rename fails (e.g. permissions, AV, disk full).
-		backupPath := resolvedFilePath + ".bak"
+		backupPath := resolvedFilePath + fmt.Sprintf(".bak.%d", time.Now().UnixNano())
 		if err := os.Rename(resolvedFilePath, backupPath); err != nil {
 			return "", fmt.Errorf("failed to back up existing label file: %w", err)
 		}

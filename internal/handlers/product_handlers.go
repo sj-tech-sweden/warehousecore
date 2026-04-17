@@ -3,7 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,7 +16,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
@@ -24,7 +24,7 @@ import (
 )
 
 var productPictureService = services.NewProductPictureServiceFromEnv()
-var errPicturesUnavailable = errors.New("product pictures not available")
+var errPicturesUnavailable = pkgerrors.New("product pictures not available")
 var websiteRevalidator = services.NewRevalidatorFromEnv()
 
 // cleanupDeviceLabelFiles removes label files from disk for the given label_path values.
@@ -691,7 +691,7 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	if filteredImages, filteredThumb, err := filterAllowedImages(id, req.WebsiteImages, req.WebsiteThumbnail); err == nil {
 		req.WebsiteImages = filteredImages
 		req.WebsiteThumbnail = filteredThumb
-	} else if !errors.Is(err, errPicturesUnavailable) {
+	} else if !pkgerrors.Is(err, errPicturesUnavailable) {
 		log.Printf("[WEBSITE] Failed to validate images for product %d: %v", id, err)
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to validate product images"})
 		return
@@ -1652,7 +1652,7 @@ func UpdateProductWebsite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filteredImages, filteredThumb, err := filterAllowedImages(id, images, payload.WebsiteThumbnail)
-	if err != nil && !errors.Is(err, errPicturesUnavailable) {
+	if err != nil && !pkgerrors.Is(err, errPicturesUnavailable) {
 		log.Printf("[WEBSITE] Failed to validate images for product %d: %v", id, err)
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to validate product images"})
 		return
@@ -2082,7 +2082,7 @@ func ConvertProductToCable(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[CONVERT CABLE] Failed to create cable from product %d: %v", id, err)
 		var pqErr *pq.Error
-		if stderrors.As(err, &pqErr) {
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			case "23503":
 				respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable reference data"})
