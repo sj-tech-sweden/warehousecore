@@ -1794,10 +1794,16 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                   {t('admin.products.convertToCableTitle', { name: cableConvertModal.productName })}
                 </h3>
                 <button
-                  onClick={() => setCableConvertModal(null)}
-                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
-                  title={t('common.close')}
+                  onClick={() => {
+                    if (convertSubmitting) return;
+                    setConvertSubmitting(false);
+                    setCableConvertModal(null);
+                  }}
+                  disabled={convertSubmitting}
+                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                  title={convertSubmitting ? t('common.loading') : t('common.close')}
                   aria-label={t('common.close')}
+                  aria-disabled={convertSubmitting}
                 >
                   <X className="w-6 h-6" />
                 </button>

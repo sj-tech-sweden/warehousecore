@@ -711,6 +711,13 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		return "", fmt.Errorf("device ID must contain only alphanumeric characters, dashes, or underscores")
 	}
 
+	// Check DB availability before writing to disk to avoid orphaned label
+	// files when the DB update would fail.
+	db := repository.GetDB()
+	if db == nil {
+		return "", fmt.Errorf("database connection is not available")
+	}
+
 	// Remove base64 prefix if present
 	if len(base64Image) > 22 && base64Image[:22] == "data:image/png;base64," {
 		base64Image = base64Image[22:]
@@ -823,10 +830,6 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 	cleanupTempFile = false
 	// Update device record with label path
 	labelPath := fmt.Sprintf("/labels/%s", filename)
-	db := repository.GetDB()
-	if db == nil {
-		return "", fmt.Errorf("database connection is not available")
-	}
 	result := db.Exec("UPDATE devices SET label_path = $1 WHERE deviceID = $2", labelPath, deviceID)
 	if result.Error != nil {
 		return "", fmt.Errorf("failed to update device label path: %w", result.Error)

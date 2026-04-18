@@ -1046,7 +1046,14 @@ export function CablesTab() {
                   </p>
                 </div>
                 <button
-                  onClick={() => { setDevicesModal(null); setCableDevices([]); }}
+                  onClick={() => {
+                    setDevicesModal(null);
+                    setCableDevices([]);
+                    setLoadingDevices(false);
+                    setCreatingDevices(false);
+                    setDevicePrefix('');
+                    setDeviceQuantity(1);
+                  }}
                   className="px-4 py-2 rounded-lg text-sm font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors"
                   aria-label={t('common.close')}
                   title={t('common.close')}
