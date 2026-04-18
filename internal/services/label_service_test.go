@@ -6,11 +6,57 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+
+	"warehousecore/internal/repository"
 )
+
+// ensureNilDB explicitly sets repository.GormDB to nil for the duration of the
+// test and restores it afterward. This prevents order-dependent flakes if
+// another test initialises the global DB.
+func ensureNilDB(t *testing.T) {
+	t.Helper()
+	old := repository.GormDB
+	repository.GormDB = nil
+	t.Cleanup(func() { repository.GormDB = old })
+}
+
+// setupMockGormDB creates a go-sqlmock backed *gorm.DB, sets it as
+// repository.GormDB, and restores the previous value on cleanup.
+// Returns the sqlmock handle so callers can add query expectations.
+func setupMockGormDB(t *testing.T) sqlmock.Sqlmock {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{
+		DriverName:           "sqlmock",
+		Conn:                 db,
+		PreferSimpleProtocol: true,
+	}), &gorm.Config{})
+	if err != nil {
+		db.Close()
+		t.Fatalf("failed to create gorm DB: %v", err)
+	}
+
+	old := repository.GormDB
+	repository.GormDB = gormDB
+	t.Cleanup(func() {
+		repository.GormDB = old
+		db.Close()
+	})
+	return mock
+}
 
 // TestSaveLabelImage_RejectsPathTraversal verifies that device IDs containing
 // path-traversal sequences are rejected with the device-ID validation error.
 func TestSaveLabelImage_RejectsPathTraversal(t *testing.T) {
+	ensureNilDB(t)
 	s := &LabelService{}
 	badIDs := []string{
 		"../etc/passwd",
@@ -34,16 +80,17 @@ func TestSaveLabelImage_RejectsPathTraversal(t *testing.T) {
 // TestSaveLabelImage_RejectsDisallowedCharacters verifies that device IDs
 // containing characters outside [A-Za-z0-9_-] are rejected.
 func TestSaveLabelImage_RejectsDisallowedCharacters(t *testing.T) {
+	ensureNilDB(t)
 	s := &LabelService{}
 	badIDs := []string{
-		"device id",   // space
-		"device;id",   // semicolon
-		"device<id>",  // angle brackets
-		"device|id",   // pipe
-		"device`id",   // backtick
-		"device$id",   // dollar
-		"device%id",   // percent
-		"device&id",   // ampersand
+		"device id",    // space
+		"device;id",    // semicolon
+		"device<id>",   // angle brackets
+		"device|id",    // pipe
+		"device`id",    // backtick
+		"device$id",    // dollar
+		"device%id",    // percent
+		"device&id",    // ampersand
 		"device\x00id", // null byte
 	}
 	for _, id := range badIDs {
@@ -59,6 +106,7 @@ func TestSaveLabelImage_RejectsDisallowedCharacters(t *testing.T) {
 
 // TestSaveLabelImage_RejectsEmptyDeviceID verifies that an empty device ID is rejected.
 func TestSaveLabelImage_RejectsEmptyDeviceID(t *testing.T) {
+	ensureNilDB(t)
 	s := &LabelService{}
 	_, err := s.SaveLabelImage("", "")
 	if err == nil {
@@ -67,9 +115,10 @@ func TestSaveLabelImage_RejectsEmptyDeviceID(t *testing.T) {
 }
 
 // TestSaveLabelImage_AcceptsValidDeviceIDs verifies that well-formed device IDs
-// pass the validation stage (they will fail later at base64 decode or FS ops,
+// pass the validation stage (they will fail later at base64 decode or DB,
 // but the important thing is they are NOT rejected by the ID check).
 func TestSaveLabelImage_AcceptsValidDeviceIDs(t *testing.T) {
+	ensureNilDB(t)
 	s := &LabelService{}
 	validIDs := []string{
 		"DEVICE1",
@@ -85,7 +134,7 @@ func TestSaveLabelImage_AcceptsValidDeviceIDs(t *testing.T) {
 	for _, id := range validIDs {
 		_, err := s.SaveLabelImage(id, invalidBase64)
 		if err == nil {
-			t.Fatalf("SaveLabelImage(%q): expected an error (decode), got nil", id)
+			t.Fatalf("SaveLabelImage(%q): expected an error (decode or DB), got nil", id)
 		}
 		if strings.Contains(err.Error(), "device ID must contain only") {
 			t.Errorf("SaveLabelImage(%q): valid ID was rejected: %v", id, err)
@@ -94,11 +143,12 @@ func TestSaveLabelImage_AcceptsValidDeviceIDs(t *testing.T) {
 }
 
 // TestSaveLabelImage_RejectsSymlinkTarget verifies that if the target path is
-// a symlink file, SaveLabelImage refuses to write. Without a DB connection the
-// function returns early, so we verify the symlink protection code is present
-// by ensuring the outside file is untouched and the error is the DB check
-// (which fires before any file I/O).
+// a symlink file, SaveLabelImage refuses to write and does not modify the
+// symlink destination. Uses a mock DB so the function reaches the file-I/O
+// code path instead of returning early on the nil-DB check.
 func TestSaveLabelImage_RejectsSymlinkTarget(t *testing.T) {
+	setupMockGormDB(t) // non-nil DB so SaveLabelImage proceeds to file I/O
+
 	// Create a temp labels directory
 	tmpDir := t.TempDir()
 	labelsDir := filepath.Join(tmpDir, "labels")
@@ -129,13 +179,14 @@ func TestSaveLabelImage_RejectsSymlinkTarget(t *testing.T) {
 	}
 	b64Image := base64.StdEncoding.EncodeToString(pngBytes)
 
-	// Use a LabelService with LabelsDir pointing to our temp labels dir.
-	// Without a DB connection, SaveLabelImage returns a DB error before
-	// reaching file I/O, so no writes occur at all.
+	// SaveLabelImage should reject the symlink target
 	s := &LabelService{LabelsDir: labelsDir}
 	_, err := s.SaveLabelImage("SYMTEST", b64Image)
 	if err == nil {
-		t.Fatal("SaveLabelImage should have returned an error")
+		t.Fatal("SaveLabelImage should have returned an error for symlink target")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("expected symlink-related error, got: %v", err)
 	}
 
 	// Verify the outside file was not modified
@@ -148,10 +199,13 @@ func TestSaveLabelImage_RejectsSymlinkTarget(t *testing.T) {
 	}
 }
 
-// TestSaveLabelImage_AtomicWriteCreatesFile verifies that SaveLabelImage's
-// actual write path. Without a DB connection, SaveLabelImage returns an error
-// before writing anything, preventing orphaned label files.
+// TestSaveLabelImage_AtomicWriteCreatesFile verifies SaveLabelImage's actual
+// write path by saving a valid PNG and checking the final file exists with the
+// complete expected content and no leftover temp files. Uses a mock DB so the
+// full code path (write + DB update) is exercised.
 func TestSaveLabelImage_AtomicWriteCreatesFile(t *testing.T) {
+	mock := setupMockGormDB(t) // non-nil DB so SaveLabelImage proceeds to file I/O + DB update
+
 	tmpDir := t.TempDir()
 	s := &LabelService{LabelsDir: tmpDir}
 
@@ -166,19 +220,26 @@ func TestSaveLabelImage_AtomicWriteCreatesFile(t *testing.T) {
 	}
 	b64Image := base64.StdEncoding.EncodeToString(pngBytes)
 
-	// SaveLabelImage should return a DB-availability error without writing the file.
-	_, err := s.SaveLabelImage("ATOMICTEST", b64Image)
-	if err == nil {
-		t.Fatal("SaveLabelImage should have returned an error when DB is nil")
+	// Mock the UPDATE query that SaveLabelImage uses to persist the label path
+	mock.ExpectExec(`UPDATE`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	path, err := s.SaveLabelImage("ATOMICTEST", b64Image)
+	if err != nil {
+		t.Fatalf("SaveLabelImage failed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "database connection") {
-		t.Fatalf("expected database connection error, got: %v", err)
+	if path == "" {
+		t.Fatal("SaveLabelImage returned empty path")
 	}
 
-	// Verify no file was written (DB is checked before file I/O)
+	// Verify the label file exists with the correct content
 	expectedPath := filepath.Join(tmpDir, "ATOMICTEST_label.png")
-	if _, statErr := os.Stat(expectedPath); !os.IsNotExist(statErr) {
-		t.Errorf("expected no label file to be written when DB is unavailable, but file exists at %q", expectedPath)
+	content, err := os.ReadFile(expectedPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) failed: %v", expectedPath, err)
+	}
+	if string(content) != string(pngBytes) {
+		t.Errorf("saved file content mismatch: got %d bytes, want %d bytes", len(content), len(pngBytes))
 	}
 
 	// Verify no leftover temp files

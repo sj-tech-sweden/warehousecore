@@ -1047,6 +1047,7 @@ export function CablesTab() {
                 </div>
                 <button
                   onClick={() => {
+                    if (creatingDevices) return;
                     setDevicesModal(null);
                     setCableDevices([]);
                     setLoadingDevices(false);
@@ -1054,9 +1055,11 @@ export function CablesTab() {
                     setDevicePrefix('');
                     setDeviceQuantity(1);
                   }}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors"
+                  disabled={creatingDevices}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white/10"
                   aria-label={t('common.close')}
-                  title={t('common.close')}
+                  title={creatingDevices ? t('common.loading') : t('common.close')}
+                  aria-disabled={creatingDevices}
                 >
                   {t('common.close')}
                 </button>
