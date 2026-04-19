@@ -256,3 +256,46 @@ func TestSaveLabelImage_AtomicWriteCreatesFile(t *testing.T) {
 		t.Errorf("unmet sqlmock expectations: %v", err)
 	}
 }
+
+// TestSaveLabelImage_RemovesFileWhenDeviceNotFound verifies that when the DB
+// UPDATE succeeds but affects 0 rows (device doesn't exist), SaveLabelImage
+// returns a "device not found" error and removes the orphaned label file.
+func TestSaveLabelImage_RemovesFileWhenDeviceNotFound(t *testing.T) {
+	mock := setupMockGormDB(t)
+
+	tmpDir := t.TempDir()
+	s := &LabelService{LabelsDir: tmpDir}
+
+	// 1x1 white pixel PNG
+	pngBytes := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+		0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00,
+		0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+		0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33, 0x00, 0x00, 0x00,
+		0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+	}
+	b64Image := base64.StdEncoding.EncodeToString(pngBytes)
+
+	// Mock UPDATE that succeeds but affects 0 rows (device not found)
+	mock.ExpectExec(`UPDATE`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	_, err := s.SaveLabelImage("NODEVICE", b64Image)
+	if err == nil {
+		t.Fatal("SaveLabelImage should have returned an error for non-existent device")
+	}
+	if !strings.Contains(err.Error(), "device not found") {
+		t.Errorf("expected 'device not found' error, got: %v", err)
+	}
+
+	// Verify the label file was cleaned up (no orphan on disk)
+	labelPath := filepath.Join(tmpDir, "NODEVICE_label.png")
+	if _, statErr := os.Stat(labelPath); !os.IsNotExist(statErr) {
+		t.Errorf("orphaned label file was not removed: %s", labelPath)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}

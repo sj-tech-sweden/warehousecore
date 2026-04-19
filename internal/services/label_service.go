@@ -830,6 +830,12 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 			_ = os.Rename(backupPath, resolvedFilePath)
 			return "", fmt.Errorf("failed to update device label path: %w", result.Error)
 		}
+		if result.RowsAffected == 0 {
+			// Device doesn't exist — restore backup and remove orphaned label.
+			_ = os.Remove(resolvedFilePath)
+			_ = os.Rename(backupPath, resolvedFilePath)
+			return "", fmt.Errorf("device not found: %s", deviceID)
+		}
 		_ = os.Remove(backupPath)
 		return labelPath, nil
 	} else if !os.IsNotExist(err) {
@@ -847,6 +853,11 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 		// Remove orphaned label file so disk+DB stay consistent.
 		_ = os.Remove(resolvedFilePath)
 		return "", fmt.Errorf("failed to update device label path: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		// Device doesn't exist — remove orphaned label file.
+		_ = os.Remove(resolvedFilePath)
+		return "", fmt.Errorf("device not found: %s", deviceID)
 	}
 
 	return labelPath, nil
