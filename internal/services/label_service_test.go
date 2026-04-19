@@ -250,4 +250,9 @@ func TestSaveLabelImage_AtomicWriteCreatesFile(t *testing.T) {
 	if len(matches) != 0 {
 		t.Errorf("found leftover temp files after SaveLabelImage: %v", matches)
 	}
+
+	// Verify all sqlmock expectations were met (i.e. the DB UPDATE was executed)
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
 }

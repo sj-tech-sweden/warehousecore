@@ -819,7 +819,19 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 			_ = os.Rename(backupPath, resolvedFilePath)
 			return "", fmt.Errorf("failed to move label file into place: %w", err)
 		}
+		cleanupTempFile = false
+
+		// Update device record with label path; restore backup on DB failure.
+		labelPath := fmt.Sprintf("/labels/%s", filename)
+		result := db.Exec("UPDATE devices SET label_path = $1 WHERE deviceID = $2", labelPath, deviceID)
+		if result.Error != nil {
+			// Restore the previous label file so disk+DB stay consistent.
+			_ = os.Remove(resolvedFilePath)
+			_ = os.Rename(backupPath, resolvedFilePath)
+			return "", fmt.Errorf("failed to update device label path: %w", result.Error)
+		}
 		_ = os.Remove(backupPath)
+		return labelPath, nil
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("failed to inspect existing label file: %w", err)
 	} else {
@@ -832,6 +844,8 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 	labelPath := fmt.Sprintf("/labels/%s", filename)
 	result := db.Exec("UPDATE devices SET label_path = $1 WHERE deviceID = $2", labelPath, deviceID)
 	if result.Error != nil {
+		// Remove orphaned label file so disk+DB stay consistent.
+		_ = os.Remove(resolvedFilePath)
 		return "", fmt.Errorf("failed to update device label path: %w", result.Error)
 	}
 
