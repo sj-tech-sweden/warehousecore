@@ -16,7 +16,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
-	pkgerrors "github.com/pkg/errors"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
@@ -24,7 +23,7 @@ import (
 )
 
 var productPictureService = services.NewProductPictureServiceFromEnv()
-var errPicturesUnavailable = pkgerrors.New("product pictures not available")
+var errPicturesUnavailable = errors.New("product pictures not available")
 var websiteRevalidator = services.NewRevalidatorFromEnv()
 
 // cleanupDeviceLabelFiles removes label files from disk for the given label_path values.
@@ -691,7 +690,7 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	if filteredImages, filteredThumb, err := filterAllowedImages(id, req.WebsiteImages, req.WebsiteThumbnail); err == nil {
 		req.WebsiteImages = filteredImages
 		req.WebsiteThumbnail = filteredThumb
-	} else if !pkgerrors.Is(err, errPicturesUnavailable) {
+	} else if !errors.Is(err, errPicturesUnavailable) {
 		log.Printf("[WEBSITE] Failed to validate images for product %d: %v", id, err)
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to validate product images"})
 		return
@@ -1652,7 +1651,7 @@ func UpdateProductWebsite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filteredImages, filteredThumb, err := filterAllowedImages(id, images, payload.WebsiteThumbnail)
-	if err != nil && !pkgerrors.Is(err, errPicturesUnavailable) {
+	if err != nil && !errors.Is(err, errPicturesUnavailable) {
 		log.Printf("[WEBSITE] Failed to validate images for product %d: %v", id, err)
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Failed to validate product images"})
 		return
