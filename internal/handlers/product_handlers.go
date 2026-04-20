@@ -2065,8 +2065,16 @@ func ConvertProductToCable(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Length must be greater than 0"})
 		return
 	}
-	if input.Connector1 <= 0 || input.Connector2 <= 0 || input.Typ <= 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1, Connector2, and Type are required"})
+	if input.Connector1 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1 is required"})
+		return
+	}
+	if input.Connector2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector2 is required"})
+		return
+	}
+	if input.Typ <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Type is required"})
 		return
 	}
 	if input.MM2 != nil && *input.MM2 <= 0 {
