@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
+  Cable,
   CheckSquare,
   Eye,
   GitBranch,
@@ -9,6 +10,7 @@ import {
   List,
   MinusSquare,
   Package,
+  PackageOpen,
   Pencil,
   Plus,
   RefreshCcw,
@@ -17,8 +19,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { api, ledApi, productsAdminApi } from '../../lib/api';
-import type { Device } from '../../lib/api';
+import { api, cablesAdminApi, ledApi, productConvertApi, productsAdminApi } from '../../lib/api';
+import type { CableConnector, CableType as CableTypeData, Device } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
 import { DeviceTreeTab } from './DeviceTreeTab';
 import { DeviceDetailModal } from '../DeviceDetailModal';
@@ -205,6 +207,13 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkEditData, setBulkEditData] = useState<{ category_id?: number; brand_id?: number; manufacturer_id?: number; item_cost_per_day?: number }>({});
+
+  // Convert-to-cable modal state
+  const [cableConvertModal, setCableConvertModal] = useState<{ productId: number; productName: string } | null>(null);
+  const [cableConnectors, setCableConnectors] = useState<CableConnector[]>([]);
+  const [cableTypes, setCableTypes] = useState<CableTypeData[]>([]);
+  const [cableFormData, setCableFormData] = useState<{ connector1: number; connector2: number; typ: number; length: number; mm2: number | undefined }>({ connector1: 0, connector2: 0, typ: 0, length: 1, mm2: undefined });
+  const [convertSubmitting, setConvertSubmitting] = useState(false);
 
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
@@ -493,6 +502,59 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     } catch (error) {
       console.error('Failed to delete product:', error);
       window.alert(t('admin.products.errors.delete'));
+    }
+  };
+
+  const handleConvertToCase = async (productId: number, name: string) => {
+    if (!window.confirm(t('admin.products.convertToCaseConfirm', { name }))) {
+      return;
+    }
+    try {
+      await productConvertApi.toCase(productId);
+      window.alert(t('admin.products.convertToCaseSuccess'));
+    } catch (error) {
+      console.error('Failed to convert product to case:', error);
+      window.alert(t('admin.products.errors.convertToCase'));
+    }
+  };
+
+  const handleOpenCableConvertModal = async (productId: number, productName: string) => {
+    try {
+      const [connRes, typRes] = await Promise.all([
+        cablesAdminApi.getConnectors(),
+        cablesAdminApi.getTypes(),
+      ]);
+      setCableConnectors(connRes.data);
+      setCableTypes(typRes.data);
+      setCableFormData({ connector1: 0, connector2: 0, typ: 0, length: 1, mm2: undefined });
+      setCableConvertModal({ productId, productName });
+    } catch (error) {
+      console.error('Failed to load cable metadata:', error);
+      window.alert(t('admin.products.errors.loadCableMetadata'));
+    }
+  };
+
+  const handleConvertToCable = async () => {
+    if (!cableConvertModal) return;
+    if (cableFormData.connector1 <= 0 || cableFormData.connector2 <= 0 || cableFormData.typ <= 0 || cableFormData.length <= 0) {
+      return;
+    }
+    setConvertSubmitting(true);
+    try {
+      await productConvertApi.toCable(cableConvertModal.productId, {
+        connector1: cableFormData.connector1,
+        connector2: cableFormData.connector2,
+        typ: cableFormData.typ,
+        length: cableFormData.length,
+        mm2: cableFormData.mm2 ?? undefined,
+      });
+      setCableConvertModal(null);
+      window.alert(t('admin.products.convertToCableSuccess'));
+    } catch (error) {
+      console.error('Failed to convert product to cable:', error);
+      window.alert(t('admin.products.errors.convertToCable'));
+    } finally {
+      setConvertSubmitting(false);
     }
   };
 
@@ -988,6 +1050,22 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                           <GitBranch className="h-4 w-4" />
                         </button>
                         <button
+                          onClick={() => handleConvertToCase(product.product_id, product.name)}
+                          className="rounded-lg bg-amber-600/80 p-2 text-white transition hover:bg-amber-600"
+                          title={t('admin.products.convertToCase')}
+                          aria-label={t('admin.products.convertToCase')}
+                        >
+                          <PackageOpen className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenCableConvertModal(product.product_id, product.name)}
+                          className="rounded-lg bg-teal-600/80 p-2 text-white transition hover:bg-teal-600"
+                          title={t('admin.products.convertToCable')}
+                          aria-label={t('admin.products.convertToCable')}
+                        >
+                          <Cable className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => handleDelete(product.product_id, product.name)}
                           className="rounded-lg bg-red-600/80 p-2 text-white transition hover:bg-red-600"
                           title={t('common.delete')}
@@ -1053,6 +1131,22 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                     title={t('admin.products.manageDependencies')}
                   >
                     <GitBranch className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleConvertToCase(product.product_id, product.name)}
+                    className="rounded-lg bg-amber-600/80 p-2 text-white transition hover:bg-amber-600"
+                    title={t('admin.products.convertToCase')}
+                    aria-label={t('admin.products.convertToCase')}
+                  >
+                    <PackageOpen className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleOpenCableConvertModal(product.product_id, product.name)}
+                    className="rounded-lg bg-teal-600/80 p-2 text-white transition hover:bg-teal-600"
+                    title={t('admin.products.convertToCable')}
+                    aria-label={t('admin.products.convertToCable')}
+                  >
+                    <Cable className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => handleDelete(product.product_id, product.name)}
@@ -1689,6 +1783,143 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
         isOpen={!!deviceDetail}
         onClose={() => setDeviceDetail(null)}
       />
+
+      {/* Convert to Cable Modal */}
+      {cableConvertModal && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
+            <div className="glass-dark rounded-2xl border border-white/10 shadow-2xl p-6 max-w-lg w-full">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-white">
+                  {t('admin.products.convertToCableTitle', { name: cableConvertModal.productName })}
+                </h3>
+                <button
+                  onClick={() => {
+                    if (convertSubmitting) return;
+                    setCableConvertModal(null);
+                  }}
+                  disabled={convertSubmitting}
+                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                  title={convertSubmitting ? t('common.loading') : t('common.close')}
+                  aria-label={t('common.close')}
+                  aria-disabled={convertSubmitting}
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white">
+                    {t('admin.cables.connector1')} <span className="text-accent-red">*</span>
+                  </label>
+                  <SearchableSelect
+                    value={cableFormData.connector1 ? String(cableFormData.connector1) : ''}
+                    onChange={v => setCableFormData({ ...cableFormData, connector1: v ? Number(v) : 0 })}
+                    options={cableConnectors.map(c => ({ value: String(c.connector_id), label: c.name + (c.gender ? ` (${c.gender})` : '') }))}
+                    placeholder={t('admin.cables.selectConnector')}
+                    required
+                    className="w-full"
+                    title={t('admin.cables.connector1')}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white">
+                    {t('admin.cables.connector2')} <span className="text-accent-red">*</span>
+                  </label>
+                  <SearchableSelect
+                    value={cableFormData.connector2 ? String(cableFormData.connector2) : ''}
+                    onChange={v => setCableFormData({ ...cableFormData, connector2: v ? Number(v) : 0 })}
+                    options={cableConnectors.map(c => ({ value: String(c.connector_id), label: c.name + (c.gender ? ` (${c.gender})` : '') }))}
+                    placeholder={t('admin.cables.selectConnector')}
+                    required
+                    className="w-full"
+                    title={t('admin.cables.connector2')}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white">
+                    {t('admin.cables.type')} <span className="text-accent-red">*</span>
+                  </label>
+                  <SearchableSelect
+                    value={cableFormData.typ ? String(cableFormData.typ) : ''}
+                    onChange={v => setCableFormData({ ...cableFormData, typ: v ? Number(v) : 0 })}
+                    options={cableTypes.map(ct => ({ value: String(ct.cable_type_id), label: ct.name }))}
+                    placeholder={t('admin.cables.selectType')}
+                    required
+                    className="w-full"
+                    title={t('admin.cables.type')}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      {t('admin.cables.length')} (m) <span className="text-accent-red">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={cableFormData.length}
+                      onChange={e => setCableFormData({ ...cableFormData, length: parseFloat(e.target.value) || 0 })}
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      title={t('admin.cables.length')}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      {t('admin.cables.crossSectionShort')} (mm²)
+                    </label>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={cableFormData.mm2 ?? ''}
+                      onChange={e => {
+                        const parsedMm2 = parseFloat(e.target.value);
+                        setCableFormData({
+                          ...cableFormData,
+                          mm2: e.target.value === '' || Number.isNaN(parsedMm2) || parsedMm2 <= 0 ? undefined : parsedMm2,
+                        });
+                      }}
+                      className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-accent-red"
+                      title={t('admin.cables.crossSectionShort')}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!convertSubmitting) {
+                        setCableConvertModal(null);
+                      }
+                    }}
+                    disabled={convertSubmitting}
+                    className="rounded-lg bg-white/10 px-4 py-2 text-white hover:bg-white/20 transition disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConvertToCable}
+                    disabled={convertSubmitting || cableFormData.connector1 <= 0 || cableFormData.connector2 <= 0 || cableFormData.typ <= 0 || cableFormData.length <= 0}
+                    className="rounded-lg bg-teal-600 px-4 py-2 text-white hover:bg-teal-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-busy={convertSubmitting}
+                  >
+                    {convertSubmitting ? <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" /> : t('admin.products.convertToCable')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
       {/* Bulk Edit Products Modal */}
       {bulkEditOpen && (

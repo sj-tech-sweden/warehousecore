@@ -37,6 +37,8 @@ export interface Device {
   zone_code?: string;
   case_name?: string;
   case_id?: number;
+  cable_id?: number;
+  cable_name?: string;
   current_job_id?: number;
   job_number?: string;
   condition_rating?: number;
@@ -777,6 +779,16 @@ export const cablesAdminApi = {
   delete: (id: number) => api.delete<{message: string}>(`/admin/cables/${id}`),
   getConnectors: () => api.get<CableConnector[]>('/admin/cable-connectors'),
   getTypes: () => api.get<CableType[]>('/admin/cable-types'),
+  getDevices: (cableId: number) => api.get<Device[]>(`/admin/cables/${cableId}/devices`),
+  createDevices: (cableId: number, data: { quantity: number; prefix: string }) =>
+    api.post<{ created_count: number; device_ids: string[] }>(`/admin/cables/${cableId}/devices`, data),
+};
+
+export const productConvertApi = {
+  toCase: (productId: number) =>
+    api.post<{ case_id: number; message: string }>(`/admin/products/${productId}/convert-to-case`, {}),
+  toCable: (productId: number, data: { connector1: number; connector2: number; typ: number; length: number; mm2?: number }) =>
+    api.post<{ cable_id: number; message: string }>(`/admin/products/${productId}/convert-to-cable`, data),
 };
 
 export interface ProductPicture {

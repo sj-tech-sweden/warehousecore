@@ -23,7 +23,11 @@ import (
 	"warehousecore/internal/repository"
 )
 
-type LabelService struct{}
+type LabelService struct {
+	// LabelsDir overrides the default labels directory. When empty, defaults to
+	// "./web/dist/labels". Exposed for testing.
+	LabelsDir string
+}
 
 func NewLabelService() *LabelService {
 	log.Printf("[LABEL INIT] Label service initialized (using headless browser rendering)")
@@ -258,7 +262,7 @@ func (s *LabelService) GenerateLabelForDevice(deviceID string, templateID int) (
 			COALESCE(z.name, '') as zone_name,
 			COALESCE(z.code, '') as zone_code,
 			COALESCE(ca.name, '') as case_name,
-			COALESCE(p.name, '') as product_name,
+			COALESCE(p.name, cab.name, '') as product_name,
 			COALESCE(p.description, '') as product_description,
 			COALESCE(sb.name, '') as subcategory,
 			COALESCE(c.name, '') as category,
@@ -279,6 +283,7 @@ func (s *LabelService) GenerateLabelForDevice(deviceID string, templateID int) (
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases ca ON dc.caseID = ca.caseID
+		LEFT JOIN cables cab ON d.cable_id = cab.cableID
 		WHERE d.deviceID = $1
 	`
 
@@ -694,6 +699,25 @@ func (s *LabelService) GenerateLabelForZone(zoneID int64, templateID int) (map[s
 
 // SaveLabelImage saves a base64-encoded label image to disk and updates the device record
 func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (string, error) {
+	// Validate deviceID to prevent path traversal and filename collisions —
+	// only allow alphanumeric characters, dash, and underscore.
+	safeDeviceID := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return -1
+	}, deviceID)
+	if safeDeviceID == "" || safeDeviceID != deviceID {
+		return "", fmt.Errorf("device ID must contain only alphanumeric characters, dashes, or underscores")
+	}
+
+	// Check DB availability before writing to disk to avoid orphaned label
+	// files when the DB update would fail.
+	db := repository.GetDB()
+	if db == nil {
+		return "", fmt.Errorf("database connection is not available")
+	}
+
 	// Remove base64 prefix if present
 	if len(base64Image) > 22 && base64Image[:22] == "data:image/png;base64," {
 		base64Image = base64Image[22:]
@@ -706,25 +730,134 @@ func (s *LabelService) SaveLabelImage(deviceID string, base64Image string) (stri
 	}
 
 	// Create labels directory if it doesn't exist
-	labelsDir := "./web/dist/labels"
+	labelsDir := s.LabelsDir
+	if labelsDir == "" {
+		labelsDir = "./web/dist/labels"
+	}
 	if err := os.MkdirAll(labelsDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create labels directory: %w", err)
 	}
 
 	// Save file
-	filename := fmt.Sprintf("%s_label.png", deviceID)
-	filePath := filepath.Join(labelsDir, filename)
+	filename := fmt.Sprintf("%s_label.png", safeDeviceID)
 
-	if err := os.WriteFile(filePath, imageData, 0644); err != nil {
-		return "", fmt.Errorf("failed to write label file: %w", err)
+	// Resolve the labels directory (constant path) to handle symlinks
+	resolvedLabelsDir, err := filepath.EvalSymlinks(labelsDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve labels directory: %w", err)
 	}
 
+	// Build target path from resolved constant directory + sanitized filename
+	resolvedFilePath := filepath.Join(resolvedLabelsDir, filename)
+
+	// Verify the resolved path stays within the labels directory
+	relPath, err := filepath.Rel(resolvedLabelsDir, resolvedFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to validate file path: %w", err)
+	}
+	if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid file path: outside allowed directory")
+	}
+
+	// Refuse to write if the target path is an existing symlink file —
+	// prevents an attacker from redirecting writes outside the labels directory
+	if info, err := os.Lstat(resolvedFilePath); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("invalid file path: target is a symlink")
+		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("failed to check target file: %w", err)
+	}
+
+	// Write to a temporary file created inside the resolved labels directory
+	// and atomically rename it into place. This avoids the TOCTOU race between
+	// checking the destination path and writing to it.
+	tempFile, err := os.CreateTemp(resolvedLabelsDir, ".label.*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary label file: %w", err)
+	}
+	tempFilePath := tempFile.Name()
+	cleanupTempFile := true
+	defer func() {
+		if cleanupTempFile {
+			_ = os.Remove(tempFilePath)
+		}
+	}()
+
+	if err := tempFile.Chmod(0644); err != nil {
+		tempFile.Close()
+		return "", fmt.Errorf("failed to set temporary label file permissions: %w", err)
+	}
+
+	if _, err := tempFile.Write(imageData); err != nil {
+		tempFile.Close()
+		return "", fmt.Errorf("failed to write temporary label file: %w", err)
+	}
+
+	if err := tempFile.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temporary label file: %w", err)
+	}
+
+	// Before renaming, check if the destination already exists.
+	// On Windows, os.Rename fails if the destination exists, so we need to
+	// handle it first. Also reject symlinks and directories at the destination.
+	if destInfo, err := os.Lstat(resolvedFilePath); err == nil {
+		if destInfo.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("refusing to replace symlink label file: %s", resolvedFilePath)
+		}
+		if destInfo.IsDir() {
+			return "", fmt.Errorf("refusing to replace directory with label file: %s", resolvedFilePath)
+		}
+		// Rename existing file to a unique backup so we can restore it if the
+		// subsequent os.Rename fails (e.g. permissions, AV, disk full).
+		backupPath := resolvedFilePath + fmt.Sprintf(".bak.%d", time.Now().UnixNano())
+		if err := os.Rename(resolvedFilePath, backupPath); err != nil {
+			return "", fmt.Errorf("failed to back up existing label file: %w", err)
+		}
+		if err := os.Rename(tempFilePath, resolvedFilePath); err != nil {
+			// Restore the backup so the previous label is not lost.
+			_ = os.Rename(backupPath, resolvedFilePath)
+			return "", fmt.Errorf("failed to move label file into place: %w", err)
+		}
+		cleanupTempFile = false
+
+		// Update device record with label path; restore backup on DB failure.
+		labelPath := fmt.Sprintf("/labels/%s", filename)
+		result := db.Exec("UPDATE devices SET label_path = $1 WHERE deviceID = $2", labelPath, deviceID)
+		if result.Error != nil {
+			// Restore the previous label file so disk+DB stay consistent.
+			_ = os.Remove(resolvedFilePath)
+			_ = os.Rename(backupPath, resolvedFilePath)
+			return "", fmt.Errorf("failed to update device label path: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			// Device doesn't exist — restore backup and remove orphaned label.
+			_ = os.Remove(resolvedFilePath)
+			_ = os.Rename(backupPath, resolvedFilePath)
+			return "", fmt.Errorf("device not found: %s", deviceID)
+		}
+		_ = os.Remove(backupPath)
+		return labelPath, nil
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("failed to inspect existing label file: %w", err)
+	} else {
+		if err := os.Rename(tempFilePath, resolvedFilePath); err != nil {
+			return "", fmt.Errorf("failed to move label file into place: %w", err)
+		}
+	}
+	cleanupTempFile = false
 	// Update device record with label path
 	labelPath := fmt.Sprintf("/labels/%s", filename)
-	db := repository.GetDB()
 	result := db.Exec("UPDATE devices SET label_path = $1 WHERE deviceID = $2", labelPath, deviceID)
 	if result.Error != nil {
+		// Remove orphaned label file so disk+DB stay consistent.
+		_ = os.Remove(resolvedFilePath)
 		return "", fmt.Errorf("failed to update device label path: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		// Device doesn't exist — remove orphaned label file.
+		_ = os.Remove(resolvedFilePath)
+		return "", fmt.Errorf("device not found: %s", deviceID)
 	}
 
 	return labelPath, nil

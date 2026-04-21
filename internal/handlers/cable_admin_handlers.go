@@ -3,14 +3,19 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
+	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
+	"warehousecore/internal/services"
 )
 
 // Cable represents a cable inventory item
@@ -132,7 +137,7 @@ func GetAllCables(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		log.Printf("Error querying cables: %v", err)
-		http.Error(w, "Failed to fetch cables", http.StatusInternalServerError)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch cables"})
 		return
 	}
 	defer rows.Close()
@@ -165,8 +170,7 @@ func GetAllCables(w http.ResponseWriter, r *http.Request) {
 		cables = []Cable{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cables)
+	respondJSON(w, http.StatusOK, cables)
 }
 
 // GetCable retrieves a single cable by ID
@@ -176,7 +180,7 @@ func GetCable(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid cable ID", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable ID"})
 		return
 	}
 
@@ -220,17 +224,16 @@ func GetCable(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err == sql.ErrNoRows {
-		http.Error(w, "Cable not found", http.StatusNotFound)
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Cable not found"})
 		return
 	}
 	if err != nil {
 		log.Printf("Error fetching cable: %v", err)
-		http.Error(w, "Failed to fetch cable", http.StatusInternalServerError)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch cable"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cable)
+	respondJSON(w, http.StatusOK, cable)
 }
 
 // CreateCable creates a new cable
@@ -245,17 +248,29 @@ func CreateCable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 		return
 	}
 
 	// Validation
 	if input.Length <= 0 {
-		http.Error(w, "Length must be greater than 0", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Length must be greater than 0"})
 		return
 	}
-	if input.Connector1 <= 0 || input.Connector2 <= 0 || input.Typ <= 0 {
-		http.Error(w, "Connector1, Connector2, and Type are required", http.StatusBadRequest)
+	if input.Connector1 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1 must be greater than 0"})
+		return
+	}
+	if input.Connector2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector2 must be greater than 0"})
+		return
+	}
+	if input.Typ <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Type must be greater than 0"})
+		return
+	}
+	if input.MM2 != nil && *input.MM2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cross-section (mm2) must be greater than 0"})
 		return
 	}
 
@@ -266,15 +281,24 @@ func CreateCable(w http.ResponseWriter, r *http.Request) {
 	err := db.QueryRow(query, input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, input.Name).Scan(&id)
 	if err != nil {
 		log.Printf("Error creating cable: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to create cable: %v", err), http.StatusInternalServerError)
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) {
+			switch pqErr.Code {
+			case "23503":
+				respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable reference data"})
+				return
+			case "23505":
+				respondJSON(w, http.StatusConflict, map[string]string{"error": "Cable already exists"})
+				return
+			}
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create cable"})
 		return
 	}
 
 	log.Printf("[CABLE CREATE] Created cable ID %d", id)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
 		"cable_id": id,
 		"message":  "Cable created successfully",
 	})
@@ -287,7 +311,7 @@ func UpdateCable(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid cable ID", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable ID"})
 		return
 	}
 
@@ -301,13 +325,29 @@ func UpdateCable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 		return
 	}
 
 	// Validation
 	if input.Length != nil && *input.Length <= 0 {
-		http.Error(w, "Length must be greater than 0", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Length must be greater than 0"})
+		return
+	}
+	if input.MM2 != nil && *input.MM2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cross-section (mm2) must be greater than 0"})
+		return
+	}
+	if input.Connector1 != nil && *input.Connector1 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1 must be greater than 0"})
+		return
+	}
+	if input.Connector2 != nil && *input.Connector2 <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector2 must be greater than 0"})
+		return
+	}
+	if input.Typ != nil && *input.Typ <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Type must be greater than 0"})
 		return
 	}
 
@@ -350,7 +390,7 @@ func UpdateCable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(updates) == 0 {
-		http.Error(w, "No fields to update", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No fields to update"})
 		return
 	}
 
@@ -361,20 +401,19 @@ func UpdateCable(w http.ResponseWriter, r *http.Request) {
 	result, err := db.Exec(query, args...)
 	if err != nil {
 		log.Printf("Error updating cable: %v", err)
-		http.Error(w, "Failed to update cable", http.StatusInternalServerError)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update cable"})
 		return
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		http.Error(w, "Cable not found", http.StatusNotFound)
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Cable not found"})
 		return
 	}
 
 	log.Printf("[CABLE UPDATE] Updated cable ID %d", id)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Cable updated successfully"})
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Cable updated successfully"})
 }
 
 // DeleteCable deletes a cable
@@ -384,7 +423,7 @@ func DeleteCable(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid cable ID", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable ID"})
 		return
 	}
 
@@ -393,20 +432,19 @@ func DeleteCable(w http.ResponseWriter, r *http.Request) {
 	result, err := db.Exec("DELETE FROM cables WHERE cableID = $1", id)
 	if err != nil {
 		log.Printf("Error deleting cable: %v", err)
-		http.Error(w, "Failed to delete cable", http.StatusInternalServerError)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete cable"})
 		return
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		http.Error(w, "Cable not found", http.StatusNotFound)
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Cable not found"})
 		return
 	}
 
 	log.Printf("[CABLE DELETE] Deleted cable ID %d", id)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Cable deleted successfully"})
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Cable deleted successfully"})
 }
 
 // GetCableConnectors retrieves all cable connector types
@@ -418,7 +456,7 @@ func GetCableConnectors(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(query)
 	if err != nil {
 		log.Printf("Error querying cable connectors: %v", err)
-		http.Error(w, "Failed to fetch cable connectors", http.StatusInternalServerError)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch cable connectors"})
 		return
 	}
 	defer rows.Close()
@@ -438,8 +476,7 @@ func GetCableConnectors(w http.ResponseWriter, r *http.Request) {
 		connectors = []CableConnector{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(connectors)
+	respondJSON(w, http.StatusOK, connectors)
 }
 
 // GetCableTypes retrieves all cable types
@@ -460,7 +497,7 @@ func GetCableTypes(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(query)
 	if err != nil {
 		log.Printf("Error querying cable types: %v", err)
-		http.Error(w, "Failed to fetch cable types", http.StatusInternalServerError)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch cable types"})
 		return
 	}
 	defer rows.Close()
@@ -480,6 +517,263 @@ func GetCableTypes(w http.ResponseWriter, r *http.Request) {
 		types = []CableType{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(types)
+	respondJSON(w, http.StatusOK, types)
+}
+
+// GetCableDevices retrieves all devices associated with a cable
+func GetCableDevices(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	cableID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable ID"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+
+	// Verify cable exists
+	var cableExists bool
+	if err = db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cables WHERE cableID = $1)`, cableID).Scan(&cableExists); err != nil {
+		log.Printf("[CABLE DEVICES] Error checking cable existence: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify cable"})
+		return
+	}
+	if !cableExists {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Cable not found"})
+		return
+	}
+
+	query := `
+		SELECT d.deviceID, d.productID, d.serialnumber, d.barcode, d.qr_code, d.rfid, d.status,
+		       d.current_location, d.zone_id,
+		       COALESCE(d.condition_rating, 0), COALESCE(d.usage_hours, 0), d.purchaseDate, d.retire_date, d.warranty_end_date,
+		       d.lastmaintenance, d.nextmaintenance,
+		       d.notes, d.label_path,
+		       COALESCE(p.name, cab.name, '') AS product_name,
+		       COALESCE(cat.name, '') AS product_category,
+		       COALESCE(z.name, '') AS zone_name,
+		       COALESCE(z.code, '') AS zone_code,
+		       dc.caseID,
+		       COALESCE(cs.name, '') AS case_name,
+		       d.cable_id,
+		       COALESCE(cab.name, '') AS cable_name,
+		       lj.jobID,
+		       COALESCE(CAST(lj.jobID AS TEXT), '') AS job_number
+		FROM devices d
+		LEFT JOIN products p ON d.productID = p.productID
+		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
+		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
+		LEFT JOIN cases cs ON dc.caseID = cs.caseID
+		LEFT JOIN cables cab ON d.cable_id = cab.cableID
+		LEFT JOIN LATERAL (
+			SELECT jd.jobID
+			FROM jobdevices jd
+			WHERE jd.deviceID = d.deviceID
+			ORDER BY jd.jobID DESC
+			LIMIT 1
+		) lj ON true
+		WHERE d.cable_id = $1
+		ORDER BY LENGTH(d.deviceID), d.deviceID ASC
+	`
+
+	rows, err := db.Query(query, cableID)
+	if err != nil {
+		log.Printf("[CABLE DEVICES] Failed to query devices for cable %d: %v", cableID, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch cable devices"})
+		return
+	}
+	defer rows.Close()
+
+	var responses []DeviceAdminResponse
+	for rows.Next() {
+		var device models.DeviceWithDetails
+		err := rows.Scan(
+			&device.DeviceID,
+			&device.ProductID,
+			&device.SerialNumber,
+			&device.Barcode,
+			&device.QRCode,
+			&device.RFID,
+			&device.Status,
+			&device.CurrentLocation,
+			&device.ZoneID,
+			&device.ConditionRating,
+			&device.UsageHours,
+			&device.PurchaseDate,
+			&device.RetireDate,
+			&device.WarrantyEndDate,
+			&device.LastMaintenance,
+			&device.NextMaintenance,
+			&device.Notes,
+			&device.LabelPath,
+			&device.ProductName,
+			&device.ProductCategory,
+			&device.ZoneName,
+			&device.ZoneCode,
+			&device.CaseID,
+			&device.CaseName,
+			&device.CableID,
+			&device.CableName,
+			&device.CurrentJobID,
+			&device.JobNumber,
+		)
+		if err != nil {
+			log.Printf("[CABLE DEVICES] Failed to scan device: %v", err)
+			continue
+		}
+
+		responses = append(responses, toDeviceAdminResponse(&device))
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[CABLE DEVICES] Row iteration error for cable %d: %v", cableID, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch cable devices"})
+		return
+	}
+
+	if responses == nil {
+		responses = []DeviceAdminResponse{}
+	}
+
+	respondJSON(w, http.StatusOK, responses)
+}
+
+// CreateDevicesForCable creates one or more devices linked to a cable.
+// The caller must supply a prefix; device IDs are generated as PREFIX001, PREFIX002, etc.
+func CreateDevicesForCable(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	cableID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable ID"})
+		return
+	}
+
+	var req struct {
+		Quantity int    `json:"quantity"`
+		Prefix   string `json:"prefix"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Quantity <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Valid quantity is required"})
+		return
+	}
+	if req.Quantity > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cannot create more than 100 devices at once"})
+		return
+	}
+
+	if strings.TrimSpace(req.Prefix) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Prefix is required for cable devices"})
+		return
+	}
+	prefix, err := services.DeriveDeviceIDPrefix(r.Context(), nil, 0, req.Prefix)
+	if err != nil || prefix == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Prefix must contain only alphanumeric characters (A-Z, 0-9)"})
+		return
+	}
+	if len(prefix) > 20 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Prefix must be at most 20 characters"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+
+	// Use a transaction with AllocateDeviceCounter for safe, all-or-nothing device creation
+	ctx := r.Context()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("[CABLE DEVICE CREATE] Failed to begin transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create devices"})
+		return
+	}
+	defer func() {
+		if tx != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Verify cable exists inside the transaction to prevent race with concurrent deletes
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM cables WHERE cableID = $1)", cableID).Scan(&exists); err != nil {
+		log.Printf("[CABLE DEVICE CREATE] Failed to verify cable %d existence: %v", cableID, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify cable"})
+		return
+	}
+	if !exists {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Cable not found"})
+		return
+	}
+
+	startCounter, err := services.AllocateDeviceCounter(ctx, tx, prefix)
+	if err != nil {
+		log.Printf("[CABLE DEVICE CREATE] Failed to allocate device counter for prefix %s: %v", prefix, err)
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "22003" {
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "Counter overflow for prefix"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to allocate device IDs"})
+		return
+	}
+
+	// Guard against int64 overflow when computing device IDs for the batch
+	if startCounter > math.MaxInt64-int64(req.Quantity-1) {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "Counter overflow for prefix"})
+		return
+	}
+
+	var createdIDs []string
+	for i := 0; i < req.Quantity; i++ {
+		deviceID := fmt.Sprintf("%s%03d", prefix, startCounter+int64(i))
+		_, err := tx.ExecContext(ctx,
+			"INSERT INTO devices (deviceID, cable_id, status) VALUES ($1, $2, 'in_storage')",
+			deviceID, cableID,
+		)
+		if err != nil {
+			log.Printf("[CABLE DEVICE CREATE] Failed to insert device %s: %v", deviceID, err)
+			var pqErr *pq.Error
+			if errors.As(err, &pqErr) {
+				if pqErr.Code == "23505" {
+					respondJSON(w, http.StatusConflict, map[string]string{"error": fmt.Sprintf("Device ID %s already exists", deviceID)})
+					return
+				}
+				if pqErr.Code == "23503" {
+					respondJSON(w, http.StatusNotFound, map[string]string{"error": "Cable not found"})
+					return
+				}
+			}
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to create device %s", deviceID)})
+			return
+		}
+		createdIDs = append(createdIDs, deviceID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("[CABLE DEVICE CREATE] Failed to commit transaction: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create devices"})
+		return
+	}
+	tx = nil // prevent deferred rollback
+
+	// Auto-generate labels for all created devices in the background
+	go func() {
+		labelService := services.NewLabelService()
+		for _, deviceID := range createdIDs {
+			if err := labelService.AutoGenerateDeviceLabel(deviceID); err != nil {
+				log.Printf("[CABLE DEVICE LABEL ERROR] Failed to generate label for device %s: %v", deviceID, err)
+			} else {
+				log.Printf("[CABLE DEVICE LABEL SUCCESS] Generated label for device %s", deviceID)
+			}
+		}
+	}()
+
+	log.Printf("[CABLE DEVICE CREATE] Created %d devices for cable %d: %v", len(createdIDs), cableID, createdIDs)
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"created_count": len(createdIDs),
+		"device_ids":    createdIDs,
+	})
 }

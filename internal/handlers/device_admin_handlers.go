@@ -32,6 +32,8 @@ type DeviceAdminResponse struct {
 	ZoneCode        string  `json:"zone_code,omitempty"`
 	CaseID          *int    `json:"case_id,omitempty"`
 	CaseName        string  `json:"case_name,omitempty"`
+	CableID         *int    `json:"cable_id,omitempty"`
+	CableName       string  `json:"cable_name,omitempty"`
 	CurrentJobID    *int    `json:"current_job_id,omitempty"`
 	JobNumber       string  `json:"job_number,omitempty"`
 	ConditionRating float64 `json:"condition_rating"`
@@ -82,6 +84,8 @@ func toDeviceAdminResponse(device *models.DeviceWithDetails) DeviceAdminResponse
 		ZoneCode:        device.ZoneCode,
 		CaseID:          nullIntToPtr(device.CaseID),
 		CaseName:        device.CaseName,
+		CableID:         nullIntToPtr(device.CableID),
+		CableName:       device.CableName,
 		CurrentJobID:    nullIntToPtr(device.CurrentJobID),
 		JobNumber:       device.JobNumber,
 		ConditionRating: device.ConditionRating,
@@ -110,12 +114,14 @@ func GetAllDevicesAdmin(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(d.condition_rating, 0), COALESCE(d.usage_hours, 0), d.purchaseDate, d.retire_date, d.warranty_end_date,
 		       d.lastmaintenance, d.nextmaintenance,
 		       d.notes, d.label_path,
-		       COALESCE(p.name, '') AS product_name,
+		       COALESCE(p.name, cab.name, '') AS product_name,
 		       COALESCE(cat.name, '') AS product_category,
 		       COALESCE(z.name, '') AS zone_name,
 		       COALESCE(z.code, '') AS zone_code,
 		       dc.caseID,
 		       COALESCE(c.name, '') AS case_name,
+		       d.cable_id,
+		       COALESCE(cab.name, '') AS cable_name,
 		       jd.jobID,
 		       COALESCE(CAST(jd.jobID AS TEXT), '') AS job_number
 		FROM devices d
@@ -124,6 +130,7 @@ func GetAllDevicesAdmin(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases c ON dc.caseID = c.caseID
+		LEFT JOIN cables cab ON d.cable_id = cab.cableID
 		LEFT JOIN jobdevices jd ON d.deviceID = jd.deviceID
 		ORDER BY d.deviceID DESC
 	`
@@ -164,6 +171,8 @@ func GetAllDevicesAdmin(w http.ResponseWriter, r *http.Request) {
 			&device.ZoneCode,
 			&device.CaseID,
 			&device.CaseName,
+			&device.CableID,
+			&device.CableName,
 			&device.CurrentJobID,
 			&device.JobNumber,
 		)

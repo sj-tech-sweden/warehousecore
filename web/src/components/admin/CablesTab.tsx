@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Box,
   Cable,
   ChevronDown,
   ChevronRight,
@@ -15,9 +16,11 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cablesAdminApi } from '../../lib/api';
-import type { Cable as CableType, CableConnector, CableType as CableTypeData, CableCreateInput, CableUpdateInput } from '../../lib/api';
+import type { Cable as CableType, CableConnector, CableType as CableTypeData, CableCreateInput, CableUpdateInput, Device } from '../../lib/api';
 import { useBlockBodyScroll } from '../../hooks/useBlockBodyScroll';
 import { SearchableSelect } from '../SearchableSelect';
+import { ModalPortal } from '../ModalPortal';
+import { formatStatus, getStatusColor } from '../../lib/utils';
 
 interface CableFormData {
   name: string;
@@ -68,8 +71,16 @@ export function CablesTab() {
   const [lengthMaxFilter, setLengthMaxFilter] = useState<number | ''>('');
   const [refreshing, setRefreshing] = useState(false);
 
+  // Cable devices modal state
+  const [devicesModal, setDevicesModal] = useState<{ cableId: number } | null>(null);
+  const [cableDevices, setCableDevices] = useState<Device[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [devicePrefix, setDevicePrefix] = useState('');
+  const [deviceQuantity, setDeviceQuantity] = useState(1);
+  const [creatingDevices, setCreatingDevices] = useState(false);
+
   // Block body scroll when any modal is open
-  useBlockBodyScroll(modalOpen || viewCable !== null);
+  useBlockBodyScroll(modalOpen || viewCable !== null || devicesModal !== null);
 
   const connectorIndex = useMemo(() => {
     return new Map(connectors.map((connector) => [connector.connector_id, connector]));
@@ -230,6 +241,50 @@ export function CablesTab() {
     } catch (error: unknown) {
       console.error('Failed to delete cable:', error);
       alert(t('admin.cables.errors.delete'));
+    }
+  };
+
+  const handleOpenDevicesModal = useCallback(async (cableId: number) => {
+    setDevicesModal({ cableId });
+    setCableDevices([]);
+    setLoadingDevices(true);
+    setDevicePrefix('');
+    setDeviceQuantity(1);
+    try {
+      const { data } = await cablesAdminApi.getDevices(cableId);
+      setCableDevices(data || []);
+    } catch (error) {
+      console.error('Failed to load cable devices:', error);
+      setCableDevices([]);
+      setDevicesModal(null);
+      alert(t('admin.cables.errors.loadDevices'));
+    } finally {
+      setLoadingDevices(false);
+    }
+  }, [t]);
+
+  const handleCreateCableDevices = async () => {
+    if (!devicesModal || !devicePrefix.trim() || deviceQuantity <= 0) return;
+    setCreatingDevices(true);
+    try {
+      const { data } = await cablesAdminApi.createDevices(devicesModal.cableId, {
+        quantity: deviceQuantity,
+        prefix: devicePrefix.trim(),
+      });
+      alert(t('admin.cables.devicesCreated', { count: data.created_count }));
+    } catch (error) {
+      console.error('Failed to create cable devices:', error);
+      alert(t('admin.cables.errors.createDevices'));
+      return;
+    } finally {
+      setCreatingDevices(false);
+    }
+    // Refresh device list separately so a refresh failure doesn't mask a successful create
+    try {
+      const { data: devices } = await cablesAdminApi.getDevices(devicesModal.cableId);
+      setCableDevices(devices || []);
+    } catch (refreshError) {
+      console.error('Failed to refresh cable devices after creation:', refreshError);
     }
   };
 
@@ -629,6 +684,14 @@ export function CablesTab() {
                                             <Pencil className="w-4 h-4" />
                                           </button>
                                           <button
+                                            onClick={() => handleOpenDevicesModal(cable.cable_id)}
+                                            className="p-2 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-lg text-cyan-400 transition-colors"
+                                            title={t('admin.cables.manageDevices')}
+                                            aria-label={t('admin.cables.manageDevices')}
+                                          >
+                                            <Box className="w-4 h-4" />
+                                          </button>
+                                          <button
                                             onClick={() => handleDelete(cable.cable_id)}
                                             className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 transition-colors"
                                             title={t('common.delete')}
@@ -690,6 +753,14 @@ export function CablesTab() {
                           aria-label={t('common.edit')}
                         >
                           <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenDevicesModal(cable.cable_id)}
+                          className="p-2 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-lg text-cyan-400 transition-colors"
+                          title={t('admin.cables.manageDevices')}
+                          aria-label={t('admin.cables.manageDevices')}
+                        >
+                          <Box className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(cable.cable_id)}
@@ -957,6 +1028,127 @@ export function CablesTab() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Cable Devices Modal */}
+      {devicesModal && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[120] flex min-h-screen items-center justify-center bg-black/80 p-4">
+            <div className="glass-dark w-full max-w-4xl rounded-2xl shadow-2xl border border-white/10 flex flex-col max-h-[85vh]">
+              <div className="flex items-center justify-between p-6 border-b border-white/10">
+                <div>
+                  <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <Box className="w-6 h-6 text-cyan-400" />
+                    {t('admin.cables.devicesTitle', { id: devicesModal.cableId })}
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {t('admin.cables.deviceCount', { count: cableDevices.length })}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (creatingDevices) return;
+                    setDevicesModal(null);
+                    setCableDevices([]);
+                    setLoadingDevices(false);
+                    setCreatingDevices(false);
+                    setDevicePrefix('');
+                    setDeviceQuantity(1);
+                  }}
+                  disabled={creatingDevices}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white/10"
+                  aria-label={t('common.close')}
+                  title={creatingDevices ? t('common.loading') : t('common.close')}
+                  aria-disabled={creatingDevices}
+                >
+                  {t('common.close')}
+                </button>
+              </div>
+
+              {/* Add devices form */}
+              <div className="p-6 border-b border-white/10">
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">{t('admin.cables.addDevices')}</h3>
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">{t('admin.cables.devicePrefix')}</label>
+                    <input
+                      type="text"
+                      value={devicePrefix}
+                      onChange={e => setDevicePrefix(e.target.value.toUpperCase())}
+                      maxLength={20}
+                      placeholder={t('admin.cables.devicePrefixPlaceholder')}
+                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-cyan-400 text-sm w-32"
+                      title={t('admin.cables.devicePrefix')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">{t('admin.cables.deviceQuantity')}</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={deviceQuantity}
+                      onChange={e => setDeviceQuantity(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                      placeholder={t('admin.cables.deviceQuantityPlaceholder')}
+                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-500 outline-none transition focus:border-cyan-400 text-sm w-24"
+                      title={t('admin.cables.deviceQuantity')}
+                    />
+                  </div>
+                  <button
+                    onClick={handleCreateCableDevices}
+                    disabled={creatingDevices || !devicePrefix.trim() || deviceQuantity <= 0}
+                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-busy={creatingDevices}
+                  >
+                    {creatingDevices ? <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" /> : t('admin.cables.createDevices')}
+                  </button>
+                </div>
+              </div>
+
+              {/* Device list */}
+              <div className="overflow-y-auto flex-1">
+                {loadingDevices ? (
+                  <div className="p-6 text-center text-gray-400 text-sm">
+                    {t('admin.cables.loadingDevices')}
+                  </div>
+                ) : cableDevices.length === 0 ? (
+                  <div className="p-6 text-center text-gray-400 text-sm">
+                    {t('admin.cables.noDevices')}
+                  </div>
+                ) : (
+                  <div className="p-6 space-y-3">
+                    {cableDevices.map(device => (
+                      <div
+                        key={device.device_id}
+                        className="glass rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-white/10"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-white text-sm sm:text-base truncate">
+                              {device.device_id}
+                            </span>
+                            {device.status && (
+                              <span
+                                className={`text-[10px] sm:text-xs font-semibold px-2 py-1 rounded-full bg-white/10 uppercase tracking-wide ${getStatusColor(device.status)}`}
+                              >
+                                {formatStatus(device.status)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-400 mt-1">
+                            {device.zone_name && <span>{device.zone_name}</span>}
+                            {device.zone_code && <span className="text-gray-500 font-mono">({device.zone_code})</span>}
+                            {device.serial_number && <span className="text-gray-500">SN: {device.serial_number}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );

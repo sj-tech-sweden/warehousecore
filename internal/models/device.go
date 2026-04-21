@@ -29,6 +29,7 @@ type Device struct {
 	CurrentLocation sql.NullString `json:"current_location" db:"current_location"`
 	ZoneID          sql.NullInt64  `json:"zone_id,omitempty" db:"zone_id"`
 	CaseID          sql.NullInt64  `json:"case_id,omitempty" db:"case_id"`
+	CableID         sql.NullInt64  `json:"cable_id,omitempty" db:"cable_id"`
 	CurrentJobID    sql.NullInt64  `json:"current_job_id,omitempty" db:"current_job_id"`
 	ConditionRating float64        `json:"condition_rating" db:"condition_rating"`
 	UsageHours      float64        `json:"usage_hours" db:"usage_hours"`
@@ -49,6 +50,7 @@ type DeviceWithDetails struct {
 	ZoneName        string         `json:"zone_name,omitempty" db:"zone_name"`
 	ZoneCode        string         `json:"zone_code,omitempty" db:"zone_code"`
 	CaseName        string         `json:"case_name,omitempty" db:"case_name"`
+	CableName       string         `json:"cable_name,omitempty" db:"cable_name"`
 	JobNumber       string         `json:"job_number,omitempty" db:"job_number"`
 	LabelPath       sql.NullString `json:"label_path,omitempty" db:"label_path"`
 }
