@@ -268,7 +268,7 @@ export function ProductFieldDefinitionsTab() {
                     disabled={editingId !== null}
                   />
                   {editingId !== null && (
-                    <p className="mt-1 text-xs text-gray-500">Field name cannot be changed after creation.</p>
+                    <p className="mt-1 text-xs text-gray-500">{t('admin.fieldDefinitions.fields.nameReadOnly', { defaultValue: 'Field name cannot be changed after creation.' })}</p>
                   )}
                 </div>
 

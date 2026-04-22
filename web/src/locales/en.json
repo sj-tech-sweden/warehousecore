@@ -1230,6 +1230,7 @@
       "fields": {
         "name": "Field Name",
         "namePlaceholder": "e.g. connector_1 (lowercase, underscores only)",
+        "nameReadOnly": "Field name cannot be changed after creation.",
         "label": "Display Label",
         "labelPlaceholder": "e.g. Connector 1",
         "type": "Field Type",

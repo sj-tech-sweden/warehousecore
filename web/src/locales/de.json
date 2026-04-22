@@ -1230,6 +1230,7 @@
       "fields": {
         "name": "Feldname",
         "namePlaceholder": "z.B. stecker_1 (Kleinbuchstaben, nur Unterstriche)",
+        "nameReadOnly": "Der Feldname kann nach der Erstellung nicht mehr geändert werden.",
         "label": "Anzeigename",
         "labelPlaceholder": "z.B. Stecker 1",
         "type": "Feldtyp",
