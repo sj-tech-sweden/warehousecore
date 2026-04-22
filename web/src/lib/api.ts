@@ -819,3 +819,41 @@ export const productWebsiteApi = {
   update: (productId: number, payload: { website_visible: boolean; website_images: string[]; website_thumbnail?: string | null }) =>
     api.put(`/admin/products/${productId}/website`, payload),
 };
+
+// Product custom fields interfaces
+export interface ProductFieldDefinition {
+  id: number;
+  name: string;
+  label: string;
+  field_type: 'text' | 'number' | 'integer' | 'select' | 'boolean';
+  options?: string | null; // JSON string array for 'select' type, e.g. '["XLR","TRS"]'
+  unit?: string | null;
+  sort_order: number;
+  is_required: boolean;
+}
+
+export interface ProductFieldValue {
+  field_definition_id: number;
+  name: string;
+  label: string;
+  field_type: string;
+  options?: string | null;
+  unit?: string | null;
+  sort_order: number;
+  value: string;
+}
+
+export const productFieldDefinitionsApi = {
+  list: () => api.get<ProductFieldDefinition[]>('/admin/product-field-definitions'),
+  create: (data: Omit<ProductFieldDefinition, 'id'>) =>
+    api.post<ProductFieldDefinition>('/admin/product-field-definitions', data),
+  update: (id: number, data: Omit<ProductFieldDefinition, 'id'>) =>
+    api.put<ProductFieldDefinition>(`/admin/product-field-definitions/${id}`, data),
+  delete: (id: number) => api.delete(`/admin/product-field-definitions/${id}`),
+};
+
+export const productFieldValuesApi = {
+  get: (productId: number) => api.get<ProductFieldValue[]>(`/admin/products/${productId}/field-values`),
+  set: (productId: number, values: Record<string, string>) =>
+    api.put(`/admin/products/${productId}/field-values`, { values }),
+};

@@ -13,7 +13,6 @@ import { JobsPage } from './pages/JobsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { CasesPage } from './pages/CasesPage';
 import { ProductsPage } from './pages/ProductsPage';
-import { CablesPage } from './pages/CablesPage';
 import { AdminPage } from './pages/AdminPage';
 import { ProfilePage } from './pages/ProfilePage';
 import LabelDesignerPage from './pages/LabelDesignerPage';
@@ -51,15 +50,7 @@ function App() {
           />
           <Route
             path="/cables"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin']}>
-                    <CablesPage />
-                  </RoleGuard>
-                </Layout>
-              </ProtectedRoute>
-            }
+            element={<Navigate to="/products" replace />}
           />
           <Route path="/jobs" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />
           <Route path="/jobs/:id" element={<ProtectedRoute><Layout><JobsPage /></Layout></ProtectedRoute>} />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler, KeyRound, Tag, Download, DollarSign, Link2 } from 'lucide-react';
+import { Settings, Users, Layers, Lightbulb, Cpu, FolderTree, Database, Ruler, KeyRound, Tag, Download, DollarSign, Link2, Sliders } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ZoneTypesTab } from '../components/admin/ZoneTypesTab';
 import { LEDSettingsTab } from '../components/admin/LEDSettingsTab';
@@ -13,8 +13,9 @@ import { BrandsManufacturersTab } from '../components/admin/BrandsManufacturersT
 import { ExportTab } from '../components/admin/ExportTab';
 import { CurrencySettingsTab } from '../components/admin/CurrencySettingsTab';
 import { EventoryTab } from '../components/admin/EventoryTab';
+import { ProductFieldDefinitionsTab } from '../components/admin/ProductFieldDefinitionsTab';
 
-type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'brands' | 'counttypes' | 'roles' | 'apisettings' | 'apikeys' | 'export' | 'currency' | 'eventory';
+type TabType = 'zonetypes' | 'led' | 'controllers' | 'categories' | 'brands' | 'counttypes' | 'roles' | 'apisettings' | 'apikeys' | 'export' | 'currency' | 'eventory' | 'fieldDefinitions';
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('zonetypes');
@@ -31,6 +32,7 @@ export function AdminPage() {
     { id: 'apisettings' as TabType, label: t('admin.tabs.apiSettings'), icon: Database },
     { id: 'currency' as TabType, label: t('admin.tabs.currency'), icon: DollarSign },
     { id: 'eventory' as TabType, label: t('admin.tabs.eventory'), icon: Link2 },
+    { id: 'fieldDefinitions' as TabType, label: t('admin.tabs.fieldDefinitions'), icon: Sliders },
     { id: 'apikeys' as TabType, label: t('admin.tabs.apiKeys'), icon: KeyRound },
     { id: 'export' as TabType, label: t('admin.tabs.export'), icon: Download },
   ];
@@ -82,6 +84,7 @@ export function AdminPage() {
         {activeTab === 'apisettings' && <APISettingsTab />}
         {activeTab === 'currency' && <CurrencySettingsTab />}
         {activeTab === 'eventory' && <EventoryTab />}
+        {activeTab === 'fieldDefinitions' && <ProductFieldDefinitionsTab />}
         {activeTab === 'apikeys' && <APIKeysTab />}
         {activeTab === 'export' && <ExportTab />}
       </div>

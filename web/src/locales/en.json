@@ -374,7 +374,8 @@
       "currency": "Currency",
       "eventory": "Eventory",
       "export": "CSV Export",
-      "devices": "Devices"
+      "devices": "Devices",
+      "fieldDefinitions": "Custom Fields"
     },
     "eventory": {
       "title": "Eventory Integration",
@@ -1205,7 +1206,53 @@
       "bulkEditDescription": "Apply changes to {{count}} selected product(s). Only filled fields will be updated.",
       "bulkDeleteSuccess": "Deleted {{products}} product(s) and {{devices}} device(s).",
       "bulkUpdateSuccess": "Updated {{count}} product(s).",
-      "skippedPackages": "{{count}} package product(s) were skipped."
+      "skippedPackages": "{{count}} package product(s) were skipped.",
+      "customFieldsSectionTitle": "Custom Fields"
+    },
+    "fieldDefinitions": {
+      "title": "Custom Field Definitions",
+      "subtitle": "Define custom fields that can be added to any product",
+      "newField": "New Field",
+      "createField": "Create Custom Field",
+      "editField": "Edit Custom Field",
+      "noFields": "No custom fields defined yet",
+      "confirmDelete": "Delete this custom field? All values for this field will be lost.",
+      "columns": {
+        "name": "Name",
+        "label": "Label",
+        "type": "Type",
+        "unit": "Unit",
+        "options": "Options",
+        "required": "Required",
+        "sortOrder": "Order",
+        "actions": "Actions"
+      },
+      "fields": {
+        "name": "Field Name",
+        "namePlaceholder": "e.g. connector_1 (lowercase, underscores only)",
+        "label": "Display Label",
+        "labelPlaceholder": "e.g. Connector 1",
+        "type": "Field Type",
+        "unit": "Unit",
+        "unitPlaceholder": "e.g. m, mm², kg",
+        "sortOrder": "Sort Order",
+        "required": "Required field",
+        "options": "Options (one per line)",
+        "optionsPlaceholder": "XLR\nTRS\nRCA",
+        "optionsHelp": "Enter one option per line for select fields"
+      },
+      "types": {
+        "text": "Text",
+        "number": "Number (decimal)",
+        "integer": "Number (integer)",
+        "select": "Select (dropdown)",
+        "boolean": "Yes/No (checkbox)"
+      },
+      "errors": {
+        "save": "Failed to save field definition",
+        "delete": "Failed to delete field definition",
+        "load": "Failed to load field definitions"
+      }
     }
   },
   "scan": {
@@ -1774,7 +1821,9 @@
     "productsSubtitle": "Manage product definitions and rental metadata.",
     "cablesTitle": "Cable Catalog",
     "cablesSubtitle": "Maintain cable types and assignments.",
-    "devicesTabLabel": "Devices"
+    "devicesTabLabel": "Devices",
+    "customFieldsTitle": "Custom Field Definitions",
+    "customFieldsSubtitle": "Manage custom attributes for products"
   },
   "roleGuard": {
     "loading": "Loading permissions...",
