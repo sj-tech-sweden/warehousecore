@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings, Boxes, Tag, Cable, ChevronDown } from 'lucide-react';
+import { Home, Package, MapPin, ScanLine, Wrench, Menu, Briefcase, X, LogOut, User, ChevronLeft, ChevronRight, Settings, Boxes, Tag, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -125,7 +125,6 @@ export function Layout({ children }: LayoutProps) {
 
   const productNavItems = useMemo(() => ([
     { path: '/products', icon: Package, label: t('nav.products') },
-    { path: '/cables', icon: Cable, label: t('nav.cables') },
   ]), [t]);
 
   const adminNavItem = useMemo(() => (

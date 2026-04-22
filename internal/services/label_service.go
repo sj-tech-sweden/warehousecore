@@ -262,7 +262,7 @@ func (s *LabelService) GenerateLabelForDevice(deviceID string, templateID int) (
 			COALESCE(z.name, '') as zone_name,
 			COALESCE(z.code, '') as zone_code,
 			COALESCE(ca.name, '') as case_name,
-			COALESCE(p.name, cab.name, '') as product_name,
+			COALESCE(p.name, '') as product_name,
 			COALESCE(p.description, '') as product_description,
 			COALESCE(sb.name, '') as subcategory,
 			COALESCE(c.name, '') as category,
@@ -283,7 +283,6 @@ func (s *LabelService) GenerateLabelForDevice(deviceID string, templateID int) (
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases ca ON dc.caseID = ca.caseID
-		LEFT JOIN cables cab ON d.cable_id = cab.cableID
 		WHERE d.deviceID = $1
 	`
 

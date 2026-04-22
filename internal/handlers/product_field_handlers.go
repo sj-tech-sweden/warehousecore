@@ -222,7 +222,7 @@ func GetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 
 	var exists bool
-	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM products WHERE id=$1)`, productID).Scan(&exists); err != nil {
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM products WHERE productID=$1)`, productID).Scan(&exists); err != nil {
 		log.Printf("Error checking product existence %d: %v", productID, err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify product"})
 		return
@@ -286,7 +286,7 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 
 	var exists bool
-	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM products WHERE id=$1)`, productID).Scan(&exists); err != nil {
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM products WHERE productID=$1)`, productID).Scan(&exists); err != nil {
 		log.Printf("Error checking product existence %d: %v", productID, err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to verify product"})
 		return

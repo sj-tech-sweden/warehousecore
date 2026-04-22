@@ -54,7 +54,7 @@ func ExportCSV(w http.ResponseWriter, r *http.Request) {
 		csvData, err = exportStorageZones()
 		filename = fmt.Sprintf("storage_zones_%s.csv", timestamp)
 	case "cables":
-		csvData, err = exportCables()
+		csvData, err = exportProductsWithCableFields()
 		filename = fmt.Sprintf("cables_%s.csv", timestamp)
 	case "jobs":
 		csvData, err = exportJobs()
@@ -622,26 +622,27 @@ func exportStorageZones() ([]byte, error) {
 	return createCSV(headers, csvRows)
 }
 
-// exportCables exports all cables with specifications
-func exportCables() ([]byte, error) {
+// exportProductsWithCableFields exports products that have cable-related custom field values.
+// Cables are now modelled as products with product_field_values entries.
+func exportProductsWithCableFields() ([]byte, error) {
 	db := repository.GetSQLDB()
 
+	// Fetch products that have at least one cable-related field value
 	query := `
-		SELECT
-			c.id,
-			c.name,
-			ct.name as cable_type,
-			cc1.name as connector_a,
-			cc2.name as connector_b,
-			c.length_meters,
-			c.color,
-			c.notes,
-			c.quantity
-		FROM cables c
-		LEFT JOIN cable_types ct ON c.cable_type_id = ct.id
-		LEFT JOIN cable_connectors cc1 ON c.connector_a_id = cc1.id
-		LEFT JOIN cable_connectors cc2 ON c.connector_b_id = cc2.id
-		ORDER BY c.name
+		SELECT DISTINCT
+			p.productID,
+			p.name,
+			MAX(CASE WHEN pfd.name = 'connector_1' THEN pfv.value END) AS connector_1,
+			MAX(CASE WHEN pfd.name = 'connector_2' THEN pfv.value END) AS connector_2,
+			MAX(CASE WHEN pfd.name = 'cable_type'  THEN pfv.value END) AS cable_type,
+			MAX(CASE WHEN pfd.name = 'cable_length' THEN pfv.value END) AS cable_length,
+			MAX(CASE WHEN pfd.name = 'cable_mm2'   THEN pfv.value END) AS cable_mm2
+		FROM products p
+		JOIN product_field_values pfv ON pfv.product_id = p.productID
+		JOIN product_field_definitions pfd ON pfd.id = pfv.field_definition_id
+		WHERE pfd.name IN ('connector_1', 'connector_2', 'cable_type', 'cable_length', 'cable_mm2')
+		GROUP BY p.productID, p.name
+		ORDER BY p.name
 	`
 
 	rows, err := db.Query(query)
@@ -651,36 +652,26 @@ func exportCables() ([]byte, error) {
 	defer rows.Close()
 
 	headers := []string{
-		"ID", "Name", "Cable Type", "Connector A", "Connector B",
-		"Length (m)", "Color", "Notes", "Quantity",
+		"Product ID", "Name", "Connector 1", "Connector 2", "Cable Type",
+		"Length (m)", "Cross-section (mm²)",
 	}
 
 	var csvRows [][]string
-
 	for rows.Next() {
-		var id, quantity int
+		var id int
 		var name string
-		var cableType, connectorA, connectorB, color, notes *string
-		var lengthMeters *float64
-
-		err := rows.Scan(
-			&id, &name, &cableType, &connectorA, &connectorB,
-			&lengthMeters, &color, &notes, &quantity,
-		)
-		if err != nil {
+		var connector1, connector2, cableType, cableLength, cableMM2 *string
+		if err := rows.Scan(&id, &name, &connector1, &connector2, &cableType, &cableLength, &cableMM2); err != nil {
 			return nil, err
 		}
-
 		csvRows = append(csvRows, []string{
 			strconv.Itoa(id),
 			name,
+			formatNullString(connector1),
+			formatNullString(connector2),
 			formatNullString(cableType),
-			formatNullString(connectorA),
-			formatNullString(connectorB),
-			formatNullFloat(lengthMeters),
-			formatNullString(color),
-			formatNullString(notes),
-			strconv.Itoa(quantity),
+			formatNullString(cableLength),
+			formatNullString(cableMM2),
 		})
 	}
 

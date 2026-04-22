@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/lib/pq"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
@@ -2025,87 +2024,4 @@ func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ConvertProductToCable converts a product into a cable. The product name is
-// used as the cable name while the caller must supply cable-specific fields.
-func ConvertProductToCable(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
-		return
-	}
 
-	db := repository.GetSQLDB()
-
-	var productName string
-	err = db.QueryRow(`SELECT name FROM products WHERE productID = $1`, id).Scan(&productName)
-	if err == sql.ErrNoRows {
-		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
-		return
-	} else if err != nil {
-		log.Printf("[CONVERT CABLE] Failed to fetch product %d: %v", id, err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product"})
-		return
-	}
-
-	var input struct {
-		Connector1 int      `json:"connector1"`
-		Connector2 int      `json:"connector2"`
-		Typ        int      `json:"typ"`
-		Length     float64  `json:"length"`
-		MM2        *float64 `json:"mm2"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
-		return
-	}
-
-	if input.Length <= 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Length must be greater than 0"})
-		return
-	}
-	if input.Connector1 <= 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector1 must be greater than 0"})
-		return
-	}
-	if input.Connector2 <= 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Connector2 must be greater than 0"})
-		return
-	}
-	if input.Typ <= 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Type must be greater than 0"})
-		return
-	}
-	if input.MM2 != nil && *input.MM2 <= 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Cross-section (mm2) must be greater than 0"})
-		return
-	}
-
-	var cableID int64
-	err = db.QueryRow(
-		`INSERT INTO cables (connector1, connector2, typ, length, mm2, name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING cableID`,
-		input.Connector1, input.Connector2, input.Typ, input.Length, input.MM2, productName,
-	).Scan(&cableID)
-	if err != nil {
-		log.Printf("[CONVERT CABLE] Failed to create cable from product %d: %v", id, err)
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) {
-			switch pqErr.Code {
-			case "23503":
-				respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid cable reference data"})
-				return
-			case "23505":
-				respondJSON(w, http.StatusConflict, map[string]string{"error": "Cable already exists"})
-				return
-			}
-		}
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create cable"})
-		return
-	}
-
-	log.Printf("[CONVERT CABLE] Product %d converted to cable %d", id, cableID)
-	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"cable_id": cableID,
-		"message":  "Product converted to cable successfully",
-	})
-}

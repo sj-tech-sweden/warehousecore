@@ -37,8 +37,6 @@ export interface Device {
   zone_code?: string;
   case_name?: string;
   case_id?: number;
-  cable_id?: number;
-  cable_name?: string;
   current_job_id?: number;
   job_number?: string;
   condition_rating?: number;
@@ -713,82 +711,9 @@ export const apiKeysAdminApi = {
   delete: (id: number) => api.delete(`/admin/api-keys/${id}`),
 };
 
-// Cable interfaces
-export interface Cable {
-  cable_id: number;
-  name: string | null;
-  connector1: number;
-  connector2: number;
-  typ: number;
-  length: number;
-  mm2: number | null;
-  connector1_name?: string | null;
-  connector2_name?: string | null;
-  cable_type_name?: string | null;
-  connector1_gender?: string | null;
-  connector2_gender?: string | null;
-}
-
-export interface CableConnector {
-  connector_id: number;
-  name: string;
-  abbreviation: string | null;
-  gender: string | null;
-}
-
-export interface CableType {
-  cable_type_id: number;
-  name: string;
-  count?: number;
-}
-
-export interface CableCreateInput {
-  name?: string;
-  connector1: number;
-  connector2: number;
-  typ: number;
-  length: number;
-  mm2?: number;
-}
-
-export interface CableUpdateInput {
-  name?: string;
-  connector1?: number;
-  connector2?: number;
-  typ?: number;
-  length?: number;
-  mm2?: number;
-}
-
-// Cable admin API
-export const cablesAdminApi = {
-  getAll: (params?: { search?: string; connector1?: number; connector2?: number; type?: number; length_min?: number; length_max?: number }) => {
-    const queryParams = new URLSearchParams();
-    if (params?.search) queryParams.append('search', params.search);
-    if (params?.connector1) queryParams.append('connector1', params.connector1.toString());
-    if (params?.connector2) queryParams.append('connector2', params.connector2.toString());
-    if (params?.type) queryParams.append('type', params.type.toString());
-    if (params?.length_min) queryParams.append('length_min', params.length_min.toString());
-    if (params?.length_max) queryParams.append('length_max', params.length_max.toString());
-    const query = queryParams.toString();
-    return api.get<Cable[]>(`/admin/cables${query ? `?${query}` : ''}`);
-  },
-  getById: (id: number) => api.get<Cable>(`/admin/cables/${id}`),
-  create: (data: CableCreateInput) => api.post<{cable_id: number; message: string}>('/admin/cables', data),
-  update: (id: number, data: CableUpdateInput) => api.put<{message: string}>(`/admin/cables/${id}`, data),
-  delete: (id: number) => api.delete<{message: string}>(`/admin/cables/${id}`),
-  getConnectors: () => api.get<CableConnector[]>('/admin/cable-connectors'),
-  getTypes: () => api.get<CableType[]>('/admin/cable-types'),
-  getDevices: (cableId: number) => api.get<Device[]>(`/admin/cables/${cableId}/devices`),
-  createDevices: (cableId: number, data: { quantity: number; prefix: string }) =>
-    api.post<{ created_count: number; device_ids: string[] }>(`/admin/cables/${cableId}/devices`, data),
-};
-
 export const productConvertApi = {
   toCase: (productId: number) =>
     api.post<{ case_id: number; message: string }>(`/admin/products/${productId}/convert-to-case`, {}),
-  toCable: (productId: number, data: { connector1: number; connector2: number; typ: number; length: number; mm2?: number }) =>
-    api.post<{ cable_id: number; message: string }>(`/admin/products/${productId}/convert-to-cable`, data),
 };
 
 export interface ProductPicture {
