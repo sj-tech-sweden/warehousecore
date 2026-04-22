@@ -19,6 +19,7 @@ WarehouseCore is the digital twin of the Weidelbach warehouse, providing real-ti
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [API Documentation](#api-documentation)
+- [Service API (RentalCore Integration)](#service-api-rentalcore-integration)
 - [Product Pictures](#product-pictures)
 - [Database Schema](#database-schema)
 - [Deployment](#deployment)
@@ -1046,7 +1047,141 @@ curl http://localhost:8081/api/v1/health
 
 ---
 
-## Database Schema
+## Service API (RentalCore Integration)
+
+WarehouseCore exposes a dedicated **Service API** that allows RentalCore (and other trusted services) to fetch cable and device metadata without requiring a browser session or admin privileges. All service endpoints require a valid `X-API-Key` header.
+
+### Authentication
+
+Service calls are authenticated via a shared API key. Create a service key in the Admin Dashboard under **Admin → API Keys** (or via `POST /api/v1/admin/api-keys`).
+
+```bash
+# Create a service key for RentalCore (run once, store the returned api_key securely)
+curl -b "session_id=<your-admin-session>" \
+  -X POST https://warehouse.example.com/api/v1/admin/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{"name":"rentalcore-service","is_admin":false}'
+```
+
+The returned `api_key` value must be kept secret and passed as the `X-API-Key` header on every service request.
+
+### Base URL
+
+```
+https://warehouse.example.com/api/v1/service
+```
+
+### Endpoints
+
+#### `GET /service/cables`
+
+Returns the full cable catalog with optional filtering.
+
+**Query Parameters:**
+
+| Parameter    | Type    | Description                               |
+|-------------|---------|-------------------------------------------|
+| `search`    | string  | Full-text search (name, connectors, type) |
+| `connector1`| integer | Filter by connector 1 ID                  |
+| `connector2`| integer | Filter by connector 2 ID                  |
+| `type`      | integer | Filter by cable type ID                   |
+| `length_min`| float   | Minimum length in metres                  |
+| `length_max`| float   | Maximum length in metres                  |
+
+**Example:**
+
+```bash
+curl -H "X-API-Key: $WAREHOUSE_API_KEY" \
+  "https://warehouse.example.com/api/v1/service/cables?search=CEE&length_min=5"
+```
+
+**Response:**
+
+```json
+[
+  {
+    "cable_id": 123,
+    "name": "CEE 16A to Schuko 10m",
+    "connector1": 1,
+    "connector2": 2,
+    "typ": 1,
+    "length": 10.0,
+    "mm2": 2.5,
+    "connector1_name": "CEE 16A",
+    "connector1_gender": "male",
+    "connector2_name": "Schuko",
+    "connector2_gender": "female",
+    "cable_type_name": "Power Cable"
+  }
+]
+```
+
+#### `GET /service/cables/{id}`
+
+Returns a single cable by ID.
+
+**Example:**
+
+```bash
+curl -H "X-API-Key: $WAREHOUSE_API_KEY" \
+  "https://warehouse.example.com/api/v1/service/cables/123"
+```
+
+**Error Responses:**
+
+| Status | Description               |
+|--------|---------------------------|
+| 400    | Invalid cable ID format   |
+| 401    | Missing or invalid API key|
+| 404    | Cable not found           |
+| 500    | Internal server error     |
+
+#### `GET /service/devices/{id}`
+
+Returns device metadata including `cable_id` for decoupled RentalCore lookups.
+
+**Example:**
+
+```bash
+curl -H "X-API-Key: $WAREHOUSE_API_KEY" \
+  "https://warehouse.example.com/api/v1/service/devices/DEV001"
+```
+
+**Response:**
+
+```json
+{
+  "device_id": "DEV001",
+  "product_id": 42,
+  "product_name": "Funkmikrofon Shure SM58",
+  "status": "in_storage",
+  "cable_id": 123,
+  "zone_id": 7,
+  "zone_name": "Shelf A",
+  "condition_rating": 4.5,
+  "usage_hours": 120.0
+}
+```
+
+> **Note:** `cable_id` is also included in the standard `GET /api/v1/devices/{id}` response (no API key required).
+
+### OpenAPI Specification
+
+The full service API contract is documented in [`docs/openapi.decouple.yml`](docs/openapi.decouple.yml). You can validate or generate client code with:
+
+```bash
+# Validate with openapi-cli
+npx @redocly/cli lint docs/openapi.decouple.yml
+
+# Or view interactively
+npx @redocly/cli preview-docs docs/openapi.decouple.yml
+```
+
+### Rate Limits
+
+Service endpoints inherit the global API rate limit configured under **Admin → API Limits**. For high-frequency integrations, cache cable metadata locally (cables rarely change) and only poll `GET /service/devices/{id}` when you need live status.
+
+---
 
 ### New Tables (WarehouseCore-specific)
 

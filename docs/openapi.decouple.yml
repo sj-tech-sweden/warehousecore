@@ -1,0 +1,463 @@
+openapi: "3.1.0"
+
+info:
+  title: WarehouseCore Service API
+  version: "1.0.0"
+  description: |
+    Read-only service API for RentalCore (and other trusted services) to fetch
+    cable and device metadata from WarehouseCore without relying on cross-database
+    foreign keys.
+
+    **Authentication:** All endpoints require the `X-API-Key` header containing a
+    valid, active API key created in the WarehouseCore admin panel
+    (Admin → API Keys). Non-admin service keys are sufficient.
+
+    **Base path:** `/api/v1/service`
+
+servers:
+  - url: https://warehouse.example.com/api/v1/service
+    description: Production
+  - url: http://localhost:8081/api/v1/service
+    description: Local development
+
+security:
+  - apiKey: []
+
+paths:
+  /cables:
+    get:
+      operationId: listCables
+      summary: List cables
+      description: |
+        Returns the full cable catalog. Supports optional filtering by
+        search text, connector IDs, cable type, and length range.
+      tags:
+        - Cables
+      parameters:
+        - name: search
+          in: query
+          description: Full-text search across name, connector names, and cable type name.
+          required: false
+          schema:
+            type: string
+            example: "CEE"
+        - name: connector1
+          in: query
+          description: Filter by connector-1 ID.
+          required: false
+          schema:
+            type: integer
+            example: 1
+        - name: connector2
+          in: query
+          description: Filter by connector-2 ID.
+          required: false
+          schema:
+            type: integer
+            example: 2
+        - name: type
+          in: query
+          description: Filter by cable type ID.
+          required: false
+          schema:
+            type: integer
+            example: 1
+        - name: length_min
+          in: query
+          description: Minimum cable length in metres (inclusive).
+          required: false
+          schema:
+            type: number
+            format: float
+            example: 5.0
+        - name: length_max
+          in: query
+          description: Maximum cable length in metres (inclusive).
+          required: false
+          schema:
+            type: number
+            format: float
+            example: 20.0
+      responses:
+        "200":
+          description: List of cables matching the filter criteria.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cable"
+              example:
+                - cable_id: 123
+                  name: "CEE 16A to Schuko 10m"
+                  connector1: 1
+                  connector2: 2
+                  typ: 1
+                  length: 10.0
+                  mm2: 2.5
+                  connector1_name: "CEE 16A"
+                  connector1_gender: "male"
+                  connector2_name: "Schuko"
+                  connector2_gender: "female"
+                  cable_type_name: "Power Cable"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /cables/{id}:
+    get:
+      operationId: getCable
+      summary: Get cable by ID
+      description: Returns a single cable record including joined connector and type names.
+      tags:
+        - Cables
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Numeric cable ID.
+          schema:
+            type: integer
+            example: 123
+      responses:
+        "200":
+          description: Cable found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cable"
+              example:
+                cable_id: 123
+                name: "CEE 16A to Schuko 10m"
+                connector1: 1
+                connector2: 2
+                typ: 1
+                length: 10.0
+                mm2: 2.5
+                connector1_name: "CEE 16A"
+                connector1_gender: "male"
+                connector2_name: "Schuko"
+                connector2_gender: "female"
+                cable_type_name: "Power Cable"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /devices/{id}:
+    get:
+      operationId: getDevice
+      summary: Get device by ID
+      description: |
+        Returns device metadata including `cable_id`, which RentalCore uses to
+        look up cable details without a cross-database foreign key.
+      tags:
+        - Devices
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Device ID (string, e.g. "DEV001").
+          schema:
+            type: string
+            example: "DEV001"
+      responses:
+        "200":
+          description: Device found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+              example:
+                device_id: "DEV001"
+                product_id: 42
+                product_name: "Funkmikrofon Shure SM58"
+                product_category: "Audio"
+                status: "in_storage"
+                cable_id: 123
+                zone_id: 7
+                zone_name: "Shelf A"
+                zone_code: "WDL-RG-01-F-01"
+                condition_rating: 4.5
+                usage_hours: 120.0
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        API key issued via the WarehouseCore Admin panel (Admin → API Keys).
+        Service keys do not require `is_admin=true`.
+
+  schemas:
+    Cable:
+      type: object
+      required:
+        - cable_id
+        - connector1
+        - connector2
+        - typ
+        - length
+      properties:
+        cable_id:
+          type: integer
+          description: Unique cable identifier.
+          example: 123
+        name:
+          type: string
+          nullable: true
+          description: Human-readable cable name.
+          example: "CEE 16A to Schuko 10m"
+        connector1:
+          type: integer
+          description: ID of the first connector type.
+          example: 1
+        connector2:
+          type: integer
+          description: ID of the second connector type.
+          example: 2
+        typ:
+          type: integer
+          description: ID of the cable type.
+          example: 1
+        length:
+          type: number
+          format: float
+          description: Cable length in metres.
+          example: 10.0
+        mm2:
+          type: number
+          format: float
+          nullable: true
+          description: Cable cross-section in mm².
+          example: 2.5
+        connector1_name:
+          type: string
+          nullable: true
+          description: Display name of connector 1.
+          example: "CEE 16A"
+        connector1_gender:
+          type: string
+          nullable: true
+          description: Gender of connector 1 (male/female).
+          example: "male"
+        connector2_name:
+          type: string
+          nullable: true
+          description: Display name of connector 2.
+          example: "Schuko"
+        connector2_gender:
+          type: string
+          nullable: true
+          description: Gender of connector 2 (male/female).
+          example: "female"
+        cable_type_name:
+          type: string
+          nullable: true
+          description: Display name of the cable type.
+          example: "Power Cable"
+
+    Device:
+      type: object
+      required:
+        - device_id
+        - status
+        - condition_rating
+        - usage_hours
+      properties:
+        device_id:
+          type: string
+          description: Unique device identifier.
+          example: "DEV001"
+        product_id:
+          type: integer
+          nullable: true
+          description: Associated product ID.
+          example: 42
+        product_name:
+          type: string
+          description: Product display name.
+          example: "Funkmikrofon Shure SM58"
+        product_description:
+          type: string
+          description: Product description.
+          example: "Dynamic vocal microphone"
+        product_category:
+          type: string
+          description: Product category name.
+          example: "Audio"
+        subcategory:
+          type: string
+          description: Product subcategory name.
+          example: "Microphones"
+        manufacturer_name:
+          type: string
+          description: Manufacturer name.
+          example: "Shure"
+        brand_name:
+          type: string
+          description: Brand name.
+          example: "Shure"
+        serial_number:
+          type: string
+          nullable: true
+          description: Device serial number.
+          example: "SN123456"
+        rfid:
+          type: string
+          nullable: true
+          description: RFID tag value.
+        barcode:
+          type: string
+          nullable: true
+          description: Barcode value.
+          example: "4711"
+        qr_code:
+          type: string
+          nullable: true
+          description: QR code value.
+          example: "DEV001-QR"
+        status:
+          type: string
+          description: Current device status.
+          enum:
+            - in_storage
+            - on_job
+            - defective
+            - repair
+          example: "in_storage"
+        zone_id:
+          type: integer
+          nullable: true
+          description: Current storage zone ID.
+          example: 7
+        zone_name:
+          type: string
+          description: Current storage zone name.
+          example: "Shelf A"
+        zone_code:
+          type: string
+          description: Current storage zone code.
+          example: "WDL-RG-01-F-01"
+        case_name:
+          type: string
+          description: Name of the case the device is in (empty if not in a case).
+          example: "Case-01"
+        cable_id:
+          type: integer
+          nullable: true
+          description: |
+            ID of the cable associated with this device. RentalCore uses this
+            to resolve cable metadata via `GET /service/cables/{cable_id}`.
+          example: 123
+        job_number:
+          type: string
+          description: Current job number if device is on a job.
+          example: "JOB000042"
+        condition_rating:
+          type: number
+          format: float
+          description: Device condition rating (0–5).
+          example: 4.5
+        usage_hours:
+          type: number
+          format: float
+          description: Cumulative usage hours.
+          example: 120.0
+        purchase_date:
+          type: string
+          format: date
+          nullable: true
+          description: Purchase date (YYYY-MM-DD).
+          example: "2023-01-15"
+        notes:
+          type: string
+          nullable: true
+          description: Free-text notes.
+        label_path:
+          type: string
+          nullable: true
+          description: Path to a generated label file.
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+          example: "Cable not found"
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Invalid cable ID"
+
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "invalid API key"
+
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Cable not found"
+
+    TooManyRequests:
+      description: |
+        Rate limit exceeded. Back off and retry after a short delay.
+        Configure limits under Admin → API Limits.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "rate limit exceeded"
+
+    InternalServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Failed to fetch cables"
+
+tags:
+  - name: Cables
+    description: Cable catalog endpoints for RentalCore decoupling.
+  - name: Devices
+    description: Device metadata endpoints including cable association.

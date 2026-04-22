@@ -400,6 +400,13 @@ func main() {
 	protected.HandleFunc("/profile/me", handlers.UpdateMyProfile).Methods("PUT")
 	protected.HandleFunc("/product-packages/alias-map", handlers.GetProductPackageAliasMap).Methods("GET")
 
+	// Service API routes (service-to-service, any active API key)
+	serviceAPI := api.PathPrefix("/service").Subrouter()
+	serviceAPI.Use(middleware.APIKeyMiddleware)
+	serviceAPI.HandleFunc("/cables", handlers.GetAllCables).Methods("GET")
+	serviceAPI.HandleFunc("/cables/{id}", handlers.GetCable).Methods("GET")
+	serviceAPI.HandleFunc("/devices/{id}", handlers.GetDevice).Methods("GET")
+
 	// Apply middleware
 	api.Use(middleware.Logger)
 	api.Use(middleware.RecoveryMiddleware)
@@ -415,7 +422,7 @@ func main() {
 	c := cors.New(cors.Options{
 		AllowedOrigins:   cfg.CORS.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-API-Key"},
 		AllowCredentials: true,
 	})
 

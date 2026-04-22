@@ -840,6 +840,7 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		ZoneName            string  `json:"zone_name,omitempty"`
 		ZoneCode            string  `json:"zone_code,omitempty"`
 		CaseName            string  `json:"case_name,omitempty"`
+		CableID             *int64  `json:"cable_id,omitempty"`
 		JobNumber           string  `json:"job_number,omitempty"`
 		ConditionRating     float64 `json:"condition_rating"`
 		UsageHours          float64 `json:"usage_hours"`
@@ -868,6 +869,7 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		qrCode              sql.NullString
 		deviceStatus        string
 		zoneID              sql.NullInt64
+		cableID             sql.NullInt64
 		zoneName            string
 		zoneCode            string
 		caseName            string
@@ -902,7 +904,8 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(z.name, '') as zone_name,
 		       COALESCE(z.code, '') as zone_code,
 		       COALESCE(c.name, '') as case_name,
-		       COALESCE(CAST(jd.jobID AS TEXT), '') as job_number
+		       COALESCE(CAST(jd.jobID AS TEXT), '') as job_number,
+		       d.cable_id
 		FROM devices d
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN categories cat ON p.categoryID = cat.categoryID
@@ -924,6 +927,7 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		&deviceStatus, &zoneID, &conditionRating, &usageHours, &labelPath,
 		&purchaseDate, &notes,
 		&zoneName, &zoneCode, &caseName, &jobNumber,
+		&cableID,
 	)
 
 	if err == sql.ErrNoRows {
@@ -976,6 +980,9 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	if zoneID.Valid {
 		resp.ZoneID = &zoneID.Int64
+	}
+	if cableID.Valid {
+		resp.CableID = &cableID.Int64
 	}
 	if purchaseDate.Valid && purchaseDate.String != "" {
 		resp.PurchaseDate = &purchaseDate.String
