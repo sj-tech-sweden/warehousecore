@@ -2015,12 +2015,12 @@ func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product devices"})
 		return
 	}
-	defer deviceRows.Close()
 
 	var deviceIDs []string
 	for deviceRows.Next() {
 		var deviceID string
 		if scanErr := deviceRows.Scan(&deviceID); scanErr != nil {
+			_ = deviceRows.Close()
 			log.Printf("[CONVERT CASE] Failed to scan device ID for product %d: %v", id, scanErr)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to read product devices"})
 			return
@@ -2028,8 +2028,14 @@ func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
 		deviceIDs = append(deviceIDs, deviceID)
 	}
 	if err = deviceRows.Err(); err != nil {
+		_ = deviceRows.Close()
 		log.Printf("[CONVERT CASE] Row iteration error for product %d: %v", id, err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to read product devices"})
+		return
+	}
+	if err = deviceRows.Close(); err != nil {
+		log.Printf("[CONVERT CASE] Failed to close device rows for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to finalize product devices"})
 		return
 	}
 
