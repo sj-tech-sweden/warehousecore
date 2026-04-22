@@ -1963,6 +1963,8 @@ func buildPublicImageURLs(productID int, files []string) []string {
 }
 
 // ConvertProductToCase converts a product into a case by copying compatible fields.
+// If the product has multiple devices, one case is created per device and each device
+// is associated with its respective case via the devicescases table.
 func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
@@ -2006,22 +2008,63 @@ func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
 		weightVal = &weight.Float64
 	}
 
-	var caseID int64
-	err = db.QueryRow(`
-		INSERT INTO cases (name, description, width, height, depth, weight, status)
-		VALUES ($1, $2, $3, $4, $5, $6, 'free')
-		RETURNING caseID
-	`, name, descPtr, wVal, hVal, dVal, weightVal).Scan(&caseID)
+	// Fetch all devices belonging to this product
+	deviceRows, err := db.Query(`SELECT deviceID FROM devices WHERE productID = $1 ORDER BY deviceID ASC`, id)
 	if err != nil {
-		log.Printf("[CONVERT CASE] Failed to create case from product %d: %v", id, err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create case"})
+		log.Printf("[CONVERT CASE] Failed to fetch devices for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product devices"})
 		return
 	}
+	defer deviceRows.Close()
 
-	log.Printf("[CONVERT CASE] Product %d converted to case %d", id, caseID)
+	var deviceIDs []string
+	for deviceRows.Next() {
+		var deviceID string
+		if scanErr := deviceRows.Scan(&deviceID); scanErr != nil {
+			log.Printf("[CONVERT CASE] Failed to scan device ID: %v", scanErr)
+			continue
+		}
+		deviceIDs = append(deviceIDs, deviceID)
+	}
+
+	// Determine how many cases to create: one per device, or one if there are no devices
+	count := len(deviceIDs)
+	if count == 0 {
+		count = 1
+	}
+
+	caseIDs := make([]int64, 0, count)
+	for i := 0; i < count; i++ {
+		var caseID int64
+		err = db.QueryRow(`
+			INSERT INTO cases (name, description, width, height, depth, weight, status)
+			VALUES ($1, $2, $3, $4, $5, $6, 'free')
+			RETURNING caseID
+		`, name, descPtr, wVal, hVal, dVal, weightVal).Scan(&caseID)
+		if err != nil {
+			log.Printf("[CONVERT CASE] Failed to create case from product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create case"})
+			return
+		}
+
+		// Associate the device with the new case when devices exist
+		if i < len(deviceIDs) {
+			_, err = db.Exec(`INSERT INTO devicescases (deviceID, caseID) VALUES ($1, $2)`, deviceIDs[i], caseID)
+			if err != nil {
+				log.Printf("[CONVERT CASE] Failed to associate device %s with case %d: %v", deviceIDs[i], caseID, err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to associate device with case"})
+				return
+			}
+		}
+
+		caseIDs = append(caseIDs, caseID)
+	}
+
+	log.Printf("[CONVERT CASE] Product %d converted to %d case(s): %v", id, len(caseIDs), caseIDs)
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"case_id": caseID,
-		"message": "Product converted to case successfully",
+		"case_ids":   caseIDs,
+		"case_count": len(caseIDs),
+		"message":    "Product converted to case successfully",
 	})
 }
 
