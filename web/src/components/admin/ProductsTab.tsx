@@ -155,6 +155,17 @@ const parseInteger = (value: string): number | undefined => {
   return Number.isNaN(parsed) ? undefined : parsed;
 };
 
+/** Safely parses a JSON string array; returns [] on null, empty string, or invalid JSON. */
+function parseOptionsArray(options: string | null | undefined): string[] {
+  if (!options) return [];
+  try {
+    const parsed = JSON.parse(options);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function useDebouncedValue<T>(value: T, delay: number) {
   const [debounced, setDebounced] = useState(value);
 
@@ -601,14 +612,18 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
         }
       }
 
-      await fetchProducts(searchTerm, categoryFilter);
       if (fieldDefinitions.length > 0 && productId) {
         try {
           await productFieldValuesApi.set(productId, productFieldValues);
         } catch (e) {
           console.error('Failed to save field values:', e);
+          window.alert(t('admin.products.errors.save'));
+          setSubmitting(false);
+          return;
         }
       }
+
+      await fetchProducts(searchTerm, categoryFilter);
       closeModal();
     } catch (error) {
       console.error('Failed to save product:', error);
@@ -1671,7 +1686,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                               className="w-full px-3 py-2 bg-dark-700 border border-gray-600 rounded-lg text-white focus:ring-1 focus:ring-accent-red focus:border-accent-red"
                             >
                               <option value="">—</option>
-                              {(JSON.parse(field.options || '[]') as string[]).map(opt => (
+                              {parseOptionsArray(field.options).map(opt => (
                                 <option key={opt} value={opt}>{opt}</option>
                               ))}
                             </select>

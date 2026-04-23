@@ -3,12 +3,14 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 	"warehousecore/internal/repository"
 )
 
@@ -41,6 +43,24 @@ var (
 	validFieldTypes  = map[string]bool{"text": true, "number": true, "integer": true, "select": true, "boolean": true}
 )
 
+// validateFieldOptions checks that options is valid JSON string array for 'select' type,
+// clears it for other types, and errors on invalid JSON for 'select'.
+func validateFieldOptions(fieldType string, options *string) (*string, error) {
+	if fieldType != "select" {
+		// non-select fields must not store options
+		return nil, nil
+	}
+	if options == nil || *options == "" {
+		empty := "[]"
+		return &empty, nil
+	}
+	var parsed []interface{}
+	if err := json.Unmarshal([]byte(*options), &parsed); err != nil {
+		return nil, fmt.Errorf("options must be a valid JSON array of strings")
+	}
+	return options, nil
+}
+
 // GetProductFieldDefinitions retrieves all product field definitions ordered by sort_order
 func GetProductFieldDefinitions(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
@@ -65,6 +85,11 @@ func GetProductFieldDefinitions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		definitions = append(definitions, d)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating product field definitions: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch field definitions"})
+		return
 	}
 
 	respondJSON(w, http.StatusOK, definitions)
@@ -100,14 +125,20 @@ func CreateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	validatedOptions, err := validateFieldOptions(input.FieldType, input.Options)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
 	db := repository.GetSQLDB()
 
 	var d ProductFieldDefinition
-	err := db.QueryRow(`
+	err = db.QueryRow(`
 		INSERT INTO product_field_definitions (name, label, field_type, options, unit, sort_order, is_required)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, name, label, field_type, options, unit, sort_order, is_required
-	`, input.Name, input.Label, input.FieldType, input.Options, input.Unit, input.SortOrder, input.IsRequired).
+	`, input.Name, input.Label, input.FieldType, validatedOptions, input.Unit, input.SortOrder, input.IsRequired).
 		Scan(&d.ID, &d.Name, &d.Label, &d.FieldType, &d.Options, &d.Unit, &d.SortOrder, &d.IsRequired)
 	if err != nil {
 		log.Printf("Error creating product field definition: %v", err)
@@ -155,6 +186,12 @@ func UpdateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	validatedOptions, err := validateFieldOptions(input.FieldType, input.Options)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
 	db := repository.GetSQLDB()
 
 	var d ProductFieldDefinition
@@ -163,7 +200,7 @@ func UpdateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 		SET name=$1, label=$2, field_type=$3, options=$4, unit=$5, sort_order=$6, is_required=$7
 		WHERE id=$8
 		RETURNING id, name, label, field_type, options, unit, sort_order, is_required
-	`, input.Name, input.Label, input.FieldType, input.Options, input.Unit, input.SortOrder, input.IsRequired, id).
+	`, input.Name, input.Label, input.FieldType, validatedOptions, input.Unit, input.SortOrder, input.IsRequired, id).
 		Scan(&d.ID, &d.Name, &d.Label, &d.FieldType, &d.Options, &d.Unit, &d.SortOrder, &d.IsRequired)
 	if err == sql.ErrNoRows {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Field definition not found"})
@@ -262,11 +299,17 @@ func GetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 		}
 		values = append(values, v)
 	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating product field values for product %d: %v", productID, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch field values"})
+		return
+	}
 
 	respondJSON(w, http.StatusOK, values)
 }
 
-// SetProductFieldValues upserts field values for a specific product
+// SetProductFieldValues upserts field values for a specific product atomically.
+// All field names are resolved in a single query; updates/deletes run inside a transaction.
 func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	productID, err := strconv.Atoi(vars["id"])
@@ -283,6 +326,11 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(body.Values) == 0 {
+		respondJSON(w, http.StatusOK, map[string]string{"message": "Field values updated"})
+		return
+	}
+
 	db := repository.GetSQLDB()
 
 	var exists bool
@@ -296,36 +344,78 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for fieldName, value := range body.Values {
-		var fieldDefinitionID int
-		err := db.QueryRow(`SELECT id FROM product_field_definitions WHERE name=$1`, fieldName).Scan(&fieldDefinitionID)
-		if err == sql.ErrNoRows {
-			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Unknown field name: " + fieldName})
-			return
-		}
-		if err != nil {
-			log.Printf("Error looking up field definition for name %q: %v", fieldName, err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to look up field definition"})
-			return
-		}
+	// Collect all field names to resolve in one query
+	names := make([]string, 0, len(body.Values))
+	for k := range body.Values {
+		names = append(names, k)
+	}
 
+	nameToID := make(map[string]int, len(names))
+	defRows, err := db.Query(`SELECT id, name FROM product_field_definitions WHERE name = ANY($1)`, pq.Array(names))
+	if err != nil {
+		log.Printf("Error resolving field definition names: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to look up field definitions"})
+		return
+	}
+	defer defRows.Close()
+	for defRows.Next() {
+		var defID int
+		var defName string
+		if err := defRows.Scan(&defID, &defName); err != nil {
+			log.Printf("Error scanning field definition name: %v", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to look up field definitions"})
+			return
+		}
+		nameToID[defName] = defID
+	}
+	if err := defRows.Err(); err != nil {
+		log.Printf("Error iterating field definition names: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to look up field definitions"})
+		return
+	}
+
+	// Validate all names exist before touching the DB
+	for _, name := range names {
+		if _, ok := nameToID[name]; !ok {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Unknown field name: " + name})
+			return
+		}
+	}
+
+	// Apply all updates/deletes inside a single transaction
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("Error starting transaction for SetProductFieldValues product %d: %v", productID, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to set field values"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for fieldName, value := range body.Values {
+		defID := nameToID[fieldName]
 		if value == "" {
-			if _, err := db.Exec(`DELETE FROM product_field_values WHERE product_id=$1 AND field_definition_id=$2`, productID, fieldDefinitionID); err != nil {
-				log.Printf("Error deleting field value for product %d, definition %d: %v", productID, fieldDefinitionID, err)
+			if _, err := tx.Exec(`DELETE FROM product_field_values WHERE product_id=$1 AND field_definition_id=$2`, productID, defID); err != nil {
+				log.Printf("Error deleting field value for product %d, definition %d: %v", productID, defID, err)
 				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete field value"})
 				return
 			}
 		} else {
-			if _, err := db.Exec(`
+			if _, err := tx.Exec(`
 				INSERT INTO product_field_values (product_id, field_definition_id, value)
 				VALUES ($1, $2, $3)
 				ON CONFLICT (product_id, field_definition_id) DO UPDATE SET value = EXCLUDED.value
-			`, productID, fieldDefinitionID, value); err != nil {
-				log.Printf("Error upserting field value for product %d, definition %d: %v", productID, fieldDefinitionID, err)
+			`, productID, defID, value); err != nil {
+				log.Printf("Error upserting field value for product %d, definition %d: %v", productID, defID, err)
 				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to set field value"})
 				return
 			}
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Error committing SetProductFieldValues for product %d: %v", productID, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to set field values"})
+		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Field values updated"})
