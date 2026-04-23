@@ -330,14 +330,15 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     loadMetadata();
   }, [loadMetadata]);
 
-  // Initialize boolean custom-field values to 'false' when the modal is open,
+  // Initialize required boolean custom-field values to 'false' when the modal is open,
   // so required boolean fields are always satisfiable without an explicit toggle.
+  // Optional booleans are left unset (empty) so they can remain unset on save.
   useEffect(() => {
     if (!modalOpen || fieldDefinitions.length === 0) return;
     setProductFieldValues(prev => {
       const updates: Record<string, string> = {};
       for (const def of fieldDefinitions) {
-        if (def.field_type === 'boolean' && prev[def.name] !== 'true' && prev[def.name] !== 'false') {
+        if (def.field_type === 'boolean' && def.is_required && prev[def.name] !== 'true' && prev[def.name] !== 'false') {
           updates[def.name] = 'false';
         }
       }
@@ -636,11 +637,18 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       }
 
       if (fieldDefinitions.length > 0 && productId) {
-        // Normalize values: trim whitespace. Empty-string entries are intentionally kept so
-        // that clearing a field sends an explicit delete to the backend.
+        // Build a lookup of field type by name so we know which fields to trim.
+        const fieldTypeByName = Object.fromEntries(fieldDefinitions.map(f => [f.name, f.field_type]));
+        // Normalize values: trim whitespace only for non-text fields (number, integer, select,
+        // boolean). Text fields preserve leading/trailing whitespace; empty-string entries are
+        // kept intentionally because the backend treats them as an explicit delete signal.
         const normalizedValues = Object.fromEntries(
           Object.entries(productFieldValues)
-            .map(([k, v]) => [k, v.trim()] as const)
+            .map(([k, v]) => {
+              const ftype = fieldTypeByName[k];
+              const normalized = ftype && ftype !== 'text' ? v.trim() : v;
+              return [k, normalized] as const;
+            })
         );
 
         // For new products: validate required fields client-side before calling the API.
@@ -1724,40 +1732,53 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                   <div className="col-span-2 border-t border-gray-700 pt-4">
                     <h3 className="text-lg font-semibold text-white mb-3">{t('admin.products.customFieldsSectionTitle', { defaultValue: 'Custom Fields' })}</h3>
                     <div className="grid grid-cols-2 gap-4">
-                      {fieldDefinitions.map(field => (
+                      {fieldDefinitions.map(field => {
+                        const fieldInputId = `product-custom-field-${field.id}`;
+                        return (
                         <div key={field.id}>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            {field.label}{field.unit ? ` (${field.unit})` : ''}{field.is_required ? ' *' : ''}
-                          </label>
-                          {field.field_type === 'select' ? (
-                            <select
-                              value={productFieldValues[field.name] ?? ''}
-                              onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.value }))}
-                              className="w-full px-3 py-2 bg-dark-700 border border-gray-600 rounded-lg text-white focus:ring-1 focus:ring-accent-red focus:border-accent-red"
-                            >
-                              <option value="">—</option>
-                              {parseOptionsArray(field.options).map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          ) : field.field_type === 'boolean' ? (
-                            <input
-                              type="checkbox"
-                              checked={productFieldValues[field.name] === 'true'}
-                              onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.checked ? 'true' : 'false' }))}
-                              className="w-5 h-5 rounded"
-                            />
+                          {field.field_type === 'boolean' ? (
+                            <label htmlFor={fieldInputId} className="flex items-center gap-2 text-sm font-medium text-gray-300 cursor-pointer">
+                              <input
+                                id={fieldInputId}
+                                type="checkbox"
+                                checked={productFieldValues[field.name] === 'true'}
+                                onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.checked ? 'true' : 'false' }))}
+                                className="w-5 h-5 rounded"
+                              />
+                              {field.label}{field.unit ? ` (${field.unit})` : ''}{field.is_required ? ' *' : ''}
+                            </label>
                           ) : (
-                            <input
-                              type={field.field_type === 'number' || field.field_type === 'integer' ? 'number' : 'text'}
-                              step={field.field_type === 'number' ? 'any' : field.field_type === 'integer' ? '1' : undefined}
-                              value={productFieldValues[field.name] ?? ''}
-                              onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.value }))}
-                              className="w-full px-3 py-2 bg-dark-700 border border-gray-600 rounded-lg text-white focus:ring-1 focus:ring-accent-red focus:border-accent-red"
-                            />
+                            <>
+                              <label htmlFor={fieldInputId} className="block text-sm font-medium text-gray-300 mb-1">
+                                {field.label}{field.unit ? ` (${field.unit})` : ''}{field.is_required ? ' *' : ''}
+                              </label>
+                              {field.field_type === 'select' ? (
+                                <select
+                                  id={fieldInputId}
+                                  value={productFieldValues[field.name] ?? ''}
+                                  onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.value }))}
+                                  className="w-full px-3 py-2 bg-dark-700 border border-gray-600 rounded-lg text-white focus:ring-1 focus:ring-accent-red focus:border-accent-red"
+                                >
+                                  <option value="">—</option>
+                                  {parseOptionsArray(field.options).map(opt => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  id={fieldInputId}
+                                  type={field.field_type === 'number' || field.field_type === 'integer' ? 'number' : 'text'}
+                                  step={field.field_type === 'number' ? 'any' : field.field_type === 'integer' ? '1' : undefined}
+                                  value={productFieldValues[field.name] ?? ''}
+                                  onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.value }))}
+                                  className="w-full px-3 py-2 bg-dark-700 border border-gray-600 rounded-lg text-white focus:ring-1 focus:ring-accent-red focus:border-accent-red"
+                                />
+                              )}
+                            </>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}

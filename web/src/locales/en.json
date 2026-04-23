@@ -1253,7 +1253,8 @@
       "errors": {
         "save": "Failed to save field definition",
         "delete": "Failed to delete field definition",
-        "load": "Failed to load field definitions"
+        "load": "Failed to load field definitions",
+        "selectOptionsRequired": "Select fields require at least one option"
       }
     }
   },

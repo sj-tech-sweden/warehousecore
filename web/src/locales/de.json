@@ -1253,7 +1253,8 @@
       "errors": {
         "save": "Felddefinition konnte nicht gespeichert werden",
         "delete": "Felddefinition konnte nicht gelöscht werden",
-        "load": "Felddefinitionen konnten nicht geladen werden"
+        "load": "Felddefinitionen konnten nicht geladen werden",
+        "selectOptionsRequired": "Bitte geben Sie mindestens eine Auswahloption an"
       }
     }
   },
