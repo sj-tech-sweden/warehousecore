@@ -163,7 +163,8 @@ func CreateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, d)
 }
 
-// UpdateProductFieldDefinition updates an existing product field definition by ID
+// UpdateProductFieldDefinition updates an existing product field definition by ID.
+// The field name is immutable after creation and is ignored in the request body.
 func UpdateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
@@ -173,7 +174,6 @@ func UpdateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Name       string  `json:"name"`
 		Label      string  `json:"label"`
 		FieldType  string  `json:"field_type"`
 		Options    *string `json:"options"`
@@ -187,17 +187,12 @@ func UpdateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	input.Name = strings.TrimSpace(input.Name)
 	input.Label = strings.TrimSpace(input.Label)
 	if input.Unit != nil {
 		trimmed := strings.TrimSpace(*input.Unit)
 		input.Unit = &trimmed
 	}
 
-	if !validFieldNameRe.MatchString(input.Name) {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Field name must start with a lowercase letter and contain only lowercase letters, digits, and underscores"})
-		return
-	}
 	if input.Label == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Label is required"})
 		return
@@ -218,21 +213,16 @@ func UpdateProductFieldDefinition(w http.ResponseWriter, r *http.Request) {
 	var d ProductFieldDefinition
 	err = db.QueryRow(`
 		UPDATE product_field_definitions
-		SET name=$1, label=$2, field_type=$3, options=$4, unit=$5, sort_order=$6, is_required=$7
-		WHERE id=$8
+		SET label=$1, field_type=$2, options=$3, unit=$4, sort_order=$5, is_required=$6
+		WHERE id=$7
 		RETURNING id, name, label, field_type, options, unit, sort_order, is_required
-	`, input.Name, input.Label, input.FieldType, validatedOptions, input.Unit, input.SortOrder, input.IsRequired, id).
+	`, input.Label, input.FieldType, validatedOptions, input.Unit, input.SortOrder, input.IsRequired, id).
 		Scan(&d.ID, &d.Name, &d.Label, &d.FieldType, &d.Options, &d.Unit, &d.SortOrder, &d.IsRequired)
 	if err == sql.ErrNoRows {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Field definition not found"})
 		return
 	}
 	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			respondJSON(w, http.StatusConflict, map[string]string{"error": "A field definition with this name already exists"})
-			return
-		}
 		log.Printf("Error updating product field definition %d: %v", id, err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update field definition"})
 		return
@@ -334,8 +324,55 @@ func GetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, values)
 }
 
+// fieldDefMeta holds the metadata needed to validate an incoming field value.
+type fieldDefMeta struct {
+	ID         int
+	FieldType  string
+	Options    []string
+	IsRequired bool
+}
+
+// validateFieldValue checks that value is acceptable for the given field definition.
+// An empty value is allowed only for non-required fields (it signals deletion).
+func validateFieldValue(name, value string, def fieldDefMeta) error {
+	if value == "" {
+		if def.IsRequired {
+			return fmt.Errorf("field '%s' is required and cannot be empty", name)
+		}
+		return nil
+	}
+	switch def.FieldType {
+	case "number":
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return fmt.Errorf("field '%s' must be a valid number", name)
+		}
+	case "integer":
+		if _, err := strconv.ParseInt(value, 10, 64); err != nil {
+			return fmt.Errorf("field '%s' must be a valid integer", name)
+		}
+	case "boolean":
+		if value != "true" && value != "false" {
+			return fmt.Errorf("field '%s' must be 'true' or 'false'", name)
+		}
+	case "select":
+		found := false
+		for _, opt := range def.Options {
+			if opt == value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("field '%s': value '%s' is not a valid option", name, value)
+		}
+	}
+	return nil
+}
+
 // SetProductFieldValues upserts field values for a specific product atomically.
-// All field names are resolved in a single query; updates/deletes run inside a transaction.
+// An empty "values" map explicitly clears all field values for the product.
+// All field names are resolved in a single query; values are validated against their
+// field definitions before any writes; updates/deletes run inside a transaction.
 func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	productID, err := strconv.Atoi(vars["id"])
@@ -352,7 +389,8 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(body.Values) == 0 {
+	// nil Values means the "values" key was omitted entirely — nothing to do.
+	if body.Values == nil {
 		respondJSON(w, http.StatusOK, map[string]string{"message": "Field values updated"})
 		return
 	}
@@ -370,14 +408,39 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect all field names to resolve in one query
+	// An empty map is an explicit "clear all field values for this product".
+	if len(body.Values) == 0 {
+		tx, err := db.BeginTx(r.Context(), nil)
+		if err != nil {
+			log.Printf("Error starting transaction for SetProductFieldValues product %d: %v", productID, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to set field values"})
+			return
+		}
+		defer func() { _ = tx.Rollback() }()
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM product_field_values WHERE product_id=$1`, productID); err != nil {
+			log.Printf("Error clearing field values for product %d: %v", productID, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to clear field values"})
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			log.Printf("Error committing clear of field values for product %d: %v", productID, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to clear field values"})
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"message": "Field values updated"})
+		return
+	}
+
+	// Collect all field names to resolve in one query (with metadata for validation).
 	names := make([]string, 0, len(body.Values))
 	for k := range body.Values {
 		names = append(names, k)
 	}
 
-	nameToID := make(map[string]int, len(names))
-	defRows, err := db.Query(`SELECT id, name FROM product_field_definitions WHERE name = ANY($1)`, pq.Array(names))
+	nameToMeta := make(map[string]fieldDefMeta, len(names))
+	defRows, err := db.QueryContext(r.Context(),
+		`SELECT id, name, field_type, options, is_required FROM product_field_definitions WHERE name = ANY($1)`,
+		pq.Array(names))
 	if err != nil {
 		log.Printf("Error resolving field definition names: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to look up field definitions"})
@@ -385,14 +448,22 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 	}
 	defer defRows.Close()
 	for defRows.Next() {
-		var defID int
+		var meta fieldDefMeta
 		var defName string
-		if err := defRows.Scan(&defID, &defName); err != nil {
-			log.Printf("Error scanning field definition name: %v", err)
+		var rawOptions *string
+		if err := defRows.Scan(&meta.ID, &defName, &meta.FieldType, &rawOptions, &meta.IsRequired); err != nil {
+			log.Printf("Error scanning field definition: %v", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to look up field definitions"})
 			return
 		}
-		nameToID[defName] = defID
+		if rawOptions != nil && *rawOptions != "" {
+			if err := json.Unmarshal([]byte(*rawOptions), &meta.Options); err != nil {
+				log.Printf("Error parsing options for field '%s': %v", defName, err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Malformed options data for field: " + defName})
+				return
+			}
+		}
+		nameToMeta[defName] = meta
 	}
 	if err := defRows.Err(); err != nil {
 		log.Printf("Error iterating field definition names: %v", err)
@@ -400,15 +471,20 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate all names exist before touching the DB
+	// Validate all names exist and values are acceptable before touching the DB.
 	for _, name := range names {
-		if _, ok := nameToID[name]; !ok {
+		meta, ok := nameToMeta[name]
+		if !ok {
 			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Unknown field name: " + name})
+			return
+		}
+		if err := validateFieldValue(name, body.Values[name], meta); err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 	}
 
-	// Apply all updates/deletes inside a single transaction bound to the request context
+	// Apply all updates/deletes inside a single transaction bound to the request context.
 	tx, err := db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Printf("Error starting transaction for SetProductFieldValues product %d: %v", productID, err)
@@ -418,7 +494,7 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback() }()
 
 	for fieldName, value := range body.Values {
-		defID := nameToID[fieldName]
+		defID := nameToMeta[fieldName].ID
 		if value == "" {
 			if _, err := tx.ExecContext(r.Context(), `DELETE FROM product_field_values WHERE product_id=$1 AND field_definition_id=$2`, productID, defID); err != nil {
 				log.Printf("Error deleting field value for product %d, definition %d: %v", productID, defID, err)

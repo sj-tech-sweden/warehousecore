@@ -1700,6 +1700,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                           ) : (
                             <input
                               type={field.field_type === 'number' || field.field_type === 'integer' ? 'number' : 'text'}
+                              step={field.field_type === 'number' ? 'any' : field.field_type === 'integer' ? '1' : undefined}
                               value={productFieldValues[field.name] ?? ''}
                               onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.value }))}
                               className="w-full px-3 py-2 bg-dark-700 border border-gray-600 rounded-lg text-white focus:ring-1 focus:ring-accent-red focus:border-accent-red"
