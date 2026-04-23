@@ -15,13 +15,12 @@ import (
 )
 
 // ensureNilDB explicitly sets repository.GormDB to nil for the duration of the
-// test and restores it afterward. This prevents order-dependent flakes if
-// another test initialises the global DB.
+// test and restores it afterward. Uses the repository mutex helper so
+// concurrent test packages don't race on the global handle.
 func ensureNilDB(t *testing.T) {
 	t.Helper()
-	old := repository.GormDB
-	repository.GormDB = nil
-	t.Cleanup(func() { repository.GormDB = old })
+	restore := repository.WithTestGormDB(nil)
+	t.Cleanup(restore)
 }
 
 // setupMockGormDB creates a go-sqlmock backed *gorm.DB, sets it as
@@ -44,10 +43,9 @@ func setupMockGormDB(t *testing.T) sqlmock.Sqlmock {
 		t.Fatalf("failed to create gorm DB: %v", err)
 	}
 
-	old := repository.GormDB
-	repository.GormDB = gormDB
+	restore := repository.WithTestGormDB(gormDB)
 	t.Cleanup(func() {
-		repository.GormDB = old
+		restore()
 		db.Close()
 	})
 	return mock

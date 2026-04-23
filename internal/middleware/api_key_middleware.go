@@ -32,7 +32,7 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 			log.Printf("[APIKEY] database error during key validation: %v", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Database unavailable"}) //nolint:errcheck
+			json.NewEncoder(w).Encode(map[string]string{"error": "database unavailable"}) //nolint:errcheck
 			return
 		}
 		if !valid {

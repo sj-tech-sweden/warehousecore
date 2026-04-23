@@ -26,6 +26,19 @@ func WithTestSQLDB(db *sql.DB) func() {
 	}
 }
 
+// WithTestGormDB replaces the global GORM DB handle with db for the duration
+// of a test. It acquires testDBMu and returns a cleanup func that restores the
+// original handle and releases the mutex. Register it with t.Cleanup.
+func WithTestGormDB(db *gorm.DB) func() {
+	testDBMu.Lock()
+	orig := GormDB
+	GormDB = db
+	return func() {
+		GormDB = orig
+		testDBMu.Unlock()
+	}
+}
+
 // WithTestDatabases atomically replaces both global DB handles. Use when a
 // test needs to nil-out (or replace) both sql.DB and gorm.DB together.
 // Register the returned cleanup func with t.Cleanup.

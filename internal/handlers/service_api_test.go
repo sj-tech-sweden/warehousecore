@@ -152,12 +152,16 @@ func TestGetDevice_ResponseIncludesCableID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open sqlmock: %v", err)
 	}
-	defer db.Close()
 
 	// Inject the mock DB into the repository using the mutex-protected helper
 	// to avoid cross-package data races when packages run in parallel.
+	// restore() is called first so the global handle is valid again before
+	// the sqlmock connection is closed.
 	restore := repository.WithTestSQLDB(db)
-	t.Cleanup(restore)
+	t.Cleanup(func() {
+		restore()
+		db.Close()
+	})
 
 	cableID := int64(42)
 
