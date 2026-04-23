@@ -16,29 +16,33 @@ import (
 	"warehousecore/internal/repository"
 )
 
-// withErrorDB injects a sqlmock DB that returns a connection error on any
-// query, simulating a database that is unavailable. This is preferred over
-// setting repository.DB = nil because it avoids mutating global nil state
-// that could race with concurrent package-level tests.
-func withErrorDB(t *testing.T) {
+// withErrorDB injects a sqlmock DB that returns connection errors, simulating
+// a database that is unavailable. It returns the mock so callers can register
+// exactly as many expectations as they need and optionally verify them.
+// A t.Cleanup is registered that restores the original DB, verifies all
+// expectations were met, and closes the mock DB.
+func withErrorDB(t *testing.T) sqlmock.Sqlmock {
 	t.Helper()
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to create sqlmock: %v", err)
 	}
-	mock.ExpectQuery(".*").WillReturnError(errors.New("connection refused"))
 	origSQL := repository.DB
 	repository.DB = db
 	t.Cleanup(func() {
 		repository.DB = origSQL
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet sqlmock expectations: %v", err)
+		}
 		db.Close()
 	})
+	return mock
 }
 
-// serviceRouter builds a minimal router that mirrors the service subrouter
-// registered in main.go, but without any database so we can test auth and
-// routing behaviour in isolation.
-func serviceRouter() http.Handler {
+// serviceRouter builds a minimal *mux.Router that mirrors the service subrouter
+// registered in main.go, enabling both http.Handler use and direct router.Match
+// calls in tests.
+func serviceRouter() *mux.Router {
 	router := mux.NewRouter()
 	service := router.PathPrefix("/api/v1/service").Subrouter()
 	service.Use(middleware.APIKeyMiddleware)
@@ -77,10 +81,11 @@ func TestServiceAPI_MissingAPIKey(t *testing.T) {
 
 // TestServiceAPI_APIKey_DBUnavailable_Returns500 verifies that when a key is
 // present but the database is unavailable, the middleware returns 500 (not a
-// misleading 401 "invalid key"). Uses a sqlmock DB that returns a connection
-// error to avoid mutating global nil state.
+// misleading 401 "invalid key"). One sqlmock expectation is registered per
+// request so that ExpectationsWereMet() confirms the middleware actually hit
+// the DB on every call.
 func TestServiceAPI_APIKey_DBUnavailable_Returns500(t *testing.T) {
-	withErrorDB(t)
+	mock := withErrorDB(t)
 	router := serviceRouter()
 
 	paths := []string{
@@ -90,6 +95,10 @@ func TestServiceAPI_APIKey_DBUnavailable_Returns500(t *testing.T) {
 	}
 
 	for _, path := range paths {
+		// Register one expectation before each request so sqlmock can verify
+		// the middleware is actually querying the DB on every call.
+		mock.ExpectQuery(".*").WillReturnError(errors.New("connection refused"))
+
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.Header.Set("X-API-Key", "some-key")
@@ -106,20 +115,17 @@ func TestServiceAPI_APIKey_DBUnavailable_Returns500(t *testing.T) {
 	}
 }
 
-// TestServiceAPI_Routes_NotFoundWithoutAuth checks that the service routes
-// exist in the router and are not accidentally public (no API key → 401, not 404).
+// TestServiceAPI_Routes_NotFoundWithoutAuth checks that an unknown path under
+// the service prefix is not registered as a route in the router. Uses
+// router.Match directly to avoid relying on status codes, which can be
+// influenced by the subrouter middleware even for unregistered paths.
 func TestServiceAPI_Routes_NotFoundWithoutAuth(t *testing.T) {
 	router := serviceRouter()
 
-	// A completely unknown path should still return 405/404, not 401.
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/service/unknown-endpoint", nil)
-	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, req)
-
-	// gorilla/mux returns 405 Method Not Allowed or 404 Not Found for unknown
-	// routes, not 401 – confirming the route does not exist without auth.
-	if rr.Code == http.StatusUnauthorized {
-		t.Error("unknown service path returned 401 – route should not exist")
+	var routeMatch mux.RouteMatch
+	if router.Match(req, &routeMatch) {
+		t.Error("unknown service path unexpectedly matched a registered route")
 	}
 }
 

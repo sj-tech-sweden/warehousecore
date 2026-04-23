@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -23,7 +24,7 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		if key == "" {
 			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, `{"error":"missing API key"}`)
+			json.NewEncoder(w).Encode(map[string]string{"error": "missing API key"}) //nolint:errcheck
 			return
 		}
 
@@ -31,12 +32,12 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 		if err != nil {
 			log.Printf("[APIKEY] database error during key validation: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, `{"error":"Database unavailable"}`)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Database unavailable"}) //nolint:errcheck
 			return
 		}
 		if !valid {
 			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, `{"error":"invalid API key"}`)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid API key"}) //nolint:errcheck
 			return
 		}
 
