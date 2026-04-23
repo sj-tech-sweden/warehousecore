@@ -97,7 +97,7 @@ func TestServiceAPI_APIKey_DBUnavailable_Returns500(t *testing.T) {
 	for _, path := range paths {
 		// Register one expectation before each request so sqlmock can verify
 		// the middleware is actually querying the DB on every call.
-		mock.ExpectQuery(".*").WillReturnError(errors.New("connection refused"))
+		mock.ExpectQuery(`SELECT id, last_used_at FROM api_keys`).WillReturnError(errors.New("connection refused"))
 
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)

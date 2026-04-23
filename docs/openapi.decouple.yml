@@ -217,8 +217,7 @@ components:
           description: Unique cable identifier.
           example: 123
         name:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Human-readable cable name.
           example: "CEE 16A to Schuko 10m"
         connector1:
@@ -239,34 +238,28 @@ components:
           description: Cable length in metres.
           example: 10.0
         mm2:
-          type: number
+          type: ["number", "null"]
           format: float
-          nullable: true
           description: Cable cross-section in mm².
           example: 2.5
         connector1_name:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Display name of connector 1.
           example: "CEE 16A"
         connector1_gender:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Gender of connector 1 (male/female).
           example: "male"
         connector2_name:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Display name of connector 2.
           example: "Schuko"
         connector2_gender:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Gender of connector 2 (male/female).
           example: "female"
         cable_type_name:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Display name of the cable type.
           example: "Power Cable"
 
@@ -283,8 +276,7 @@ components:
           description: Unique device identifier.
           example: "DEV001"
         product_id:
-          type: integer
-          nullable: true
+          type: ["integer", "null"]
           description: Associated product ID.
           example: 42
         product_name:
@@ -341,22 +333,18 @@ components:
           description: Power consumption in watts (0 = not set).
           example: 12.0
         serial_number:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Device serial number.
           example: "SN123456"
         rfid:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: RFID tag value.
         barcode:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Barcode value.
           example: "4711"
         qr_code:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: QR code value.
           example: "DEV001-QR"
         status:
@@ -370,8 +358,7 @@ components:
             - rented
           example: "in_storage"
         zone_id:
-          type: integer
-          nullable: true
+          type: ["integer", "null"]
           description: Current storage zone ID.
           example: 7
         zone_name:
@@ -387,8 +374,7 @@ components:
           description: Name of the case the device is in (empty if not in a case).
           example: "Case-01"
         cable_id:
-          type: integer
-          nullable: true
+          type: ["integer", "null"]
           description: |
             ID of the cable associated with this device. RentalCore uses this
             to resolve cable metadata via `GET /service/cables/{cable_id}`.
@@ -408,18 +394,15 @@ components:
           description: Cumulative usage hours.
           example: 120.0
         purchase_date:
-          type: string
+          type: ["string", "null"]
           format: date
-          nullable: true
           description: Purchase date (YYYY-MM-DD).
           example: "2023-01-15"
         notes:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Free-text notes.
         label_path:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Path to a generated label file.
 
     Error:

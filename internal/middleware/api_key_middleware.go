@@ -13,13 +13,13 @@ import (
 	"warehousecore/internal/repository"
 )
 
-// APIKeyMiddleware protects public endpoints using an API key (header X-API-Key or query param api_key).
+// APIKeyMiddleware protects service endpoints using an API key supplied via the
+// X-API-Key request header. Query-parameter fallback is intentionally omitted:
+// embedding credentials in URLs is a security risk (they appear in server logs,
+// proxy caches, and Referer headers).
 func APIKeyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimSpace(r.Header.Get("X-API-Key"))
-		if key == "" {
-			key = strings.TrimSpace(r.URL.Query().Get("api_key"))
-		}
 
 		if key == "" {
 			w.Header().Set("Content-Type", "application/json")
