@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -372,8 +373,9 @@ func validateFieldValue(name, value string, def fieldDefMeta) error {
 	}
 	switch def.FieldType {
 	case "number":
-		if _, err := strconv.ParseFloat(value, 64); err != nil {
-			return fmt.Errorf("field '%s' must be a valid number", name)
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return fmt.Errorf("field '%s' must be a valid finite number", name)
 		}
 	case "integer":
 		if _, err := strconv.ParseInt(value, 10, 64); err != nil {
@@ -563,9 +565,8 @@ func SetProductFieldValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(missingRequired) > 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"error":  "Missing required field(s)",
-			"fields": missingRequired,
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("Missing required field(s): %s", strings.Join(missingRequired, ", ")),
 		})
 		return
 	}

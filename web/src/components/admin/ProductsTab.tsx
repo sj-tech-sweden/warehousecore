@@ -330,6 +330,22 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     loadMetadata();
   }, [loadMetadata]);
 
+  // Initialize boolean custom-field values to 'false' when the modal is open,
+  // so required boolean fields are always satisfiable without an explicit toggle.
+  useEffect(() => {
+    if (!modalOpen || fieldDefinitions.length === 0) return;
+    setProductFieldValues(prev => {
+      const updates: Record<string, string> = {};
+      for (const def of fieldDefinitions) {
+        if (def.field_type === 'boolean' && prev[def.name] !== 'true' && prev[def.name] !== 'false') {
+          updates[def.name] = 'false';
+        }
+      }
+      if (Object.keys(updates).length === 0) return prev;
+      return { ...prev, ...updates };
+    });
+  }, [modalOpen, fieldDefinitions]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchProducts(searchTerm, categoryFilter);
@@ -650,7 +666,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
             await productFieldValuesApi.set(productId, normalizedValues);
           } catch (e) {
             console.error('Failed to save field values:', e);
-            window.alert(t('admin.products.errors.save'));
+            window.alert(t('admin.products.errors.fieldValuesSave', { defaultValue: 'Failed to save custom field values' }));
             setSubmitting(false);
             return;
           }
@@ -1727,16 +1743,8 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                           ) : field.field_type === 'boolean' ? (
                             <input
                               type="checkbox"
-                              checked={(productFieldValues[field.name] ?? 'false') === 'true'}
+                              checked={productFieldValues[field.name] === 'true'}
                               onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.checked ? 'true' : 'false' }))}
-                              ref={input => {
-                                if (!input) return;
-                                setProductFieldValues(prev => {
-                                  const cur = prev[field.name];
-                                  if (cur === 'true' || cur === 'false') return prev;
-                                  return { ...prev, [field.name]: 'false' };
-                                });
-                              }}
                               className="w-5 h-5 rounded"
                             />
                           ) : (
