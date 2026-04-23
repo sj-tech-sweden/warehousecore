@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
@@ -1962,6 +1963,8 @@ func buildPublicImageURLs(productID int, files []string) []string {
 }
 
 // ConvertProductToCase converts a product into a case by copying compatible fields.
+// If the product has multiple devices, one case is created per device and each device
+// is associated with its respective case via the devicescases table.
 func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
@@ -2005,21 +2008,144 @@ func ConvertProductToCase(w http.ResponseWriter, r *http.Request) {
 		weightVal = &weight.Float64
 	}
 
-	var caseID int64
-	err = db.QueryRow(`
-		INSERT INTO cases (name, description, width, height, depth, weight, status)
-		VALUES ($1, $2, $3, $4, $5, $6, 'free')
-		RETURNING caseID
-	`, name, descPtr, wVal, hVal, dVal, weightVal).Scan(&caseID)
+	// Fetch all devices belonging to this product
+	// Begin transaction so device reads, case inserts, and device associations are atomic
+	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("[CONVERT CASE] Failed to create case from product %d: %v", id, err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create case"})
+		log.Printf("[CONVERT CASE] Failed to begin transaction for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to start transaction"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	deviceRows, err := tx.Query(`
+		SELECT deviceID
+		FROM devices
+		WHERE productID = $1
+		ORDER BY deviceID ASC
+		FOR UPDATE
+	`, id)
+	if err != nil {
+		log.Printf("[CONVERT CASE] Failed to fetch devices for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch product devices"})
 		return
 	}
 
-	log.Printf("[CONVERT CASE] Product %d converted to case %d", id, caseID)
+	var deviceIDs []string
+	for deviceRows.Next() {
+		var deviceID string
+		if scanErr := deviceRows.Scan(&deviceID); scanErr != nil {
+			_ = deviceRows.Close()
+			log.Printf("[CONVERT CASE] Failed to scan device ID for product %d: %v", id, scanErr)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to read product devices"})
+			return
+		}
+		deviceIDs = append(deviceIDs, deviceID)
+	}
+	if err = deviceRows.Err(); err != nil {
+		_ = deviceRows.Close()
+		log.Printf("[CONVERT CASE] Row iteration error for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to read product devices"})
+		return
+	}
+	if err = deviceRows.Close(); err != nil {
+		log.Printf("[CONVERT CASE] Failed to close device rows for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to finalize product devices"})
+		return
+	}
+
+	var caseIDs []int64
+
+	if len(deviceIDs) == 0 {
+		// No devices: create a single unlinked case
+		var caseID int64
+		err = tx.QueryRow(`
+			INSERT INTO cases (name, description, width, height, depth, weight, status)
+			VALUES ($1, $2, $3, $4, $5, $6, 'free')
+			RETURNING caseID
+		`, name, descPtr, wVal, hVal, dVal, weightVal).Scan(&caseID)
+		if err != nil {
+			log.Printf("[CONVERT CASE] Failed to create case from product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create case"})
+			return
+		}
+		caseIDs = append(caseIDs, caseID)
+	} else {
+		// Validate that none of the devices are already associated with a case.
+		rows, queryErr := tx.Query(`
+			SELECT deviceID
+			FROM devicescases
+			WHERE deviceID = ANY($1)
+		`, pq.Array(deviceIDs))
+		if queryErr != nil {
+			log.Printf("[CONVERT CASE] Failed to check existing case associations for product %d: %v", id, queryErr)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to validate device case associations"})
+			return
+		}
+
+		var associatedDeviceIDs []string
+		for rows.Next() {
+			var associatedDeviceID string
+			if scanErr := rows.Scan(&associatedDeviceID); scanErr != nil {
+				rows.Close()
+				log.Printf("[CONVERT CASE] Failed to read existing case association for product %d: %v", id, scanErr)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to validate device case associations"})
+				return
+			}
+			associatedDeviceIDs = append(associatedDeviceIDs, associatedDeviceID)
+		}
+		if err = rows.Err(); err != nil {
+			rows.Close()
+			log.Printf("[CONVERT CASE] Failed while checking existing case associations for product %d: %v", id, err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to validate device case associations"})
+			return
+		}
+		rows.Close()
+
+		if len(associatedDeviceIDs) > 0 {
+			sort.Strings(associatedDeviceIDs)
+			log.Printf("[CONVERT CASE] Cannot convert product %d: devices already associated with case(s): %v", id, associatedDeviceIDs)
+			respondJSON(w, http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("device(s) already associated with case(s): %s", strings.Join(associatedDeviceIDs, ", ")),
+			})
+			return
+		}
+
+		// Create one case per device and associate each
+		for _, deviceID := range deviceIDs {
+			var caseID int64
+			err = tx.QueryRow(`
+				INSERT INTO cases (name, description, width, height, depth, weight, status)
+				VALUES ($1, $2, $3, $4, $5, $6, 'free')
+				RETURNING caseID
+			`, name, descPtr, wVal, hVal, dVal, weightVal).Scan(&caseID)
+			if err != nil {
+				log.Printf("[CONVERT CASE] Failed to create case for device %s (product %d): %v", deviceID, id, err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create case"})
+				return
+			}
+
+			_, err = tx.Exec(`INSERT INTO devicescases (deviceID, caseID) VALUES ($1, $2)`, deviceID, caseID)
+			if err != nil {
+				log.Printf("[CONVERT CASE] Failed to associate device %s with case %d: %v", deviceID, caseID, err)
+				respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to associate device with case"})
+				return
+			}
+
+			caseIDs = append(caseIDs, caseID)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		log.Printf("[CONVERT CASE] Failed to commit transaction for product %d: %v", id, err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to commit conversion"})
+		return
+	}
+
+	log.Printf("[CONVERT CASE] Product %d converted to %d case(s): %v", id, len(caseIDs), caseIDs)
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"case_id": caseID,
-		"message": "Product converted to case successfully",
+		"case_ids":   caseIDs,
+		"case_count": len(caseIDs),
+		"message":    fmt.Sprintf("Product converted to %d case(s) successfully", len(caseIDs)),
 	})
 }

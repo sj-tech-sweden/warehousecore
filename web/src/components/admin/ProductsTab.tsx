@@ -539,8 +539,8 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       return;
     }
     try {
-      await productConvertApi.toCase(productId);
-      window.alert(t('admin.products.convertToCaseSuccess'));
+      const { data } = await productConvertApi.toCase(productId);
+      window.alert(t('admin.products.convertToCaseSuccess', { count: data.case_count }));
     } catch (error) {
       console.error('Failed to convert product to case:', error);
       window.alert(t('admin.products.errors.convertToCase'));

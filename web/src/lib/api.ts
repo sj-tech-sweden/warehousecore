@@ -713,7 +713,7 @@ export const apiKeysAdminApi = {
 
 export const productConvertApi = {
   toCase: (productId: number) =>
-    api.post<{ case_id: number; message: string }>(`/admin/products/${productId}/convert-to-case`, {}),
+    api.post<{ case_ids: number[]; case_count: number; message: string }>(`/admin/products/${productId}/convert-to-case`, {}),
 };
 
 export interface ProductPicture {
