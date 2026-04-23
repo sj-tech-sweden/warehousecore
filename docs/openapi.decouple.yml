@@ -311,6 +311,35 @@ components:
           type: string
           description: Brand name.
           example: "Shure"
+        product_weight:
+          type: number
+          format: float
+          description: Product weight in kg.
+          example: 0.6
+        product_width:
+          type: number
+          format: float
+          description: Product width in cm.
+          example: 10.0
+        product_height:
+          type: number
+          format: float
+          description: Product height in cm.
+          example: 5.0
+        product_depth:
+          type: number
+          format: float
+          description: Product depth in cm.
+          example: 8.0
+        maintenance_interval:
+          type: integer
+          description: Maintenance interval in days (0 = not set).
+          example: 365
+        power_consumption:
+          type: number
+          format: float
+          description: Power consumption in watts (0 = not set).
+          example: 12.0
         serial_number:
           type: string
           nullable: true
@@ -338,6 +367,7 @@ components:
             - on_job
             - defective
             - repair
+            - rented
           example: "in_storage"
         zone_id:
           type: integer

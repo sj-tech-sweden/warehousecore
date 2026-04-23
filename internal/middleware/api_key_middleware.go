@@ -21,8 +21,8 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 			key = strings.TrimSpace(r.URL.Query().Get("api_key"))
 		}
 
-		w.Header().Set("Content-Type", "application/json")
 		if key == "" {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "missing API key"}) //nolint:errcheck
 			return
@@ -31,11 +31,13 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 		valid, err := isAPIKeyValid(key)
 		if err != nil {
 			log.Printf("[APIKEY] database error during key validation: %v", err)
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Database unavailable"}) //nolint:errcheck
 			return
 		}
 		if !valid {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "invalid API key"}) //nolint:errcheck
 			return
@@ -53,7 +55,11 @@ func isAPIKeyValid(raw string) (bool, error) {
 	hash := hashAPIKey(raw)
 
 	var id int
-	err := db.QueryRow(`SELECT id FROM api_keys WHERE api_key_hash = $1 AND is_active = TRUE LIMIT 1`, hash).Scan(&id)
+	var lastUsedAt sql.NullTime
+	err := db.QueryRow(
+		`SELECT id, last_used_at FROM api_keys WHERE api_key_hash = $1 AND is_active = TRUE LIMIT 1`,
+		hash,
+	).Scan(&id, &lastUsedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil // key not found – credential mismatch
@@ -61,9 +67,14 @@ func isAPIKeyValid(raw string) (bool, error) {
 		return false, fmt.Errorf("api_key query: %w", err)
 	}
 
-	// Update last_used_at synchronously (single indexed UPDATE).
-	if _, err := db.Exec("UPDATE api_keys SET last_used_at = $1 WHERE id = $2", time.Now(), id); err != nil {
-		log.Printf("WARN [WarehouseCore]: failed to update last_used_at for API key (id=%d): %v", id, err)
+	// Throttle last_used_at updates: only write if the recorded time is more
+	// than 5 minutes old (or has never been set). This avoids unnecessary
+	// write contention on high-frequency service-to-service traffic.
+	const updateInterval = 5 * time.Minute
+	if !lastUsedAt.Valid || time.Since(lastUsedAt.Time) > updateInterval {
+		if _, err := db.Exec("UPDATE api_keys SET last_used_at = $1 WHERE id = $2", time.Now(), id); err != nil {
+			log.Printf("WARN [WarehouseCore]: failed to update last_used_at for API key (id=%d): %v", id, err)
+		}
 	}
 
 	return true, nil
