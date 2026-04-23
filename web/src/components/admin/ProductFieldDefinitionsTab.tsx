@@ -213,6 +213,7 @@ export function ProductFieldDefinitionsTab() {
                           onClick={() => openEdit(def)}
                           className="rounded-lg bg-white/10 p-2 text-gray-200 transition hover:bg-white/20 hover:text-white"
                           title={t('common.edit')}
+                          aria-label={t('common.edit')}
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -220,6 +221,7 @@ export function ProductFieldDefinitionsTab() {
                           onClick={() => handleDelete(def)}
                           className="rounded-lg bg-red-600/80 p-2 text-white transition hover:bg-red-600"
                           title={t('common.delete')}
+                          aria-label={t('common.delete')}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

@@ -620,16 +620,34 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
       }
 
       if (fieldDefinitions.length > 0 && productId) {
+        // Normalize values: trim whitespace, omit empty entries (backend deletes those rows).
+        const normalizedValues = Object.fromEntries(
+          Object.entries(productFieldValues)
+            .map(([k, v]) => [k, v.trim()] as const)
+            .filter(([, v]) => v !== '')
+        );
+
+        // For new products: validate required fields client-side before calling the API.
+        if (editingProduct === null) {
+          const missingRequired = fieldDefinitions.filter(
+            f => f.is_required && !normalizedValues[f.name]
+          );
+          if (missingRequired.length > 0) {
+            window.alert(`${t('admin.products.errors.requiredFields', { defaultValue: 'Required custom fields' })}: ${missingRequired.map(f => f.label).join(', ')}`);
+            setSubmitting(false);
+            return;
+          }
+        }
+
         // For editing: only save when field values were successfully loaded (to avoid wiping
-        // existing values after a transient load error). For new products: save when the user
-        // entered values OR when any required definitions exist (so the backend enforces them).
-        const hasRequiredDefinitions = fieldDefinitions.some(f => f.is_required);
+        // existing values after a transient load error). For new products: only save when there
+        // are values to persist.
         const shouldSaveFieldValues = editingProduct !== null
           ? fieldValuesLoaded
-          : Object.values(productFieldValues).some(v => v.trim() !== '') || hasRequiredDefinitions;
+          : Object.keys(normalizedValues).length > 0;
         if (shouldSaveFieldValues) {
           try {
-            await productFieldValuesApi.set(productId, productFieldValues);
+            await productFieldValuesApi.set(productId, normalizedValues);
           } catch (e) {
             console.error('Failed to save field values:', e);
             window.alert(t('admin.products.errors.save'));
@@ -1709,8 +1727,16 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
                           ) : field.field_type === 'boolean' ? (
                             <input
                               type="checkbox"
-                              checked={productFieldValues[field.name] === 'true'}
+                              checked={(productFieldValues[field.name] ?? 'false') === 'true'}
                               onChange={e => setProductFieldValues(prev => ({ ...prev, [field.name]: e.target.checked ? 'true' : 'false' }))}
+                              ref={input => {
+                                if (!input) return;
+                                setProductFieldValues(prev => {
+                                  const cur = prev[field.name];
+                                  if (cur === 'true' || cur === 'false') return prev;
+                                  return { ...prev, [field.name]: 'false' };
+                                });
+                              }}
                               className="w-5 h-5 rounded"
                             />
                           ) : (
