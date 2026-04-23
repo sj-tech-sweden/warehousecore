@@ -618,7 +618,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     if (fieldDefinitions.length > 0 && editingProduct === null) {
       const missingRequired = fieldDefinitions.filter(f => {
         if (!f.is_required) return false;
-        return (productFieldValues[f.name] ?? '').trim() === '';
+        return String(productFieldValues[f.name] ?? '').trim() === '';
       });
       if (missingRequired.length > 0) {
         window.alert(`${t('admin.products.errors.requiredFields', { defaultValue: 'Required custom fields' })}: ${missingRequired.map(f => f.label).join(', ')}`);
