@@ -201,6 +201,12 @@ DROP  INDEX  IF EXISTS idx_devices_cable_id;
 ALTER TABLE devices DROP COLUMN IF EXISTS cable_id;
 
 -- Drop cable tables (FK-safe order: dependent first).
+-- Some other tables (e.g. job_cables) may still reference `cables`.
+-- Remove those FK constraints and referencing columns if present so
+-- the cleanup can proceed in guarded/ idempotent fashion.
+ALTER TABLE job_cables DROP CONSTRAINT IF EXISTS job_cables_cableid_fkey;
+ALTER TABLE job_cables DROP COLUMN IF EXISTS cableid;
+
 DROP TABLE IF EXISTS cables;
 DROP TABLE IF EXISTS cable_connectors;
 DROP TABLE IF EXISTS cable_types;
