@@ -630,7 +630,7 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
     // transient load error.  Check this BEFORE required-field validation so we don't
     // incorrectly flag required fields as missing when we simply don't know the stored values.
     if (editingProduct !== null && !fieldValuesLoaded) {
-      window.alert(t('admin.products.errors.fieldValuesSave', { defaultValue: 'Failed to save custom field values' }));
+      window.alert(t('admin.products.errors.fieldValuesLoadFailed', { defaultValue: 'Custom field values failed to load. Please refresh and try again.' }));
       setSubmitting(false);
       return;
     }
