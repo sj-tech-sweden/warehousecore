@@ -687,16 +687,15 @@ export function ProductsTab({ onOpenDevicesTab }: ProductsTabProps) {
         );
 
         // For editing: block submit if field values failed to load to avoid silently dropping
-        // user edits. For new products: only save when there are values to persist.
+        // user edits. Skip the API call entirely when there are no normalized field-value
+        // changes, because an empty payload is treated by the backend as "clear all values".
         if (editingProduct !== null && !fieldValuesLoaded) {
           window.alert(t('admin.products.errors.fieldValuesSave', { defaultValue: 'Failed to save custom field values' }));
           setSubmitting(false);
           return;
         }
-        const shouldSaveFieldValues = editingProduct !== null
-          ? true
-          : Object.keys(normalizedValues).length > 0;
-        if (shouldSaveFieldValues) {
+        const hasFieldValueChanges = Object.keys(normalizedValues).length > 0;
+        if (hasFieldValueChanges) {
           try {
             await productFieldValuesApi.set(productId, normalizedValues);
           } catch (e) {
