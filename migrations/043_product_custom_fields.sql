@@ -130,20 +130,30 @@ BEGIN
             -- Report and migrate ALL devices associated with this cable.
             -- Devices that already had a productID would silently lose their cable
             -- association when cable_id is dropped; warn before overwriting.
-            SELECT COUNT(*) INTO v_dual_count
-            FROM devices
-            WHERE cable_id = v_cable.cableID AND productID IS NOT NULL;
+            -- Guard this section so the migration remains idempotent if a prior
+            -- cleanup already removed devices.cable_id in a partially-migrated
+            -- environment.
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = ANY (current_schemas(FALSE))
+                  AND table_name = 'devices'
+                  AND column_name = 'cable_id'
+            ) THEN
+                SELECT COUNT(*) INTO v_dual_count
+                FROM devices
+                WHERE cable_id = v_cable.cableID AND productID IS NOT NULL;
 
-            IF v_dual_count > 0 THEN
-                RAISE NOTICE 'Cable "%" (cableID=%): % device(s) had both productID and cable_id set. '
-                             'Their productID is being updated to the new cable-product (%).',
-                    v_cable.name, v_cable.cableID, v_dual_count, v_product_id;
+                IF v_dual_count > 0 THEN
+                    RAISE NOTICE 'Cable "%" (cableID=%): % device(s) had both productID and cable_id set. '
+                                 'Their productID is being updated to the new cable-product (%).',
+                        v_cable.name, v_cable.cableID, v_dual_count, v_product_id;
+                END IF;
+
+                UPDATE devices
+                SET productID = v_product_id
+                WHERE cable_id = v_cable.cableID;
             END IF;
-
-            UPDATE devices
-            SET productID = v_product_id
-            WHERE cable_id = v_cable.cableID;
-
             -- Insert field values, skipping NULLs silently.
             IF v_cable.c1name IS NOT NULL THEN
                 INSERT INTO product_field_values (product_id, field_definition_id, value)
