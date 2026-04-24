@@ -768,11 +768,14 @@ export interface ProductFieldValue {
   value: string;
 }
 
+// name is immutable after creation and is ignored by the backend update handler.
+export type ProductFieldDefinitionUpdateInput = Omit<ProductFieldDefinition, 'id' | 'name'>;
+
 export const productFieldDefinitionsApi = {
   list: () => api.get<ProductFieldDefinition[]>('/admin/product-field-definitions'),
   create: (data: Omit<ProductFieldDefinition, 'id'>) =>
     api.post<ProductFieldDefinition>('/admin/product-field-definitions', data),
-  update: (id: number, data: Omit<ProductFieldDefinition, 'id'>) =>
+  update: (id: number, data: ProductFieldDefinitionUpdateInput) =>
     api.put<ProductFieldDefinition>(`/admin/product-field-definitions/${id}`, data),
   delete: (id: number) => api.delete(`/admin/product-field-definitions/${id}`),
 };

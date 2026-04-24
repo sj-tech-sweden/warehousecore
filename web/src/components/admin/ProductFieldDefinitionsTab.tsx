@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, X } from 'lucide-react';
-import { productFieldDefinitionsApi, type ProductFieldDefinition } from '../../lib/api';
+import { productFieldDefinitionsApi, type ProductFieldDefinition, type ProductFieldDefinitionUpdateInput } from '../../lib/api';
 import { ModalPortal } from '../ModalPortal';
 
 type FieldType = ProductFieldDefinition['field_type'];
@@ -103,22 +103,29 @@ export function ProductFieldDefinitionsTab() {
       options = JSON.stringify(lines);
     }
 
-    const payload: Omit<ProductFieldDefinition, 'id'> = {
-      name: form.name.trim(),
-      label: form.label.trim(),
-      field_type: form.field_type,
-      unit: form.unit.trim() || null,
-      sort_order: form.sort_order,
-      is_required: form.is_required,
-      options,
-    };
-
     setSaving(true);
     try {
       if (editingId !== null) {
-        await productFieldDefinitionsApi.update(editingId, payload);
+        const updatePayload: ProductFieldDefinitionUpdateInput = {
+          label: form.label.trim(),
+          field_type: form.field_type,
+          unit: form.unit.trim() || null,
+          sort_order: form.sort_order,
+          is_required: form.is_required,
+          options,
+        };
+        await productFieldDefinitionsApi.update(editingId, updatePayload);
       } else {
-        await productFieldDefinitionsApi.create(payload);
+        const createPayload: Omit<ProductFieldDefinition, 'id'> = {
+          name: form.name.trim(),
+          label: form.label.trim(),
+          field_type: form.field_type,
+          unit: form.unit.trim() || null,
+          sort_order: form.sort_order,
+          is_required: form.is_required,
+          options,
+        };
+        await productFieldDefinitionsApi.create(createPayload);
       }
       closeModal();
       await load();
