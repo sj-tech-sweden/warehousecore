@@ -1583,7 +1583,11 @@ func GetZone(w http.ResponseWriter, r *http.Request) {
 // GetZoneDevices returns all devices in a specific zone
 func GetZoneDevices(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	zoneID := vars["id"]
+	zoneID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid zone ID"})
+		return
+	}
 
 	db := repository.GetSQLDB()
 	rows, err := db.Query(`
@@ -4412,7 +4416,11 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 // AssignDevicesToZone assigns multiple devices to a storage zone
 func AssignDevicesToZone(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	zoneID := vars["id"]
+	zoneID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid zone ID"})
+		return
+	}
 
 	var input struct {
 		DeviceIDs []string `json:"device_ids"`
@@ -4432,7 +4440,7 @@ func AssignDevicesToZone(w http.ResponseWriter, r *http.Request) {
 
 	// Verify zone exists
 	var exists bool
-	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM storage_zones WHERE zone_id = $1)", zoneID).Scan(&exists)
+	err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM storage_zones WHERE zone_id = $1)", zoneID).Scan(&exists)
 	if err != nil || !exists {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Zone not found"})
 		return
@@ -4454,7 +4462,7 @@ func AssignDevicesToZone(w http.ResponseWriter, r *http.Request) {
 		`, zoneID, deviceID)
 
 		if err != nil {
-			log.Printf("Error assigning device %s to zone %s: %v", deviceID, zoneID, err)
+			log.Printf("Error assigning device %s to zone %d: %v", deviceID, zoneID, err)
 			failedDevices = append(failedDevices, deviceID)
 			continue
 		}

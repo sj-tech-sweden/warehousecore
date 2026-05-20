@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"warehousecore/internal/models"
 
 	"github.com/lib/pq"
@@ -89,6 +90,10 @@ func (s *CompanyBrandingService) CompanyName() string {
 func isMissingAppSettingsTableErr(err error) bool {
 	if err == nil {
 		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "42P01" {
+		return true
 	}
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) && pqErr.Code == "42P01" {

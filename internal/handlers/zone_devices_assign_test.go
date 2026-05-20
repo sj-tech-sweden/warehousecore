@@ -22,7 +22,7 @@ func TestGetZoneDevices_Success(t *testing.T) {
 	cols := []string{"deviceid", "productid", "serialnumber", "status", "barcode", "qr_code", "condition_rating", "usage_hours", "product_name", "manufacturer", "model", "zone_code"}
 	rows := sqlmock.NewRows(cols).
 		AddRow("DEV1", nil, "SN1", "in_storage", "B1", "Q1", 0.0, 0.0, "Prod", "Mfg", "ModelX", "ZC")
-	mock.ExpectQuery(`SELECT d.deviceID`).WithArgs("10").WillReturnRows(rows)
+	mock.ExpectQuery(`SELECT d.deviceID`).WithArgs(int64(10)).WillReturnRows(rows)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/zones/10/devices", nil)
 	rr := httptest.NewRecorder()
@@ -46,12 +46,12 @@ func TestAssignDevicesToZone_PartialFailure(t *testing.T) {
 	router.HandleFunc("/api/v1/zones/{id}/devices", handlers.AssignDevicesToZone).Methods("POST")
 
 	// zone exists
-	mock.ExpectQuery(`SELECT EXISTS`).WithArgs("20").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery(`SELECT EXISTS`).WithArgs(int64(20)).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
 	// first device update succeeds, second fails (rowsAffected 0)
-	mock.ExpectExec(`UPDATE devices`).WithArgs("20", "DEV1").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`UPDATE devices`).WithArgs(int64(20), "DEV1").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(`INSERT INTO device_movements`).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(`UPDATE devices`).WithArgs("20", "DEV2").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`UPDATE devices`).WithArgs(int64(20), "DEV2").WillReturnResult(sqlmock.NewResult(0, 0))
 
 	body := `{"device_ids":["DEV1","DEV2"]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/zones/20/devices", bytes.NewBufferString(body))
@@ -77,7 +77,7 @@ func TestAssignDevicesToZone_ZoneNotFound(t *testing.T) {
 	router.HandleFunc("/api/v1/zones/{id}/devices", handlers.AssignDevicesToZone).Methods("POST")
 
 	// zone does not exist
-	mock.ExpectQuery(`SELECT EXISTS`).WithArgs("999").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectQuery(`SELECT EXISTS`).WithArgs(int64(999)).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 
 	body := `{"device_ids":["DEVX"]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/zones/999/devices", bytes.NewBufferString(body))

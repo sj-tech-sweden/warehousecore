@@ -340,12 +340,16 @@ func (s *RBACService) EnsureDefaultAdminFromEnv() error {
 	role, err := s.GetRoleByName("super_admin")
 	if err != nil || role == nil {
 		role, err = s.GetRoleByName("admin")
-	}
-	if role != nil && err == nil {
-		ur := models.UserRole{UserID: newUserID, RoleID: role.ID, AssignedAt: time.Now(), IsActive: true}
-		if err := s.db.Create(&ur).Error; err != nil {
-			return fmt.Errorf("failed to assign role to admin user: %w", err)
+		if err != nil {
+			return fmt.Errorf("failed to lookup admin role: %w", err)
 		}
+		if role == nil {
+			return fmt.Errorf("failed to assign role to seeded admin user: neither super_admin nor admin role exists")
+		}
+	}
+	ur := models.UserRole{UserID: newUserID, RoleID: role.ID, AssignedAt: time.Now(), IsActive: true}
+	if err := s.db.Create(&ur).Error; err != nil {
+		return fmt.Errorf("failed to assign role to admin user: %w", err)
 	}
 
 	log.Printf("[RBAC] Seeded admin user '%s'", username)
