@@ -840,7 +840,12 @@ func (s *Service) fetchRentalCoreRequiredProductIDs(jobID string) (map[int]struc
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("rentalcore summary request failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		truncated := strings.TrimSpace(string(body))
+		if len(truncated) > 200 {
+			truncated = truncated[:200] + "..."
+		}
+		log.Printf("[LED] rentalcore summary request failed: status=%d body=%s", resp.StatusCode, truncated)
+		return nil, fmt.Errorf("rentalcore summary request failed: status=%d", resp.StatusCode)
 	}
 
 	var summary rentalCoreJobSummary
