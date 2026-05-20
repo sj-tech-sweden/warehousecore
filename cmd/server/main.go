@@ -187,11 +187,9 @@ func main() {
 	api.HandleFunc("/public/products", handlers.GetWebsiteProducts).Methods("GET")
 	api.HandleFunc("/public/packages", handlers.GetWebsitePackages).Methods("GET")
 
-	// Apply SSO middleware early so claims can populate request context
-	api.Use(middleware.SSOMiddleware)
-
 	// Protected routes - apply auth middleware
 	protected := api.PathPrefix("").Subrouter()
+	protected.Use(middleware.SSOMiddleware)
 	protected.Use(middleware.AuthMiddleware)
 
 	// Auth status endpoint (requires authentication)
@@ -231,12 +229,14 @@ func main() {
 
 	// Twenty CRM integration (admin-only write operation)
 	twenty := api.PathPrefix("/twenty").Subrouter()
+	twenty.Use(middleware.SSOMiddleware)
 	twenty.Use(middleware.AuthMiddleware)
 	twenty.Use(middleware.RequireAdmin)
 	twenty.HandleFunc("/sync-products", handlers.TwentySyncProductsHandler).Methods("POST")
 
 	// Bidirectional integration ingest (admin-only write operation)
 	integrations := api.PathPrefix("/integrations/twenty").Subrouter()
+	integrations.Use(middleware.SSOMiddleware)
 	integrations.Use(middleware.AuthMiddleware)
 	integrations.Use(middleware.RequireAdmin)
 	integrations.HandleFunc("/events", handlers.IngestTwentyEvent).Methods("POST")
@@ -296,6 +296,7 @@ func main() {
 	// Admin routes (RBAC protected)
 	// Read-only admin routes (admin or manager)
 	adminRead := api.PathPrefix("/admin").Subrouter()
+	adminRead.Use(middleware.SSOMiddleware)
 	adminRead.Use(middleware.AuthMiddleware)
 	adminRead.Use(middleware.RequireAdminOrManager)
 	adminRead.HandleFunc("/zone-types", handlers.GetZoneTypes).Methods("GET")
@@ -328,6 +329,7 @@ func main() {
 
 	// Admin-only routes (write operations)
 	admin := api.PathPrefix("/admin").Subrouter()
+	admin.Use(middleware.SSOMiddleware)
 	admin.Use(middleware.AuthMiddleware)
 	admin.Use(middleware.RequireAdmin)
 	// Job CRUD (admin-only)
@@ -458,6 +460,7 @@ func main() {
 	api.Use(middleware.RecoveryMiddleware)
 	// Docs endpoints - always available but require authentication
 	docsRouter := router.PathPrefix("").Subrouter()
+	docsRouter.Use(middleware.SSOMiddleware)
 	docsRouter.Use(middleware.AuthMiddleware)
 	registerDynamicDocs(docsRouter, router)
 

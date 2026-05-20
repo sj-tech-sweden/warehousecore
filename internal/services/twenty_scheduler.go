@@ -155,6 +155,10 @@ func (s *TwentyScheduler) Reset() {
 		log.Printf("[TWENTY SCHEDULER] automatic sync disabled (interval=0)")
 		return
 	}
+	if !IsAllowedTwentySyncInterval(intervalMins) {
+		log.Printf("[TWENTY SCHEDULER] unsupported sync_interval_minutes=%d, disabling automatic sync", intervalMins)
+		return
+	}
 
 	duration := time.Duration(intervalMins) * time.Minute
 	stopCh := make(chan struct{})
