@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"warehousecore/internal/models"
 
 	"github.com/lib/pq"
@@ -91,8 +90,11 @@ func isMissingAppSettingsTableErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "42P01" {
+	type sqlStateErr interface {
+		SQLState() string
+	}
+	var pgErr sqlStateErr
+	if errors.As(err, &pgErr) && pgErr.SQLState() == "42P01" {
 		return true
 	}
 	var pqErr *pq.Error
