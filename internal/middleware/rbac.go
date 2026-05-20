@@ -3,10 +3,13 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"warehousecore/internal/services"
 )
+
+var rbacDebugLogsEnabled = os.Getenv("AUTH_DEBUG") == "1"
 
 // RequireRole middleware ensures user has one of the required roles
 func RequireRole(roles ...string) func(http.Handler) http.Handler {
@@ -48,6 +51,13 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 
 			log.Printf("User %s (ID: %d) attempted to access %s without required roles: %v",
 				user.Username, user.UserID, r.URL.Path, roles)
+			if rbacDebugLogsEnabled {
+				var names []string
+				for _, rr := range user.Roles {
+					names = append(names, rr.Name)
+				}
+				log.Printf("User roles: %v", names)
+			}
 			http.Error(w, `{"error":"Forbidden - Insufficient permissions"}`, http.StatusForbidden)
 			return
 
@@ -58,10 +68,10 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 
 // RequireAdmin middleware ensures user has admin role
 func RequireAdmin(next http.Handler) http.Handler {
-	return RequireRole("admin", "warehouse_admin")(next)
+	return RequireRole("admin", "warehouse_admin", "super_admin")(next)
 }
 
 // RequireAdminOrManager middleware ensures user has admin or manager role
 func RequireAdminOrManager(next http.Handler) http.Handler {
-	return RequireRole("admin", "manager", "warehouse_admin")(next)
+	return RequireRole("admin", "manager", "warehouse_admin", "super_admin")(next)
 }

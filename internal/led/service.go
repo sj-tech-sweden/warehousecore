@@ -6,11 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -20,6 +24,8 @@ import (
 
 //go:embed config/led_mapping.json
 var defaultMappingData []byte
+
+var rentalCoreHTTPClient = &http.Client{Timeout: 5 * time.Second}
 
 // Service handles LED-related business logic
 type Service struct {
@@ -253,7 +259,10 @@ func (s *Service) HighlightJobBins(jobID string) error {
 		return fmt.Errorf("failed to resolve job zone counts: %w", err)
 	}
 	if len(zoneCounts) == 0 {
-		return fmt.Errorf("no matching in-storage devices or zones found for highlighting for job %s", jobID)
+		// Nothing to highlight is a valid runtime state (e.g. requirements exist
+		// but no matching devices are currently in storage). Do not fail the API.
+		log.Printf("[LED] No matching in-storage devices/zones to highlight for job %s; skipping highlight", jobID)
+		return nil
 	}
 
 	s.mu.RLock()
@@ -739,6 +748,15 @@ func (s *Service) getProductRequirementZonesWithCounts(jobID string) (zoneCounts
 
 	rows, queryErr := db.Query(query, jobID)
 	if queryErr != nil {
+		if strings.Contains(strings.ToLower(queryErr.Error()), "job_product_requirements") && strings.Contains(strings.ToLower(queryErr.Error()), "does not exist") {
+			log.Printf("[LED] job_product_requirements table missing in WarehouseCore DB; resolving requirements from RentalCore for job %s", jobID)
+			fallbackZones, fallbackHasRequirements, fallbackErr := s.getProductRequirementZonesFromRentalCore(jobID)
+			if fallbackErr != nil {
+				log.Printf("[LED] Failed to resolve product requirements from RentalCore for job %s: %v", jobID, fallbackErr)
+				return map[string]int{}, false, nil
+			}
+			return fallbackZones, fallbackHasRequirements, nil
+		}
 		return nil, false, fmt.Errorf("querying product requirement zones for job %s: %w", jobID, queryErr)
 	}
 	defer rows.Close()
@@ -768,6 +786,143 @@ func (s *Service) getProductRequirementZonesWithCounts(jobID string) (zoneCounts
 	return zoneCounts, true, nil
 }
 
+func rentalCoreBaseURL() string {
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("RENTALCORE_BASE_URL")), "/")
+	return base
+}
+
+func rentalCoreServiceAPIKey() string {
+	if key := strings.TrimSpace(os.Getenv("RENTALCORE_API_KEY")); key != "" {
+		return key
+	}
+	if key := strings.TrimSpace(os.Getenv("SERVICE_API_KEY")); key != "" {
+		return key
+	}
+	if key := strings.TrimSpace(os.Getenv("WAREHOUSECORE_API_KEY")); key != "" {
+		return key
+	}
+	return ""
+}
+
+type rentalCoreJobSummary struct {
+	ProductRequirements []struct {
+		ProductID int `json:"product_id"`
+		Required  int `json:"required"`
+	} `json:"product_requirements"`
+}
+
+func (s *Service) fetchRentalCoreRequiredProductIDs(jobID string) (map[int]struct{}, error) {
+	baseURL := rentalCoreBaseURL()
+	if baseURL == "" {
+		return nil, fmt.Errorf("rentalcore base url not configured")
+	}
+
+	jobIDInt, err := strconv.Atoi(strings.TrimSpace(jobID))
+	if err != nil || jobIDInt <= 0 {
+		return nil, fmt.Errorf("invalid job id: %s", jobID)
+	}
+
+	requestURL := fmt.Sprintf("%s/api/v1/service/jobs/%d/summary", baseURL, jobIDInt)
+	req, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if apiKey := rentalCoreServiceAPIKey(); apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
+
+	resp, err := rentalCoreHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		truncated := strings.TrimSpace(string(body))
+		if len(truncated) > 200 {
+			truncated = truncated[:200] + "..."
+		}
+		log.Printf("[LED] rentalcore summary request failed: status=%d body=%s", resp.StatusCode, truncated)
+		return nil, fmt.Errorf("rentalcore summary request failed: status=%d", resp.StatusCode)
+	}
+
+	var summary rentalCoreJobSummary
+	if err := json.NewDecoder(resp.Body).Decode(&summary); err != nil {
+		return nil, err
+	}
+
+	productIDs := make(map[int]struct{})
+	for _, req := range summary.ProductRequirements {
+		if req.ProductID <= 0 {
+			continue
+		}
+		if req.Required <= 0 {
+			continue
+		}
+		productIDs[req.ProductID] = struct{}{}
+	}
+
+	return productIDs, nil
+}
+
+func (s *Service) getProductRequirementZonesFromRentalCore(jobID string) (map[string]int, bool, error) {
+	productIDs, err := s.fetchRentalCoreRequiredProductIDs(jobID)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(productIDs) == 0 {
+		return map[string]int{}, false, nil
+	}
+
+	ids := make([]int, 0, len(productIDs))
+	for productID := range productIDs {
+		ids = append(ids, productID)
+	}
+
+	placeholders := make([]string, 0, len(ids))
+	args := make([]interface{}, 0, len(ids))
+	for idx, id := range ids {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", idx+1))
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT z.code, COUNT(*) as device_count
+		FROM devices d
+		JOIN storage_zones z ON d.zone_id = z.zone_id
+		WHERE d.status = 'in_storage'
+		  AND z.code IS NOT NULL
+		  AND d.productID IN (%s)
+		GROUP BY z.code
+	`, strings.Join(placeholders, ","))
+
+	rows, err := repository.GetSQLDB().Query(query, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	zoneCounts := make(map[string]int)
+	for rows.Next() {
+		var zoneCode string
+		var count int
+		if err := rows.Scan(&zoneCode, &count); err != nil {
+			return nil, false, err
+		}
+		if zoneCode != "" && count > 0 {
+			zoneCounts[zoneCode] = count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+
+	log.Printf("[LED] Resolved %d required-product zones from RentalCore requirements for job %s", len(zoneCounts), jobID)
+	return zoneCounts, true, nil
+}
+
 // resolveJobZoneCounts returns the zone→device-count map to use for job LED highlighting.
 // It prefers product-requirement-based zones; it only falls back to zones of devices already
 // assigned to the job when the job has no product requirements configured at all.
@@ -776,7 +931,10 @@ func (s *Service) resolveJobZoneCounts(jobID string) (map[string]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get product requirement zones: %w", err)
 	}
-	if !hasRequirements {
+	if !hasRequirements || len(zoneCounts) == 0 {
+		if hasRequirements && len(zoneCounts) == 0 {
+			log.Printf("[LED] Requirement-based zone resolution returned no bins for job %s; trying assigned-device zone fallback", jobID)
+		}
 		zoneCounts, err = s.getJobDeviceZonesWithCounts(jobID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get job device zones: %w", err)

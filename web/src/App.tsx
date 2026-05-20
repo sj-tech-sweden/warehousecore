@@ -41,7 +41,7 @@ function App() {
             element={
               <ProtectedRoute>
                 <Layout>
-                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin']}>
+                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin', 'super_admin']}>
                     <ProductsPage />
                   </RoleGuard>
                 </Layout>
@@ -60,7 +60,7 @@ function App() {
             element={
               <ProtectedRoute>
                 <Layout>
-                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin']}>
+                  <RoleGuard requiredRoles={['admin', 'manager', 'warehouse_admin', 'super_admin']}>
                     <AdminPage />
                   </RoleGuard>
                 </Layout>

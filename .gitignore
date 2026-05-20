@@ -46,6 +46,8 @@ web/build/
 # Temporary files
 tmp/
 temp/
+cookies.txt
+*.sql.bak
 
 # MQTT Broker - Mosquitto
 mosquitto/data/

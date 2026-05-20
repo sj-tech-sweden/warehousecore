@@ -1,19 +1,26 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"warehousecore/internal/led"
 	"warehousecore/internal/middleware"
 	"warehousecore/internal/models"
+	"warehousecore/internal/repository"
 	"warehousecore/internal/services"
 	"warehousecore/internal/validation"
 
 	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // ===========================
@@ -397,6 +404,146 @@ func GetUserRoles(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, roles)
 }
 
+// CreateRole creates a new role
+func CreateRole(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if strings.TrimSpace(payload.Name) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Role name required"})
+		return
+	}
+
+	rbac := services.NewRBACService()
+	role, err := rbac.CreateRole(payload.Name, payload.Description, payload.Permissions)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, role)
+}
+
+// UpdateRole updates an existing role
+func UpdateRole(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roleID, err := strconv.Atoi(vars["id"])
+	if err != nil || roleID <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid role ID"})
+		return
+	}
+
+	var payload struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+	if strings.TrimSpace(payload.Name) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Role name required"})
+		return
+	}
+
+	rbac := services.NewRBACService()
+	role, err := rbac.UpdateRole(roleID, payload.Name, payload.Description, payload.Permissions)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "Role not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, role)
+}
+
+// CreateUser creates a new user and optional role assignments
+func CreateUser(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Username            string `json:"username"`
+		Email               string `json:"email"`
+		Password            string `json:"password"`
+		FirstName           string `json:"first_name"`
+		LastName            string `json:"last_name"`
+		RoleIDs             []int  `json:"role_ids"`
+		ForcePasswordChange *bool  `json:"force_password_change"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if strings.TrimSpace(payload.Username) == "" || strings.TrimSpace(payload.Email) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "username and email required"})
+		return
+	}
+
+	if payload.Password == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "password required"})
+		return
+	}
+
+	// Check uniqueness
+	db := repository.GetDB()
+	var exists int
+	_ = db.Raw("SELECT 1 FROM users WHERE username = ? LIMIT 1", payload.Username).Scan(&exists)
+	if exists == 1 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "username already exists"})
+		return
+	}
+	_ = db.Raw("SELECT 1 FROM users WHERE email = ? LIMIT 1", payload.Email).Scan(&exists)
+	if exists == 1 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "email already in use"})
+		return
+	}
+
+	// Hash password
+	hash, err := bcrypt.GenerateFromPassword([]byte(payload.Password), bcrypt.DefaultCost)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to hash password"})
+		return
+	}
+
+	force := false
+	if payload.ForcePasswordChange != nil {
+		force = *payload.ForcePasswordChange
+	}
+
+	// Insert user
+	now := time.Now()
+	var userID uint
+	if err := db.Raw(`INSERT INTO users (username, email, password_hash, first_name, last_name, is_active, force_password_change, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING userid`,
+		payload.Username, payload.Email, string(hash), payload.FirstName, payload.LastName, true, force, now, now).Scan(&userID).Error; err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Create profile
+	adminSvc := services.NewAdminService()
+	_ = adminSvc.UpdateUserProfile(userID, strings.TrimSpace(payload.FirstName+" "+payload.LastName), "", nil)
+
+	// Assign roles
+	rbac := services.NewRBACService()
+	if len(payload.RoleIDs) > 0 {
+		if err := rbac.SetUserRoles(userID, payload.RoleIDs); err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to assign roles"})
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"user_id": userID})
+}
+
 // UpdateUserRoles updates roles for a specific user
 func UpdateUserRoles(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -499,6 +646,117 @@ func UpdateUserRoles(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, roles)
 }
 
+// AdminUpdateUser allows admins to update another user's email and display name
+func AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	uid, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
+		return
+	}
+
+	var payload struct {
+		Email       string `json:"email"`
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	// Only admins may call this (router already enforces RequireAdmin)
+	db := repository.GetDB()
+
+	// Update email if provided
+	if strings.TrimSpace(payload.Email) != "" {
+		var exists int
+		_ = db.Raw("SELECT 1 FROM users WHERE email = ? AND userid != ? LIMIT 1", payload.Email, uint(uid)).Scan(&exists)
+		if exists == 1 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Email already in use"})
+			return
+		}
+		if err := db.Exec("UPDATE users SET email = ?, updated_at = ? WHERE userid = ?", payload.Email, time.Now(), uint(uid)).Error; err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update email"})
+			return
+		}
+	}
+
+	// Update display name in profile if provided
+	if strings.TrimSpace(payload.DisplayName) != "" {
+		adminService := services.NewAdminService()
+		if err := adminService.UpdateUserProfile(uint(uid), payload.DisplayName, "", nil); err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update display name"})
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"success": "updated"})
+}
+
+// AdminResetUserPassword allows admins to set a new password for another user.
+// Request body may include { "new_password": "..." }. If omitted, a random
+// password will be generated and returned in the response.
+func AdminResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	uid, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
+		return
+	}
+
+	var payload struct {
+		NewPassword string `json:"new_password"`
+		ForceChange *bool  `json:"force_password_change"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && err.Error() != "EOF" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	// Determine new password
+	newPw := strings.TrimSpace(payload.NewPassword)
+	generated := false
+	if newPw == "" {
+		// Generate a random 12-char password
+		b := make([]byte, 9)
+		if _, err := rand.Read(b); err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to generate password"})
+			return
+		}
+		newPw = hex.EncodeToString(b)
+		generated = true
+	}
+
+	if len(newPw) < 6 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Password must be at least 6 characters"})
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPw), bcrypt.DefaultCost)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to hash password"})
+		return
+	}
+
+	forceFlag := true
+	if payload.ForceChange != nil {
+		forceFlag = *payload.ForceChange
+	}
+
+	db := repository.GetDB()
+	if err := db.Exec("UPDATE users SET password_hash = ?, force_password_change = ?, updated_at = ? WHERE userid = ?", string(hash), forceFlag, time.Now(), uint(uid)).Error; err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update password"})
+		return
+	}
+
+	// Return generated password only when we created one
+	if generated {
+		respondJSON(w, http.StatusOK, map[string]string{"new_password": newPw})
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"success": "password updated"})
+}
+
 // ===========================
 // PROFILE HANDLERS
 // ===========================
@@ -576,6 +834,7 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 		DisplayName string         `json:"display_name"`
 		AvatarURL   string         `json:"avatar_url"`
 		Prefs       models.JSONMap `json:"prefs"`
+		Email       string         `json:"email"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -588,6 +847,24 @@ func UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+
+	db := repository.GetDB()
+	// Update email if provided and different
+	if strings.TrimSpace(payload.Email) != "" && payload.Email != user.Email {
+		// Check uniqueness
+		var exists int
+		_ = db.Raw("SELECT 1 FROM users WHERE email = ? AND userid != ? LIMIT 1", payload.Email, user.UserID).Scan(&exists)
+		if exists == 1 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Email already in use"})
+			return
+		}
+		if err := db.Exec("UPDATE users SET email = ?, updated_at = ? WHERE userid = ?", payload.Email, time.Now(), user.UserID).Error; err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update email"})
+			return
+		}
+	}
+
+	// Password changes should use POST /api/v1/auth/change-password
 
 	// Return updated profile
 	profile, _ := adminService.GetProfileWithUser(user.UserID)

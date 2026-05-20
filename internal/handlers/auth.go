@@ -93,7 +93,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// Set cookie
 	cookieDomain := getCookieDomain(r)
 	http.SetCookie(w, &http.Cookie{
-		Name:     "session_id",
+		Name:     middleware.SessionCookieName(),
 		Value:    sessionID,
 		Path:     "/",
 		Domain:   cookieDomain,
@@ -121,7 +121,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 // Logout handles user logout
 func Logout(w http.ResponseWriter, r *http.Request) {
 	// Get session cookie
-	cookie, err := r.Cookie("session_id")
+	cookie, err := r.Cookie(middleware.SessionCookieName())
 	if err == nil && cookie.Value != "" {
 		// Delete session from database
 		db := repository.GetDB()
@@ -131,7 +131,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	// Clear cookie
 	cookieDomain := getCookieDomain(r)
 	http.SetCookie(w, &http.Cookie{
-		Name:     "session_id",
+		Name:     middleware.SessionCookieName(),
 		Value:    "",
 		Path:     "/",
 		Domain:   cookieDomain,

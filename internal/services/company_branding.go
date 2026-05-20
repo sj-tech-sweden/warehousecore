@@ -1,14 +1,19 @@
 package services
 
 import (
+	"errors"
+	"log"
 	"strings"
 	"sync"
 	"time"
 
+	"warehousecore/internal/models"
+
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
-const defaultBrandName = "RentalCore"
+const defaultBrandName = "WarehouseCore"
 
 type companyRecord struct {
 	ID          uint   `gorm:"column:id"`
@@ -51,14 +56,54 @@ func (s *CompanyBrandingService) CompanyName() string {
 		return s.name
 	}
 
-	var record companyRecord
-	if err := s.db.Order("id DESC").First(&record).Error; err == nil {
-		s.name = sanitizeBrandName(record.CompanyName)
-	} else if s.name == "" {
+	// Prefer app_settings (authoritative admin-managed company.info).
+	var appSetting models.AppSetting
+	appSettingsQuery := s.db.Table("app_settings").Where("scope = ? AND key = ?", "warehousecore", "company.info").Limit(1).Find(&appSetting)
+	if appSettingsQuery.Error != nil && !isMissingAppSettingsTableErr(appSettingsQuery.Error) {
+		log.Printf("[BRANDING] app_settings lookup failed: %v", appSettingsQuery.Error)
+	}
+	if appSettingsQuery.Error == nil && appSettingsQuery.RowsAffected > 0 {
+		if nameVal, ok := appSetting.Value["name"].(string); ok && strings.TrimSpace(nameVal) != "" {
+			s.name = sanitizeBrandName(nameVal)
+		}
+	}
+
+	if s.name == "" {
+		var record companyRecord
+		companyQuery := s.db.Order("id DESC").Limit(1).Find(&record)
+		if companyQuery.Error != nil {
+			log.Printf("[BRANDING] company_settings lookup failed: %v", companyQuery.Error)
+		}
+		if companyQuery.Error == nil && companyQuery.RowsAffected > 0 {
+			s.name = sanitizeBrandName(record.CompanyName)
+		}
+	}
+
+	if s.name == "" {
 		s.name = defaultBrandName
 	}
 	s.lastFetch = time.Now()
 	return s.name
+}
+
+func isMissingAppSettingsTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	type sqlStateErr interface {
+		SQLState() string
+	}
+	var pgErr sqlStateErr
+	if errors.As(err, &pgErr) && pgErr.SQLState() == "42P01" {
+		return true
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "42P01" {
+		return true
+	}
+	// Fallback for wrapped/non-pq errors where SQLSTATE is not exposed.
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, `relation "app_settings" does not exist`)
 }
 
 func (s *CompanyBrandingService) Update(name string) {

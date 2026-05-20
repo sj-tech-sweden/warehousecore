@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -22,13 +23,34 @@ type contextKey string
 
 const UserContextKey = contextKey("user")
 
-const authDebugLogsEnabled = false
+var authDebugLogsEnabled = os.Getenv("AUTH_DEBUG") == "1"
+
+func SessionCookieName() string {
+	if name := strings.TrimSpace(os.Getenv("SESSION_COOKIE_NAME")); name != "" {
+		return name
+	}
+	return "session_id"
+}
 
 func authDebugLog(format string, args ...interface{}) {
 	if !authDebugLogsEnabled {
 		return
 	}
 	log.Printf(format, args...)
+}
+
+func redactCookieHeader(cookieHeader string) string {
+	if strings.TrimSpace(cookieHeader) == "" {
+		return "<none>"
+	}
+	return fmt.Sprintf("<redacted:%d-bytes>", len(cookieHeader))
+}
+
+func redactSessionID(sessionID string) string {
+	if strings.TrimSpace(sessionID) == "" {
+		return "<none>"
+	}
+	return fmt.Sprintf("<redacted:%d-chars>", len(sessionID))
 }
 
 // errDBUnavailable is returned by authenticate helpers when the database
@@ -43,12 +65,20 @@ var errDBUnavailable = errors.New("database unavailable")
 // admin keys.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Debug: Log all cookies
-		authDebugLog("DEBUG [WarehouseCore]: AuthMiddleware - Path: %s, Cookies: %+v", r.URL.Path, r.Cookies())
+		// Trust pre-authenticated users injected by trusted upstream middleware
+		// (e.g. SSOMiddleware) in the same server chain.
+		if existingUser, ok := GetUserFromContext(r); ok && existingUser.UserID != 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Debug: Log cookie metadata only (never cookie values).
+		authDebugLog("DEBUG [WarehouseCore]: AuthMiddleware - Path: %s, CookieCount: %d, CookieHeader: %s",
+			r.URL.Path, len(r.Cookies()), redactCookieHeader(r.Header.Get("Cookie")))
 
 		// --- Try session cookie first ---
 		hadSessionCookie := false
-		cookie, err := r.Cookie("session_id")
+		cookie, err := r.Cookie(SessionCookieName())
 		if err == nil && cookie.Value != "" {
 			hadSessionCookie = true
 			user, authErr := authenticateSession(cookie.Value)
@@ -93,10 +123,15 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		// No valid credentials
 		if hadSessionCookie {
+			// If we had a cookie but authentication failed, log cookie and headers for diagnostics
+			authDebugLog("DEBUG [WarehouseCore]: Had session cookie but invalid. CookieHeader: %v; Path: %s; Host: %s; Origin: %s; Referer: %s",
+				redactCookieHeader(r.Header.Get("Cookie")), r.URL.Path, r.Host, r.Header.Get("Origin"), r.Header.Get("Referer"))
 			http.Error(w, `{"error":"Unauthorized - Invalid session"}`, http.StatusUnauthorized)
 			return
 		}
-		authDebugLog("DEBUG [WarehouseCore]: No session_id cookie or API key found for %s", r.URL.Path)
+		authDebugLog("DEBUG [WarehouseCore]: No %s cookie or API key found for %s; Cookies: %v; Origin: %s; Referer: %s",
+			SessionCookieName(),
+			r.URL.Path, redactCookieHeader(r.Header.Get("Cookie")), r.Header.Get("Origin"), r.Header.Get("Referer"))
 		http.Error(w, `{"error":"Unauthorized - No session"}`, http.StatusUnauthorized)
 	})
 }
@@ -127,7 +162,7 @@ func authenticateSession(cookieValue string) (*models.User, error) {
 		return nil, nil // bad cookie value – not a DB error
 	}
 
-	authDebugLog("DEBUG [WarehouseCore]: Found session_id cookie (decoded: %s)", sessionID)
+	authDebugLog("DEBUG [WarehouseCore]: Found %s cookie (decoded: %s)", SessionCookieName(), redactSessionID(sessionID))
 
 	db := repository.GetDB()
 	if db == nil {
@@ -140,11 +175,11 @@ func authenticateSession(cookieValue string) (*models.User, error) {
 		First(&session).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			authDebugLog("DEBUG [WarehouseCore]: Session not found for %s", sessionID)
+			authDebugLog("DEBUG [WarehouseCore]: Session not found for %s", redactSessionID(sessionID))
 			return nil, nil // credential mismatch
 		}
 		// Actual DB error (connection lost, etc.)
-		authDebugLog("DEBUG [WarehouseCore]: Session query error for %s: %v", sessionID, err)
+		authDebugLog("DEBUG [WarehouseCore]: Session query error for %s: %v", redactSessionID(sessionID), err)
 		return nil, fmt.Errorf("session query: %w", err)
 	}
 
@@ -160,6 +195,13 @@ func authenticateSession(cookieValue string) (*models.User, error) {
 	} else {
 		authDebugLog("DEBUG [WarehouseCore]: Failed to load roles for user %d: %v", session.User.UserID, err)
 	}
+
+	// Log loaded roles only in AUTH_DEBUG mode for diagnostics.
+	var roleNames []string
+	for _, rr := range session.User.Roles {
+		roleNames = append(roleNames, rr.Name)
+	}
+	authDebugLog("DEBUG [WarehouseCore]: Session user %s (id=%d) roles: %v", session.User.Username, session.User.UserID, roleNames)
 
 	return &session.User, nil
 }
@@ -219,7 +261,7 @@ func authenticateAdminAPIKey(raw string) (*models.User, error) {
 func OptionalAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Get session cookie
-		cookie, err := r.Cookie("session_id")
+		cookie, err := r.Cookie(SessionCookieName())
 		if err != nil || cookie.Value == "" {
 			// No session - continue without user
 			next.ServeHTTP(w, r)

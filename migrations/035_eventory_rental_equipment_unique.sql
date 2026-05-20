@@ -7,34 +7,26 @@
 -- DELETE and the CREATE UNIQUE INDEX. The lock blocks writes briefly; on a
 -- small table this is negligible. If the table is large and write availability
 -- is critical, run during a maintenance window.
-BEGIN;
+-- Only perform cleanup/index creation if the table exists in this DB. Use a
+-- PL/pgSQL DO block so the check is safe and this file is a no-op when the
+-- relation is absent.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'rental_equipment') THEN
+    -- Lock, dedupe, and create index using EXECUTE so statements run even inside
+    -- this anonymous block.
+    EXECUTE 'LOCK TABLE rental_equipment IN SHARE ROW EXCLUSIVE MODE';
 
--- Lock the table for the duration of this migration to prevent concurrent
--- writes from inserting a new duplicate row between the DELETE and the index
--- build.  SHARE ROW EXCLUSIVE blocks INSERT, UPDATE, and DELETE from other
--- sessions while this transaction is open.
-LOCK TABLE rental_equipment IN SHARE ROW EXCLUSIVE MODE;
+    EXECUTE 'DELETE FROM rental_equipment WHERE equipment_id IN (
+      SELECT equipment_id FROM (
+        SELECT equipment_id, ROW_NUMBER() OVER (
+          PARTITION BY product_name, supplier_name ORDER BY equipment_id DESC
+        ) AS rn FROM rental_equipment
+      ) t WHERE rn > 1
+    )';
 
--- Step 1: Remove duplicate rows, keeping the row with the highest equipment_id
--- (i.e. the most recently inserted).
-DELETE FROM rental_equipment
-WHERE equipment_id IN (
-    SELECT equipment_id
-    FROM (
-        SELECT equipment_id,
-               ROW_NUMBER() OVER (
-                   PARTITION BY product_name, supplier_name
-                   ORDER BY equipment_id DESC
-               ) AS rn
-        FROM rental_equipment
-    ) t
-    WHERE rn > 1
-);
-
--- Step 2: Add the unique index. Running without CONCURRENTLY allows the index
--- creation to be wrapped in the same transaction as the duplicate-row removal,
--- eliminating the race window that would otherwise exist between the two steps.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_rental_equipment_name_supplier
-    ON rental_equipment (product_name, supplier_name);
-
-COMMIT;
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_rental_equipment_name_supplier ON rental_equipment (product_name, supplier_name)';
+  ELSE
+    RAISE NOTICE 'Skipping migration 035: relation rental_equipment does not exist in this database.';
+  END IF;
+END$$;

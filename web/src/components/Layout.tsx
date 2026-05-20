@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
+import { fetchPublicCompanyName, getInitialCompanyName } from '../lib/publicConfig';
 
 interface LayoutProps {
   children: ReactNode;
@@ -17,15 +18,14 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const { t } = useTranslation();
-  const [companyName, setCompanyName] = useState<string>(
-    (window as any).__APP_CONFIG__?.companyName || 'RentalCore'
-  );
+  const [companyName, setCompanyName] = useState<string>(getInitialCompanyName());
 
   useEffect(() => {
-    fetch('/api/v1/config')
-      .then(res => res.json())
-      .then(cfg => { if (cfg?.companyName) setCompanyName(cfg.companyName); })
-      .catch(() => {});
+    fetchPublicCompanyName().then((name) => {
+      if (name) {
+        setCompanyName(name);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -96,14 +96,11 @@ export function Layout({ children }: LayoutProps) {
 
   const rentalCoreURL = getRentalCoreURL();
 
-  // Debug log
-  console.log('RentalCore URL:', rentalCoreURL);
-
   const userRoles = (user?.Roles ?? user?.roles ?? []) as any[];
   const hasAdminAccess = useMemo(() => {
     return userRoles.some((role) => {
       const name = (role?.name || role?.Name || '').toString().toLowerCase();
-      return name === 'admin' || name === 'manager' || name === 'warehouse_admin';
+      return name === 'admin' || name === 'manager' || name === 'warehouse_admin' || name === 'super_admin';
     });
   }, [userRoles]);
 

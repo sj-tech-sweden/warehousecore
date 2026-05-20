@@ -366,6 +366,10 @@ func encryptCredential(plaintext string, key []byte) (string, error) {
 // values (plain text stored before encryption/escaping was introduced) are
 // returned as-is for backward compatibility.
 func decryptCredential(stored string, key []byte) (string, error) {
+	return decryptCredentialWithKeyName(stored, key, "EVENTORY_CREDENTIAL_KEY")
+}
+
+func decryptCredentialWithKeyName(stored string, key []byte, requiredKeyName string) (string, error) {
 	if strings.HasPrefix(stored, rawEscapePrefix) {
 		// Strip the escape prefix; the remainder is the original plaintext.
 		return stored[len(rawEscapePrefix):], nil
@@ -374,7 +378,7 @@ func decryptCredential(stored string, key []byte) (string, error) {
 		return stored, nil
 	}
 	if len(key) == 0 {
-		return "", fmt.Errorf("EVENTORY_CREDENTIAL_KEY is required to decrypt stored credentials")
+		return "", fmt.Errorf("%s is required to decrypt stored credentials", requiredKeyName)
 	}
 	data, err := base64.URLEncoding.DecodeString(stored[len(encryptedPrefix):])
 	if err != nil {

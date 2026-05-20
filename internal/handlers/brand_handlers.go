@@ -3,6 +3,8 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -29,13 +31,45 @@ type Manufacturer struct {
 // GetBrands returns all brands with manufacturer metadata.
 func GetBrands(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
-	rows, err := db.Query(`
-		SELECT b.brandID, b.name, b.manufacturerID, m.name
-		FROM brands b
-		LEFT JOIN manufacturer m ON b.manufacturerID = m.manufacturerID
-		ORDER BY b.name
-	`)
+
+	// Inspect available columns for brands table
+	cols := map[string]bool{}
+	colRows, err := db.Query("SELECT column_name FROM information_schema.columns WHERE table_name = $1", "brands")
+	if err == nil {
+		defer colRows.Close()
+		for colRows.Next() {
+			var cn string
+			if err := colRows.Scan(&cn); err == nil {
+				cols[cn] = true
+			}
+		}
+	}
+
+	// Determine column names
+	idCol := "brandid"
+	if cols["brand_id"] {
+		idCol = "brand_id"
+	} else if cols["id"] {
+		idCol = "id"
+	}
+	nameCol := "name"
+	manufCol := ""
+	if cols["manufacturerid"] {
+		manufCol = "manufacturerid"
+	} else if cols["manufacturer_id"] {
+		manufCol = "manufacturer_id"
+	}
+
+	// Build query dynamically
+	query := fmt.Sprintf("SELECT %s, %s", idCol, nameCol)
+	if manufCol != "" {
+		query = fmt.Sprintf("%s, %s", query, manufCol)
+	}
+	query = fmt.Sprintf("%s FROM brands ORDER BY %s", query, nameCol)
+
+	rows, err := db.Query(query)
 	if err != nil {
+		log.Printf("[BRAND] failed to query brands: %v; query=%s", err, query)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch brands"})
 		return
 	}
@@ -43,31 +77,43 @@ func GetBrands(w http.ResponseWriter, r *http.Request) {
 
 	var brands []Brand
 	for rows.Next() {
-		var (
-			brandID        int
-			name           string
-			manufacturerID sql.NullInt64
-			manufacturer   sql.NullString
-		)
-
-		if err := rows.Scan(&brandID, &name, &manufacturerID, &manufacturer); err != nil {
-			continue
+		if manufCol != "" {
+			var (
+				brandID        sql.NullInt64
+				name           sql.NullString
+				manufacturerID sql.NullInt64
+			)
+			if err := rows.Scan(&brandID, &name, &manufacturerID); err != nil {
+				log.Printf("[BRAND] scan error: %v", err)
+				continue
+			}
+			b := Brand{}
+			if brandID.Valid {
+				b.BrandID = int(brandID.Int64)
+			}
+			if name.Valid {
+				b.Name = name.String
+			}
+			if manufacturerID.Valid {
+				id := int(manufacturerID.Int64)
+				b.ManufacturerID = &id
+				if mName := lookupManufacturerName(db, manufacturerID.Int64); mName.Valid {
+					v := mName.String
+					b.ManufacturerName = &v
+				}
+			}
+			brands = append(brands, b)
+		} else {
+			var (
+				brandID int
+				name    string
+			)
+			if err := rows.Scan(&brandID, &name); err != nil {
+				log.Printf("[BRAND] scan error: %v", err)
+				continue
+			}
+			brands = append(brands, Brand{BrandID: brandID, Name: name})
 		}
-
-		brand := Brand{
-			BrandID: brandID,
-			Name:    name,
-		}
-		if manufacturerID.Valid {
-			id := int(manufacturerID.Int64)
-			brand.ManufacturerID = &id
-		}
-		if manufacturer.Valid {
-			value := manufacturer.String
-			brand.ManufacturerName = &value
-		}
-
-		brands = append(brands, brand)
 	}
 
 	respondJSON(w, http.StatusOK, brands)
@@ -110,7 +156,7 @@ func CreateBrand(w http.ResponseWriter, r *http.Request) {
 
 		var manufacturerName sql.NullString
 		if err := db.QueryRow(
-			"SELECT name FROM manufacturer WHERE manufacturerID = ?",
+			"SELECT name FROM manufacturer WHERE manufacturerID = $1",
 			*payload.ManufacturerID,
 		).Scan(&manufacturerName); err == nil && manufacturerName.Valid {
 			name := manufacturerName.String
@@ -171,7 +217,7 @@ func UpdateBrand(w http.ResponseWriter, r *http.Request) {
 
 		var manufacturerName sql.NullString
 		if err := db.QueryRow(
-			"SELECT name FROM manufacturer WHERE manufacturerID = ?",
+			"SELECT name FROM manufacturer WHERE manufacturerID = $1",
 			*payload.ManufacturerID,
 		).Scan(&manufacturerName); err == nil && manufacturerName.Valid {
 			name := manufacturerName.String
@@ -210,8 +256,29 @@ func DeleteBrand(w http.ResponseWriter, r *http.Request) {
 // GetManufacturers returns all manufacturers.
 func GetManufacturers(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
-	rows, err := db.Query("SELECT manufacturerID, name, website FROM manufacturer ORDER BY name")
+
+	// Detect whether the manufacturer table has a website column
+	hasWebsite := false
+	colRows, err := db.Query("SELECT column_name FROM information_schema.columns WHERE table_name = $1", "manufacturer")
+	if err == nil {
+		defer colRows.Close()
+		for colRows.Next() {
+			var cn string
+			if err := colRows.Scan(&cn); err == nil && cn == "website" {
+				hasWebsite = true
+			}
+		}
+	}
+
+	query := "SELECT manufacturerID, name"
+	if hasWebsite {
+		query += ", website"
+	}
+	query += " FROM manufacturer ORDER BY name"
+
+	rows, err := db.Query(query)
 	if err != nil {
+		log.Printf("[BRAND] failed to query manufacturers: %v; query=%s", err, query)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch manufacturers"})
 		return
 	}
@@ -219,29 +286,58 @@ func GetManufacturers(w http.ResponseWriter, r *http.Request) {
 
 	var manufacturers []Manufacturer
 	for rows.Next() {
-		var (
-			manufacturerID int
-			name           string
-			website        sql.NullString
-		)
-
-		if err := rows.Scan(&manufacturerID, &name, &website); err != nil {
-			continue
+		if hasWebsite {
+			var (
+				manufacturerID int
+				name           string
+				website        sql.NullString
+			)
+			if err := rows.Scan(&manufacturerID, &name, &website); err != nil {
+				log.Printf("[BRAND] scan error (manufacturers): %v", err)
+				continue
+			}
+			manufacturer := Manufacturer{ManufacturerID: manufacturerID, Name: name}
+			if website.Valid {
+				v := website.String
+				manufacturer.Website = &v
+			}
+			manufacturers = append(manufacturers, manufacturer)
+		} else {
+			var (
+				manufacturerID int
+				name           string
+			)
+			if err := rows.Scan(&manufacturerID, &name); err != nil {
+				log.Printf("[BRAND] scan error (manufacturers): %v", err)
+				continue
+			}
+			manufacturers = append(manufacturers, Manufacturer{ManufacturerID: manufacturerID, Name: name})
 		}
-
-		manufacturer := Manufacturer{
-			ManufacturerID: manufacturerID,
-			Name:           name,
-		}
-		if website.Valid {
-			value := website.String
-			manufacturer.Website = &value
-		}
-
-		manufacturers = append(manufacturers, manufacturer)
 	}
 
 	respondJSON(w, http.StatusOK, manufacturers)
+}
+
+// lookupManufacturerName tries several id column variants to find the manufacturer's name.
+func lookupManufacturerName(db *sql.DB, id int64) sql.NullString {
+	var name sql.NullString
+	queries := []string{
+		"SELECT name FROM manufacturer WHERE manufacturerID = $1",
+		"SELECT name FROM manufacturer WHERE manufacturer_id = $1",
+		"SELECT name FROM manufacturer WHERE id = $1",
+	}
+	for _, q := range queries {
+		if err := db.QueryRow(q, id).Scan(&name); err == nil {
+			return name
+		} else if err == sql.ErrNoRows {
+			// not found for this key, continue to next variant
+			continue
+		} else {
+			// other errors (e.g., column doesn't exist) -> try next variant
+			continue
+		}
+	}
+	return sql.NullString{}
 }
 
 // CreateManufacturer creates a new manufacturer.

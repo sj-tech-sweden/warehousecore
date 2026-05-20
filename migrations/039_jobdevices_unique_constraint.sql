@@ -12,66 +12,75 @@
 -- guarded by a column-based check (any existing UNIQUE constraint or UNIQUE
 -- index on (deviceID, jobID), regardless of name) so the migration is safe
 -- to re-run even if another system has already enforced uniqueness.
-BEGIN;
-
--- Lock the table for the duration of this migration to prevent concurrent
--- writes from inserting a new duplicate row between the DELETE and the
--- constraint addition. SHARE ROW EXCLUSIVE blocks INSERT, UPDATE, and DELETE
--- from other sessions while this transaction is open.
-LOCK TABLE jobdevices IN SHARE ROW EXCLUSIVE MODE;
-
--- Step 1: Remove any duplicate (deviceID, jobID) pairs that would violate the
--- constraint, keeping the row with the newest pack_ts and using ctid only as a
--- deterministic tie-breaker when pack_ts values are equal or NULL.
-DELETE FROM jobdevices
-WHERE ctid IN (
-  SELECT ctid
-  FROM (
-    SELECT ctid,
-           ROW_NUMBER() OVER (
-             PARTITION BY deviceID, jobID
-             ORDER BY (pack_ts IS NULL), pack_ts DESC, ctid DESC
-           ) AS rn
-    FROM jobdevices
-  ) ranked
-  WHERE rn > 1
-);
-
--- Step 2: Add the unique constraint (idempotent: skip if any unique constraint
--- OR unique index already covers exactly (deviceID, jobID) on jobdevices,
--- regardless of name — covers both ADD CONSTRAINT and CREATE UNIQUE INDEX paths).
+-- Run the whole migration inside a DO block so it's a no-op when `jobdevices`
+-- doesn't exist, and so we can use PL/pgSQL control flow safely.
 DO $$
+DECLARE
+  devcol text;
+  jobcol text;
+  delsql text;
 BEGIN
-  IF NOT EXISTS (
-    -- Check for a named UNIQUE constraint on exactly (deviceID, jobID)
-    SELECT 1
-    FROM   pg_constraint c
-    WHERE  c.contype  = 'u'
-      AND  c.conrelid = 'jobdevices'::regclass
-      AND  (
-        SELECT array_agg(a.attname ORDER BY a.attname)
-        FROM   pg_attribute a
-        WHERE  a.attrelid = c.conrelid
-          AND  a.attnum   = ANY(c.conkey)
-      ) = ARRAY['deviceid', 'jobid']
-    UNION ALL
-    -- Check for a standalone UNIQUE index on exactly (deviceID, jobID)
-    SELECT 1
-    FROM   pg_index i
-    WHERE  i.indrelid  = 'jobdevices'::regclass
-      AND  i.indisunique = true
-      AND  (
-        SELECT array_agg(a.attname ORDER BY a.attname)
-        FROM   pg_attribute a
-        WHERE  a.attrelid = i.indrelid
-          AND  a.attnum   = ANY(i.indkey)
-          AND  a.attnum   > 0
-      ) = ARRAY['deviceid', 'jobid']
-  ) THEN
-    ALTER TABLE jobdevices
-      ADD CONSTRAINT uq_jobdevices_device_job UNIQUE (deviceID, jobID);
-  END IF;
-END;
-$$;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'jobdevices') THEN
+    -- Lock the table for the duration of this operation
+    EXECUTE 'LOCK TABLE jobdevices IN SHARE ROW EXCLUSIVE MODE';
 
-COMMIT;
+    -- Find the actual column names for device and job (case-insensitive variants)
+    SELECT a.attname INTO devcol
+    FROM pg_attribute a
+    WHERE a.attrelid = 'jobdevices'::regclass
+      AND a.attnum > 0
+      AND lower(a.attname) IN ('deviceid','device_id')
+    LIMIT 1;
+
+    SELECT a.attname INTO jobcol
+    FROM pg_attribute a
+    WHERE a.attrelid = 'jobdevices'::regclass
+      AND a.attnum > 0
+      AND lower(a.attname) IN ('jobid','job_id')
+    LIMIT 1;
+
+    IF devcol IS NULL OR jobcol IS NULL THEN
+      RAISE NOTICE 'Skipping duplicate cleanup/constraint: jobdevices missing expected columns (device=% job=%)', devcol, jobcol;
+      RETURN;
+    END IF;
+
+    -- Remove duplicate pairs using dynamic SQL that quotes the actual column names
+    delsql := format(
+      $q$DELETE FROM jobdevices WHERE ctid IN (
+        SELECT ctid FROM (
+          SELECT ctid, ROW_NUMBER() OVER (PARTITION BY %I, %I ORDER BY (pack_ts IS NULL), pack_ts DESC, ctid DESC) AS rn FROM jobdevices
+        ) ranked WHERE rn > 1
+      );$q$,
+      devcol, jobcol
+    );
+    EXECUTE delsql;
+
+    -- Add unique constraint if no existing unique constraint/index covers the same columns
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint c
+      WHERE c.contype = 'u'
+        AND c.conrelid = 'jobdevices'::regclass
+        AND (
+          SELECT array_agg(lower(a.attname) ORDER BY lower(a.attname))
+          FROM pg_attribute a
+          WHERE a.attrelid = c.conrelid
+            AND a.attnum = ANY(c.conkey)
+        ) = ARRAY[lower(devcol), lower(jobcol)]
+      UNION ALL
+      SELECT 1 FROM pg_index i
+      WHERE i.indrelid = 'jobdevices'::regclass
+        AND i.indisunique = true
+        AND (
+          SELECT array_agg(lower(a.attname) ORDER BY lower(a.attname))
+          FROM pg_attribute a
+          WHERE a.attrelid = i.indrelid
+            AND a.attnum = ANY(i.indkey)
+            AND a.attnum > 0
+        ) = ARRAY[lower(devcol), lower(jobcol)]
+    ) THEN
+      EXECUTE format('ALTER TABLE jobdevices ADD CONSTRAINT uq_jobdevices_device_job UNIQUE (%I, %I);', devcol, jobcol);
+    END IF;
+  ELSE
+    RAISE NOTICE 'Skipping migration 039: relation jobdevices does not exist in this database.';
+  END IF;
+END$$;

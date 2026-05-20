@@ -8,11 +8,26 @@ import (
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"warehousecore/internal/repository"
 )
+
+func TestGenerateQRCode_returnsDataURI(t *testing.T) {
+	s := &LabelService{}
+	data, err := s.GenerateQRCode("https://example.test/123", 128)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(data, "data:image/png;base64,"))
+}
+
+func TestGenerateBarcode_returnsDataURI(t *testing.T) {
+	s := &LabelService{}
+	data, err := s.GenerateBarcode("ABC123456", 200, 80)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(data, "data:image/png;base64,"))
+}
 
 // ensureNilDB explicitly sets repository.GormDB to nil for the duration of the
 // test and restores it afterward. Uses the repository mutex helper so

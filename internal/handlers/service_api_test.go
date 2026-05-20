@@ -3,9 +3,9 @@ package handlers_test
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
@@ -16,26 +16,21 @@ import (
 	"warehousecore/internal/repository"
 )
 
-// withErrorDB injects a sqlmock DB that returns connection errors, simulating
-// a database that is unavailable. It returns the mock so callers can register
-// exactly as many expectations as they need and optionally verify them.
-// A t.Cleanup is registered that restores the original DB (via the repository
-// mutex helper), verifies all expectations were met, and closes the mock DB.
-func withErrorDB(t *testing.T) sqlmock.Sqlmock {
+func withServiceAPIKey(t *testing.T, key string) {
 	t.Helper()
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("failed to create sqlmock: %v", err)
+	prev, had := os.LookupEnv("SERVICE_API_KEY")
+	if key == "" {
+		_ = os.Unsetenv("SERVICE_API_KEY")
+	} else {
+		_ = os.Setenv("SERVICE_API_KEY", key)
 	}
-	restore := repository.WithTestSQLDB(db)
 	t.Cleanup(func() {
-		restore()
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet sqlmock expectations: %v", err)
+		if had {
+			_ = os.Setenv("SERVICE_API_KEY", prev)
+			return
 		}
-		db.Close()
+		_ = os.Unsetenv("SERVICE_API_KEY")
 	})
-	return mock
 }
 
 // serviceRouter builds a minimal *mux.Router that mirrors the service subrouter
@@ -44,18 +39,23 @@ func withErrorDB(t *testing.T) sqlmock.Sqlmock {
 func serviceRouter() *mux.Router {
 	router := mux.NewRouter()
 	service := router.PathPrefix("/api/v1/service").Subrouter()
-	service.Use(middleware.APIKeyMiddleware)
+	service.Use(middleware.ServiceKeyMiddleware)
 	service.HandleFunc("/devices/{id}", handlers.GetDevice).Methods("GET")
+	service.HandleFunc("/products", handlers.GetProducts).Methods("GET")
+	service.HandleFunc("/products/{id}", handlers.GetProduct).Methods("GET")
 	return router
 }
 
 // TestServiceAPI_MissingAPIKey verifies that all service endpoints return 401
 // when no API key is supplied.
 func TestServiceAPI_MissingAPIKey(t *testing.T) {
+	withServiceAPIKey(t, "service-key")
 	router := serviceRouter()
 
 	paths := []string{
 		"/api/v1/service/devices/DEV001",
+		"/api/v1/service/products",
+		"/api/v1/service/products/42",
 	}
 
 	for _, path := range paths {
@@ -74,37 +74,57 @@ func TestServiceAPI_MissingAPIKey(t *testing.T) {
 	}
 }
 
-// TestServiceAPI_APIKey_DBUnavailable_Returns500 verifies that when a key is
-// present but the database is unavailable, the middleware returns 500 (not a
-// misleading 401 "invalid key"). One sqlmock expectation is registered per
-// request so that ExpectationsWereMet() confirms the middleware actually hit
-// the DB on every call.
-func TestServiceAPI_APIKey_DBUnavailable_Returns500(t *testing.T) {
-	mock := withErrorDB(t)
+func TestServiceAPI_InvalidAPIKey_Returns401(t *testing.T) {
+	withServiceAPIKey(t, "service-key")
 	router := serviceRouter()
 
 	paths := []string{
 		"/api/v1/service/devices/DEV001",
+		"/api/v1/service/products",
+		"/api/v1/service/products/42",
 	}
 
 	for _, path := range paths {
-		// Register one expectation before each request so sqlmock can verify
-		// the middleware is actually querying the DB on every call.
-		mock.ExpectQuery(`SELECT id FROM api_keys`).WillReturnError(errors.New("connection refused"))
-
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
-			req.Header.Set("X-API-Key", "some-key")
+			req.Header.Set("X-API-Key", "wrong-key")
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, req)
 
-			if rr.Code != http.StatusInternalServerError {
-				t.Errorf("path %s: expected 500 when DB unavailable with API key, got %d", path, rr.Code)
+			if rr.Code != http.StatusUnauthorized {
+				t.Errorf("path %s: expected 401 for invalid API key, got %d", path, rr.Code)
 			}
 			if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
 				t.Errorf("path %s: expected Content-Type application/json, got %q", path, ct)
 			}
 		})
+	}
+}
+
+func TestServiceAPI_MissingServiceKeyConfig_Returns503(t *testing.T) {
+	withServiceAPIKey(t, "")
+	router := serviceRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/service/products", nil)
+	req.Header.Set("X-API-Key", "any-key")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when SERVICE_API_KEY is unset, got %d", rr.Code)
+	}
+}
+
+func TestServiceAPI_MissingServiceKeyConfig_WithoutHeader_Returns503(t *testing.T) {
+	withServiceAPIKey(t, "")
+	router := serviceRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/service/products", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when SERVICE_API_KEY is unset even without header, got %d", rr.Code)
 	}
 }
 

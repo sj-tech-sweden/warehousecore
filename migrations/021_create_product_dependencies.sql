@@ -3,20 +3,37 @@
 -- (e.g., a fog machine might suggest fog fluid as a dependency)
 
 CREATE TABLE IF NOT EXISTS product_dependencies (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    product_id INT NOT NULL COMMENT 'Main product that has the dependency',
-    dependency_product_id INT NOT NULL COMMENT 'The dependent product (accessory/consumable)',
-    is_optional BOOLEAN DEFAULT TRUE COMMENT 'Whether the dependency is optional (shows as suggestion)',
-    default_quantity DECIMAL(10,2) DEFAULT 1.0 COMMENT 'Suggested quantity for this dependency',
-    notes VARCHAR(500) COMMENT 'Optional notes about why this dependency is needed',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        id SERIAL PRIMARY KEY,
+        product_id INT NOT NULL,
+        dependency_product_id INT NOT NULL,
+        is_optional BOOLEAN DEFAULT TRUE,
+        default_quantity DECIMAL(10,2) DEFAULT 1.0,
+        notes VARCHAR(500),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-    FOREIGN KEY (product_id) REFERENCES products(productID) ON DELETE CASCADE,
-    FOREIGN KEY (dependency_product_id) REFERENCES products(productID) ON DELETE CASCADE,
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE c.conname = 'fk_pd_product' AND t.relname = 'product_dependencies'
+    ) THEN
+        EXECUTE 'ALTER TABLE product_dependencies ADD CONSTRAINT fk_pd_product FOREIGN KEY (product_id) REFERENCES products(productID) ON DELETE CASCADE';
+    END IF;
 
-    UNIQUE KEY unique_dependency (product_id, dependency_product_id),
-    INDEX idx_product_id (product_id),
-    INDEX idx_dependency_product_id (dependency_product_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-COMMENT='Stores product dependencies for job assignment suggestions';
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE c.conname = 'fk_pd_dependency' AND t.relname = 'product_dependencies'
+    ) THEN
+        EXECUTE 'ALTER TABLE product_dependencies ADD CONSTRAINT fk_pd_dependency FOREIGN KEY (dependency_product_id) REFERENCES products(productID) ON DELETE CASCADE';
+    END IF;
+END$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS unique_dependency ON product_dependencies(product_id, dependency_product_id);
+CREATE INDEX IF NOT EXISTS idx_product_id ON product_dependencies(product_id);
+CREATE INDEX IF NOT EXISTS idx_dependency_product_id ON product_dependencies(dependency_product_id);
+
+COMMENT ON TABLE product_dependencies IS 'Stores product dependencies for job assignment suggestions';

@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff, ClipboardList, Camera, Nfc, Keyboard } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Package, CheckCircle, XCircle, Calendar, User, ArrowRight, Lightbulb, LightbulbOff, ClipboardList, Camera, Nfc, Keyboard, PlusCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { jobsApi, scansApi, ledApi } from '../lib/api';
-import type { Job, JobSummary, JobDevice, LEDStatus, ProductRequirement } from '../lib/api';
+import { jobsApi, scansApi, ledApi, devicesApi } from '../lib/api';
+import type { Job, JobSummary, JobDevice, LEDStatus, ProductRequirement, JobCreateInput, JobCustomerOption, JobStatusOption, DeviceTreeCategory } from '../lib/api';
 import { formatDateISO } from '../lib/utils';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { useNFCScanner } from '../hooks/useNFCScanner';
 import type { InputMethod } from '../types/scanTypes';
+import { JobRequirementTree, type JobRequirementSelection } from '../components/JobRequirementTree';
 
 const JOB_CODE_PATTERN = /^JOB\d+$/i;
+
 export function JobsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { id: urlJobId } = useParams<{ id: string }>();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobSummary | null>(null);
@@ -19,6 +22,25 @@ export function JobsPage() {
   const [scanCode, setScanCode] = useState('');
   const [scanLoading, setScanLoading] = useState(false);
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [scanAction, setScanAction] = useState<'outtake' | 'intake'>('outtake');
+  const [requirementTreeData, setRequirementTreeData] = useState<DeviceTreeCategory[]>([]);
+  const [requirementTreeLoading, setRequirementTreeLoading] = useState(false);
+  const [requirementTreeSearch, setRequirementTreeSearch] = useState('');
+  const [requirementTreeExpanded, setRequirementTreeExpanded] = useState<Set<string>>(new Set());
+  const [requirementDrafts, setRequirementDrafts] = useState<JobRequirementSelection[]>([]);
+  const [savingRequirement, setSavingRequirement] = useState(false);
+  const [requirementMessage, setRequirementMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Job create/edit modal state
+  const [jobModalOpen, setJobModalOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
+  const [jobFormData, setJobFormData] = useState<JobCreateInput>({ job_code: '', description: '', start_date: '', end_date: '' });
+  const [jobCustomers, setJobCustomers] = useState<JobCustomerOption[]>([]);
+  const [jobStatuses, setJobStatuses] = useState<JobStatusOption[]>([]);
+  const [defaultJobStatusID, setDefaultJobStatusID] = useState<number | undefined>(undefined);
+  const [jobModalLoading, setJobModalLoading] = useState(false);
+  const [jobFormOptionsLoading, setJobFormOptionsLoading] = useState(false);
+  const [jobModalError, setJobModalError] = useState<string | null>(null);
 
   // Input method for the scan card: keyboard (default), camera, or nfc
   const [inputMethod, setInputMethod] = useState<InputMethod>('keyboard');
@@ -51,7 +73,7 @@ export function JobsPage() {
   const loadJobDetails = useCallback(async (jobId: number, options: { highlight?: boolean } = {}) => {
     try {
       setLoading(true);
-      const { data } = await jobsApi.getById(jobId);
+      const { data } = await jobsApi.getById(jobId, { source: 'local' });
       setSelectedJob(data);
 
       if (options.highlight !== false) {
@@ -68,15 +90,6 @@ export function JobsPage() {
       console.error('Failed to load job details:', error);
     } finally {
       setLoading(false);
-    }
-  }, []);
-
-  const refreshJobDetails = useCallback(async (jobId: number) => {
-    try {
-      const { data } = await jobsApi.getById(jobId);
-      setSelectedJob(data);
-    } catch (error) {
-      console.error('Failed to refresh job:', error);
     }
   }, []);
 
@@ -105,16 +118,80 @@ export function JobsPage() {
     }
   };
 
-  // Auto-refresh job details when selected
-  useEffect(() => {
-    if (selectedJob) {
-      const interval = setInterval(() => {
-        refreshJobDetails(selectedJob.job_id);
-      }, 2000); // Refresh every 2 seconds for live updates
-
-      return () => clearInterval(interval);
+  const applyLocalScanResult = useCallback((action: 'outtake' | 'intake', device?: Record<string, any> | null) => {
+    const deviceId = String(device?.device_id ?? device?.deviceID ?? '').trim();
+    if (!deviceId) {
+      return;
     }
-  }, [selectedJob, refreshJobDetails]);
+
+    const resolvedProductID = Number(device?.product_id ?? device?.productID ?? 0) || 0;
+    const resolvedProductName = String(device?.product_name ?? device?.productName ?? '').trim();
+    const resolvedZoneName = String(device?.zone_name ?? device?.zoneName ?? '').trim();
+    const resolvedBarcode = typeof device?.barcode === 'string' ? device.barcode : undefined;
+    const resolvedQRCode = typeof device?.qr_code === 'string'
+      ? device.qr_code
+      : (typeof device?.qrCode === 'string' ? device.qrCode : undefined);
+
+    setSelectedJob(prev => {
+      if (!prev) return prev;
+
+      const deviceExists = prev.devices.some(d => d.device_id === deviceId);
+
+      let nextDevices = prev.devices.map(d => {
+        if (d.device_id !== deviceId) {
+          return d;
+        }
+
+        return {
+          ...d,
+          status: action === 'outtake' ? 'on_job' : 'in_storage',
+          scanned: action === 'outtake',
+          pack_status: action === 'outtake' ? 'issued' : 'pending',
+          zone_name: action === 'outtake' ? '' : (resolvedZoneName || d.zone_name),
+          product_name: resolvedProductName || d.product_name,
+          barcode: resolvedBarcode || d.barcode,
+          qr_code: resolvedQRCode || d.qr_code,
+        };
+      });
+
+      if (!deviceExists && action === 'outtake') {
+        nextDevices = [
+          {
+            device_id: deviceId,
+            status: 'on_job',
+            product_name: resolvedProductName || `Product ${resolvedProductID || '?'}`,
+            zone_name: '',
+            barcode: resolvedBarcode,
+            qr_code: resolvedQRCode,
+            pack_status: 'issued',
+            scanned: true,
+          },
+          ...nextDevices,
+        ];
+      }
+
+      const nextRequirements = (prev.product_requirements || []).map(req => {
+        if (!resolvedProductID || req.product_id !== resolvedProductID) {
+          return req;
+        }
+
+        const nextAssigned = action === 'outtake'
+          ? Math.min(req.required, req.assigned + 1)
+          : Math.max(0, req.assigned - 1);
+
+        return {
+          ...req,
+          assigned: nextAssigned,
+        };
+      });
+
+      return {
+        ...prev,
+        devices: nextDevices,
+        product_requirements: nextRequirements,
+      };
+    });
+  }, []);
 
   // Cleanup LEDs when leaving the page or unmounting
   useEffect(() => {
@@ -154,7 +231,7 @@ export function JobsPage() {
   const loadJobs = async () => {
     try {
       setLoading(true);
-      const { data } = await jobsApi.getAll({ status: 'open' });
+      const { data } = await jobsApi.getAll({ status: 'open', source: 'local' });
       setJobs(data);
     } catch (error) {
       console.error('Failed to load jobs:', error);
@@ -162,6 +239,145 @@ export function JobsPage() {
       setLoading(false);
     }
   };
+
+  const loadRequirementTree = useCallback(async () => {
+    try {
+      setRequirementTreeLoading(true);
+      const { data } = await devicesApi.getTree();
+      setRequirementTreeData(data.treeData || []);
+    } catch (error) {
+      console.error('Failed to load requirement tree:', error);
+      setRequirementTreeData([]);
+    } finally {
+      setRequirementTreeLoading(false);
+    }
+  }, []);
+
+  const buildRequirementDrafts = useCallback((requirements: ProductRequirement[] | undefined) => {
+    return (requirements || [])
+      .map((req) => ({
+        product_id: req.product_id,
+        product_name: req.product_name,
+        quantity: req.required,
+        assigned: req.assigned,
+      }))
+      .sort((a, b) => a.product_name.localeCompare(b.product_name));
+  }, []);
+
+  const requirementServerSignature = selectedJob
+    ? buildRequirementDrafts(selectedJob.product_requirements)
+      .map((req) => `${req.product_id}:${req.quantity}:${req.product_name}`)
+      .join('|')
+    : '';
+
+  const loadJobFormOptions = useCallback(async () => {
+    try {
+      setJobFormOptionsLoading(true);
+      const { data } = await jobsApi.getFormOptions();
+      setJobCustomers(data.customers || []);
+      setJobStatuses(data.statuses || []);
+      setDefaultJobStatusID(data.default_status_id);
+      return data.default_status_id;
+    } catch (error) {
+      console.error('Failed to load job form options:', error);
+      setJobCustomers([]);
+      setJobStatuses([]);
+      setDefaultJobStatusID(undefined);
+      return undefined;
+    } finally {
+      setJobFormOptionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedJob) {
+      loadRequirementTree();
+    }
+  }, [selectedJob, loadRequirementTree]);
+
+  useEffect(() => {
+    if (!selectedJob) {
+      setRequirementDrafts([]);
+      setRequirementTreeSearch('');
+      setRequirementTreeExpanded(new Set());
+      return;
+    }
+    setRequirementDrafts(buildRequirementDrafts(selectedJob.product_requirements));
+    setRequirementTreeSearch('');
+    setRequirementTreeExpanded(new Set());
+  }, [selectedJob?.job_id, requirementServerSignature, buildRequirementDrafts]);
+
+  useEffect(() => {
+    loadJobFormOptions();
+  }, [loadJobFormOptions]);
+
+  const handleRequirementSelectionChange = ({
+    product_id,
+    product_name,
+    quantity,
+  }: {
+    product_id: number;
+    product_name: string;
+    quantity: number;
+  }) => {
+    setRequirementDrafts((prev) => {
+      const existing = prev.find((req) => req.product_id === product_id);
+      const assigned = existing?.assigned
+        ?? selectedJob?.product_requirements.find((req) => req.product_id === product_id)?.assigned
+        ?? 0;
+      const next = prev.filter((req) => req.product_id !== product_id);
+      if (quantity > 0) {
+        next.push({ product_id, product_name, quantity, assigned });
+      }
+      return next.sort((left, right) => left.product_name.localeCompare(right.product_name));
+    });
+    setRequirementMessage(null);
+  };
+
+  const handleRequirementExpandAll = (nodeIds: string[]) => {
+    setRequirementTreeExpanded(new Set(nodeIds));
+  };
+
+  const handleRequirementCollapseAll = () => {
+    setRequirementTreeExpanded(new Set());
+  };
+
+  const handleRequirementToggleNode = (nodeId: string) => {
+    setRequirementTreeExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+	const handleSaveRequirements = async () => {
+		if (!selectedJob) return;
+		setSavingRequirement(true);
+		setRequirementMessage(null);
+		try {
+			await jobsApi.replaceRequirements(selectedJob.job_id, {
+				requirements: requirementDrafts
+					.filter((req) => req.quantity > 0)
+					.map((req) => ({ product_id: req.product_id, quantity: req.quantity })),
+			});
+			setRequirementMessage({
+				type: 'success',
+				text: `Saved ${requirementDrafts.length} product requirement${requirementDrafts.length === 1 ? '' : 's'}.`,
+			});
+			await loadJobDetails(selectedJob.job_id, { highlight: false });
+		} catch (error: any) {
+			setRequirementMessage({
+				type: 'error',
+				text: error?.response?.data?.error || t('jobsPage.requirementSaveError'),
+			});
+		} finally {
+			setSavingRequirement(false);
+		}
+	};
 
   const handleCodeDetected = useCallback((code: string) => {
     processCodeRef.current(code);
@@ -267,6 +483,7 @@ export function JobsPage() {
         }
 
         await loadJobDetails(numericPart, { highlight: true });
+        navigate(`/jobs/${numericPart}`);
         setScanResult({ success: true, message: t('jobsPage.jobLoaded', { code: normalizedCode }) });
       } catch (error: any) {
         console.error('Job scan failed:', error);
@@ -299,11 +516,11 @@ export function JobsPage() {
     setScanResult(null);
 
     try {
-      // Process outtake scan with job context
+      // Process scan with job context for outtake; intake returns devices from job.
       const { data } = await scansApi.process({
         scan_code: rawCode,
-        action: 'outtake',
-        job_id: selectedJob.job_id,
+        action: scanAction,
+        job_id: scanAction === 'outtake' ? selectedJob.job_id : undefined,
       });
 
       setScanResult({
@@ -313,9 +530,8 @@ export function JobsPage() {
 
       setScanCode('');
 
-      // Refresh job details immediately after scan
       if (data.success) {
-        await refreshJobDetails(selectedJob.job_id);
+        applyLocalScanResult(scanAction, data.device || null);
       }
     } catch (error: any) {
       console.error('Scan failed:', error);
@@ -329,7 +545,7 @@ export function JobsPage() {
       // Clear result after 3 seconds
       scheduleScanResultDismiss();
     }
-  }, [t, selectedJob, loadJobDetails, refreshJobDetails, scheduleScanResultDismiss]);
+  }, [t, navigate, scanAction, selectedJob, loadJobDetails, applyLocalScanResult, scheduleScanResultDismiss]);
 
   // Keep submitCodeRef in sync with the latest processCode so scanner callbacks
   // (which are memoised on mount) can always reach the current state closure.
@@ -356,6 +572,8 @@ export function JobsPage() {
     setSelectedJob(null);
     setScanCode('');
     setScanResult(null);
+    setScanAction('outtake');
+    navigate('/jobs');
     loadJobs(); // Reload job list
   };
 
@@ -381,6 +599,89 @@ export function JobsPage() {
     }
   };
 
+  const openCreateModal = () => {
+    setEditingJob(null);
+    setJobFormData({
+      job_code: '',
+      description: '',
+      start_date: '',
+      end_date: '',
+      status_id: defaultJobStatusID,
+      customer_id: undefined,
+    });
+    setJobModalError(null);
+    setJobModalOpen(true);
+    if (jobCustomers.length === 0 && jobStatuses.length === 0) {
+      void loadJobFormOptions();
+    }
+  };
+
+  const openEditModal = (job: Job) => {
+    setEditingJob(job);
+    setJobFormData({
+      job_code: job.job_code,
+      description: job.description || '',
+      start_date: job.start_date ? job.start_date.slice(0, 10) : '',
+      end_date: job.end_date ? job.end_date.slice(0, 10) : '',
+      customer_id: job.customer_id,
+      status_id: job.status_id,
+    });
+    setJobModalError(null);
+    setJobModalOpen(true);
+    if (jobCustomers.length === 0 && jobStatuses.length === 0) {
+      void loadJobFormOptions();
+    }
+  };
+
+  const handleStartDateChange = (value: string) => {
+    setJobFormData(prev => ({
+      ...prev,
+      start_date: value,
+      end_date: !prev.end_date && value ? value : prev.end_date,
+    }));
+  };
+
+  const handleJobModalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!jobFormData.job_code.trim()) {
+      setJobModalError('Job code is required');
+      return;
+    }
+    setJobModalLoading(true);
+    setJobModalError(null);
+    try {
+      const payload: JobCreateInput = {
+        job_code: jobFormData.job_code.trim(),
+        description: jobFormData.description || undefined,
+        start_date: jobFormData.start_date || undefined,
+        end_date: jobFormData.end_date || undefined,
+        customer_id: jobFormData.customer_id && jobFormData.customer_id > 0 ? jobFormData.customer_id : undefined,
+        status_id: jobFormData.status_id && jobFormData.status_id > 0 ? jobFormData.status_id : undefined,
+      };
+      if (editingJob) {
+        await jobsApi.update(editingJob.job_id, payload);
+      } else {
+        await jobsApi.create(payload);
+      }
+      setJobModalOpen(false);
+      loadJobs();
+    } catch (err: any) {
+      setJobModalError(err?.response?.data?.error || 'Failed to save job');
+    } finally {
+      setJobModalLoading(false);
+    }
+  };
+
+  const handleDeleteJob = async (job: Job) => {
+    if (!confirm(`Delete job ${job.job_code}? This cannot be undone.`)) return;
+    try {
+      await jobsApi.delete(job.job_id);
+      loadJobs();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to delete job');
+    }
+  };
+
   const formatJobStatus = (status: string) => t(`jobs.statuses.${status}`, status);
   const formatDeviceStatus = (status: string) => t(`devices.statuses.${status}`, status);
 
@@ -396,9 +697,18 @@ export function JobsPage() {
     return (
       <div className="min-h-screen p-6">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-white mb-2">{t('jobsPage.openJobsTitle')}</h1>
-            <p className="text-gray-400">{t('jobsPage.openJobsSubtitle')}</p>
+          <div className="mb-8 flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-4xl font-bold text-white mb-2">{t('jobsPage.openJobsTitle')}</h1>
+              <p className="text-gray-400">{t('jobsPage.openJobsSubtitle')}</p>
+            </div>
+            <button
+              onClick={openCreateModal}
+              className="flex items-center gap-2 px-4 py-2 bg-accent-red hover:bg-red-700 text-white font-semibold rounded-xl transition-all whitespace-nowrap"
+            >
+              <PlusCircle className="w-5 h-5" />
+              New Job
+            </button>
           </div>
 
           {loading ? (
@@ -406,70 +716,223 @@ export function JobsPage() {
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-accent-red"></div>
               <p className="text-gray-400 mt-4">{t('jobsPage.loadingJobs')}</p>
             </div>
-          ) : jobs.length === 0 ? (
-            <div className="glass-dark rounded-2xl p-12 text-center">
-              <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-400 text-lg">{t('jobsPage.noOpenJobs')}</p>
-            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {jobs.length === 0 && (
+                <div className="col-span-full glass-dark rounded-2xl p-12 text-center">
+                  <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400 text-lg">{t('jobsPage.noOpenJobs')}</p>
+                </div>
+              )}
               {jobs.map((job) => (
-                <button
+                <div
                   key={job.job_id}
-                  onClick={() => loadJobDetails(job.job_id, { highlight: false })}
-                  className="glass-dark rounded-2xl p-6 border-2 border-white/10 hover:border-accent-red transition-all text-left group hover:scale-105"
+                  className="glass-dark rounded-2xl p-6 border-2 border-white/10 hover:border-accent-red transition-all text-left group relative"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-gradient-to-br from-accent-red to-red-700">
-                      <Package className="w-6 h-6 text-white" />
+                  {/* Edit / Delete actions */}
+                  <div className="absolute top-4 right-4 flex gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEditModal(job); }}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                      title="Edit job"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteJob(job); }}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                      title="Delete job"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <button
+                    className="w-full text-left"
+                    onClick={() => navigate(`/jobs/${job.job_id}`)}
+                  >
+                    <div className="flex items-start justify-between mb-4 pr-16">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-accent-red to-red-700">
+                        <Package className="w-6 h-6 text-white" />
+                      </div>
+                      <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-sm font-semibold">
+                        {formatJobStatus(job.status)}
+                      </span>
                     </div>
-                    <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-sm font-semibold">
-                      {formatJobStatus(job.status)}
-                    </span>
-                  </div>
 
-                  <h3 className="text-xl font-bold text-white mb-2">
-                    {t('jobsPage.jobTitle', { code: job.job_code })}
-                  </h3>
+                    <h3 className="text-xl font-bold text-white mb-2">
+                      {t('jobsPage.jobTitle', { code: job.job_code })}
+                    </h3>
 
-                  {job.description && (
-                    <p className="text-gray-400 mb-3 line-clamp-2">{job.description}</p>
-                  )}
-
-                  <div className="space-y-2 text-sm">
-                    {(job.customer_first_name || job.customer_last_name) && (
-                      <div className="flex items-center gap-2 text-gray-400">
-                        <User className="w-4 h-4" />
-                        <span>{job.customer_first_name} {job.customer_last_name}</span>
-                      </div>
+                    {job.description && (
+                      <p className="text-gray-400 mb-3 line-clamp-2">{job.description}</p>
                     )}
 
-                    {job.start_date && (
-                      <div className="flex items-center gap-2 text-gray-400">
-                        <Calendar className="w-4 h-4" />
-                        <span>{formatDateISO(job.start_date)}</span>
-                      </div>
-                    )}
+                    <div className="space-y-2 text-sm">
+                      {(job.customer_first_name || job.customer_last_name) && (
+                        <div className="flex items-center gap-2 text-gray-400">
+                          <User className="w-4 h-4" />
+                          <span>{job.customer_first_name} {job.customer_last_name}</span>
+                        </div>
+                      )}
 
-                    <div className="flex items-center gap-2 text-accent-red font-semibold">
-                      <Package className="w-4 h-4" />
-                      <span>{t('jobsPage.deviceCount', { count: job.device_count })}</span>
+                      {job.start_date && (
+                        <div className="flex items-center gap-2 text-gray-400">
+                          <Calendar className="w-4 h-4" />
+                          <span>{formatDateISO(job.start_date)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 text-accent-red font-semibold">
+                        <Package className="w-4 h-4" />
+                        <span>{t('jobsPage.deviceCount', { count: job.device_count })}</span>
+                      </div>
+                      {job.requirements_count > 0 && (
+                        <div className="flex items-center gap-2 text-yellow-400 font-semibold">
+                          <ClipboardList className="w-4 h-4" />
+                          <span>{t('jobsPage.requirementsCount', { count: job.requirements_count })}</span>
+                        </div>
+                      )}
                     </div>
-                    {job.requirements_count > 0 && (
-                      <div className="flex items-center gap-2 text-yellow-400 font-semibold">
-                        <ClipboardList className="w-4 h-4" />
-                        <span>{t('jobsPage.requirementsCount', { count: job.requirements_count })}</span>
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="mt-4 flex items-center gap-2 text-accent-red group-hover:gap-3 transition-all">
-                    <span className="font-semibold">{t('jobsPage.select')}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
-                </button>
+                    <div className="mt-4 flex items-center gap-2 text-accent-red group-hover:gap-3 transition-all">
+                      <span className="font-semibold">{t('jobsPage.select')}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </div>
+                  </button>
+                </div>
               ))}
             </div>
+          )}
+
+          {/* Create / Edit Job Modal */}
+          {jobModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                <div className="glass-dark rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-2xl">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold text-white">
+                      {editingJob ? 'Edit Job' : 'New Job'}
+                    </h2>
+                    <button onClick={() => setJobModalOpen(false)} className="text-gray-400 hover:text-white">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleJobModalSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Job Code *</label>
+                      <input
+                        type="text"
+                        value={jobFormData.job_code}
+                        onChange={(e) => setJobFormData(prev => ({ ...prev, job_code: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent-red"
+                        placeholder="JOB001"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                      <textarea
+                        value={jobFormData.description || ''}
+                        onChange={(e) => setJobFormData(prev => ({ ...prev, description: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accent-red resize-none"
+                        placeholder="Optional description"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Start Date</label>
+                        <input
+                          type="date"
+                          value={jobFormData.start_date || ''}
+                          onFocus={(e) => {
+                            if (typeof (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker === 'function') {
+                              (e.currentTarget as HTMLInputElement & { showPicker: () => void }).showPicker();
+                            }
+                          }}
+                          onChange={(e) => handleStartDateChange(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-accent-red"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">End Date</label>
+                        <input
+                          type="date"
+                          value={jobFormData.end_date || ''}
+                          onFocus={(e) => {
+                            if (typeof (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker === 'function') {
+                              (e.currentTarget as HTMLInputElement & { showPicker: () => void }).showPicker();
+                            }
+                          }}
+                          onChange={(e) => setJobFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-accent-red"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Customer</label>
+                        <select
+                          value={jobFormData.customer_id || 0}
+                          onChange={(e) => setJobFormData(prev => ({ ...prev, customer_id: Number(e.target.value) || undefined }))}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-accent-red"
+                        >
+                          <option value={0}>No customer</option>
+                          {jobCustomers.map((customer) => (
+                            <option key={customer.customer_id} value={customer.customer_id}>
+                              {customer.display_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Status</label>
+                        <select
+                          value={jobFormData.status_id || 0}
+                          onChange={(e) => setJobFormData(prev => ({ ...prev, status_id: Number(e.target.value) || undefined }))}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-accent-red"
+                        >
+                          <option value={0}>Default</option>
+                          {jobStatuses.map((status) => (
+                            <option key={status.status_id} value={status.status_id}>
+                              {status.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {jobFormOptionsLoading && (
+                      <p className="text-xs text-gray-500">Loading customer and status options...</p>
+                    )}
+
+                    {jobModalError && (
+                      <p className="text-red-400 text-sm">{jobModalError}</p>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setJobModalOpen(false)}
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-gray-300 hover:bg-white/5 transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={jobModalLoading}
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-accent-red hover:bg-red-700 text-white font-semibold transition-all disabled:opacity-50"
+                      >
+                        {jobModalLoading ? 'Saving\u2026' : (editingJob ? 'Update' : 'Create')}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
           )}
         </div>
       </div>
@@ -576,34 +1039,41 @@ export function JobsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Product Requirements */}
-          {selectedJob.product_requirements && selectedJob.product_requirements.length > 0 && (
+          {selectedJob.product_requirements && (
             <div className="lg:col-span-2 glass-dark rounded-2xl p-6 border-2 border-white/10">
               <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
                 <ClipboardList className="w-6 h-6" />
                 {t('jobsPage.productRequirements')}
               </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {selectedJob.product_requirements.map((req: ProductRequirement) => {
-                  const fulfilled = req.assigned >= req.required;
-                  return (
-                    <div
-                      key={req.product_id}
-                      className={`p-3 rounded-xl border-2 ${fulfilled ? 'bg-green-500/10 border-green-500/50' : 'bg-white/5 border-white/10'}`}
-                    >
-                      <p className="font-semibold text-white text-sm line-clamp-2">{req.product_name}</p>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className={`text-lg font-bold ${fulfilled ? 'text-green-400' : 'text-accent-red'}`}>
-                          {req.assigned}/{req.required}
-                        </span>
-                        {fulfilled ? (
-                          <CheckCircle className="w-5 h-5 text-green-500" />
-                        ) : (
-                          <XCircle className="w-5 h-5 text-gray-600" />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+
+              <JobRequirementTree
+                treeData={requirementTreeData}
+                loading={requirementTreeLoading}
+                search={requirementTreeSearch}
+                onSearchChange={setRequirementTreeSearch}
+                expandedNodes={requirementTreeExpanded}
+                onToggleNode={handleRequirementToggleNode}
+                onExpandAll={handleRequirementExpandAll}
+                onCollapseAll={handleRequirementCollapseAll}
+                selections={requirementDrafts}
+                onSetSelection={handleRequirementSelectionChange}
+              />
+
+              {requirementMessage && (
+                <p className={`mt-3 text-sm ${requirementMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                  {requirementMessage.text}
+                </p>
+              )}
+
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveRequirements}
+                  disabled={savingRequirement || !selectedJob}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-accent-red text-white font-semibold disabled:opacity-60"
+                >
+                  {savingRequirement ? 'Saving...' : 'Save Requirements'}
+                </button>
               </div>
             </div>
           )}
@@ -611,7 +1081,32 @@ export function JobsPage() {
           {/* Scan Interface */}
           <div className="glass-dark rounded-2xl p-6 border-2 border-white/10">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-white">{t('jobsPage.outtakeDevice')}</h2>
+              <h2 className="text-2xl font-bold text-white">
+                {scanAction === 'outtake'
+                  ? t('jobsPage.outtakeDevice')
+                  : t('jobsPage.intakeDevice')}
+              </h2>
+            </div>
+
+            <div role="group" aria-label={t('scan.actions')} className="flex gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setScanAction('outtake')}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  scanAction === 'outtake' ? 'bg-accent-red text-white' : 'bg-white/5 text-gray-300 hover:text-white'
+                }`}
+              >
+                {t('scan.actions.outtake')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanAction('intake')}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  scanAction === 'intake' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-gray-300 hover:text-white'
+                }`}
+              >
+                {t('scan.actions.intake')}
+              </button>
             </div>
 
             {/* LED Highlight Toggle */}
@@ -769,7 +1264,9 @@ export function JobsPage() {
                 disabled={scanLoading || !scanCode.trim()}
                 className="w-full py-4 bg-gradient-to-r from-accent-red to-red-700 text-white font-bold text-lg rounded-xl hover:shadow-lg hover:shadow-accent-red/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 active:scale-95"
               >
-                {scanLoading ? t('jobsPage.scanning') : t('jobsPage.outtakeDevice')}
+                {scanLoading
+                  ? t('jobsPage.scanning')
+                  : (scanAction === 'outtake' ? t('jobsPage.outtakeDevice') : t('jobsPage.intakeDevice'))}
               </button>
             </form>
 

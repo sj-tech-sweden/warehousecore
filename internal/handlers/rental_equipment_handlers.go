@@ -24,6 +24,7 @@ type RentalEquipment struct {
 	RentalPrice   float64   `json:"rental_price"`
 	CustomerPrice float64   `json:"customer_price"`
 	Category      *string   `json:"category"`
+	Subcategory   *string   `json:"subcategory"`
 	Description   *string   `json:"description"`
 	Notes         *string   `json:"notes"`
 	IsActive      bool      `json:"is_active"`
@@ -39,6 +40,7 @@ type RentalEquipmentCreateRequest struct {
 	RentalPrice   float64 `json:"rental_price"`
 	CustomerPrice float64 `json:"customer_price"`
 	Category      *string `json:"category"`
+	Subcategory   *string `json:"subcategory"`
 	Description   *string `json:"description"`
 	Notes         *string `json:"notes"`
 	IsActive      *bool   `json:"is_active"`
@@ -60,6 +62,7 @@ func GetRentalEquipment(w http.ResponseWriter, r *http.Request) {
 			rental_price,
 			COALESCE(customer_price, 0) as customer_price,
 			category,
+			subcategory,
 			description,
 			notes,
 			is_active,
@@ -110,6 +113,7 @@ func GetRentalEquipment(w http.ResponseWriter, r *http.Request) {
 			&e.RentalPrice,
 			&e.CustomerPrice,
 			&e.Category,
+			&e.Subcategory,
 			&e.Description,
 			&e.Notes,
 			&e.IsActive,
@@ -152,6 +156,7 @@ func GetRentalEquipmentByID(w http.ResponseWriter, r *http.Request) {
 			rental_price,
 			COALESCE(customer_price, 0) as customer_price,
 			category,
+			subcategory,
 			description,
 			notes,
 			is_active,
@@ -167,6 +172,7 @@ func GetRentalEquipmentByID(w http.ResponseWriter, r *http.Request) {
 		&e.RentalPrice,
 		&e.CustomerPrice,
 		&e.Category,
+		&e.Subcategory,
 		&e.Description,
 		&e.Notes,
 		&e.IsActive,

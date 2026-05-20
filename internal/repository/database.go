@@ -10,19 +10,32 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"warehousecore/config"
+	"warehousecore/internal/migrations"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"warehousecore/config"
 )
 
 // Common errors
 var (
 	ErrNotFound = errors.New("not found")
 )
+
+func closeSQLDBWithLog(sqlDB *sql.DB, reason string) {
+	if sqlDB == nil {
+		return
+	}
+	if err := sqlDB.Close(); err != nil {
+		log.Printf("failed to close database after %s: %v", reason, err)
+	}
+}
 
 // DB holds the database connection pool (sql.DB)
 var DB *sql.DB
@@ -49,12 +62,45 @@ func InitDatabase(cfg *config.Config) error {
 
 	// Test connection
 	if err := sqlDB.Ping(); err != nil {
+		closeSQLDBWithLog(sqlDB, "failed ping")
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	DB = sqlDB
 	log.Printf("PostgreSQL database connection established: %s@%s:%s/%s",
 		cfg.Database.User, cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
+
+	// Optionally run SQL migrations and seeds on startup. Controlled by
+	// env var MIGRATE_ON_STARTUP (unset/empty defaults to disabled). The migrations directory
+	// can be overridden with MIGRATIONS_DIR (default: "migrations").
+	migrateOnStartup := strings.TrimSpace(os.Getenv("MIGRATE_ON_STARTUP"))
+	if migrateOnStartup == "" {
+		log.Println("MIGRATE_ON_STARTUP is not set; startup migrations are disabled by default. Set MIGRATE_ON_STARTUP=true to enable.")
+	}
+	if strings.EqualFold(migrateOnStartup, "true") {
+		// Determine migrations directory (allow override via MIGRATIONS_DIR env)
+		migrationsDir := os.Getenv("MIGRATIONS_DIR")
+		if migrationsDir == "" {
+			migrationsDir = "migrations"
+		}
+		// Use the repo-relative path; if running from project root this is fine.
+		absDir, _ := filepath.Abs(migrationsDir)
+		log.Printf("Running SQL migrations from %s", absDir)
+		if err := migrations.ApplyMigrations(sqlDB, migrationsDir); err != nil {
+			closeSQLDBWithLog(sqlDB, "failed migrations")
+			DB = nil
+			return fmt.Errorf("apply migrations: %w", err)
+		}
+		// Apply all seeds in migrations/seeds. Seed files are expected to be
+		// idempotent so they are safe to execute on populated databases.
+		seedsDir := filepath.Join(migrationsDir, "seeds")
+		if err := migrations.ApplySeeds(sqlDB, seedsDir); err != nil {
+			closeSQLDBWithLog(sqlDB, "failed seeds")
+			DB = nil
+			return fmt.Errorf("apply seeds: %w", err)
+		}
+		log.Println("Migrations and startup seeds applied")
+	}
 
 	// Initialize GORM with PostgreSQL driver
 	gormDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
@@ -64,6 +110,8 @@ func InitDatabase(cfg *config.Config) error {
 		Logger:                 logger.Default.LogMode(logger.Warn),
 	})
 	if err != nil {
+		closeSQLDBWithLog(sqlDB, "failed gorm initialization")
+		DB = nil
 		return fmt.Errorf("failed to initialize GORM: %w", err)
 	}
 
@@ -87,18 +135,15 @@ func buildPostgresDSN(cfg *config.Config) string {
 
 	dbName := cfg.Database.Name
 	if dbName == "" {
-		dbName = "rentalcore"
+		dbName = "warehousecore"
 	}
 
 	user := cfg.Database.User
 	if user == "" {
-		user = "rentalcore"
+		user = "warehousecore"
 	}
 
 	password := cfg.Database.Password
-	if password == "" {
-		password = "rentalcore123"
-	}
 
 	sslMode := cfg.Database.SSLMode
 	if sslMode == "" {

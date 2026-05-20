@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -67,6 +68,315 @@ func ptrFloat64(n sql.NullFloat64) *float64 {
 	}
 	val := n.Float64
 	return &val
+}
+
+func rentalCoreBaseURL() string {
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("RENTALCORE_BASE_URL")), "/")
+	if base == "" {
+		return "http://rentalcore:8080"
+	}
+
+	parsed, err := url.Parse(base)
+	if err == nil {
+		host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+		if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" {
+			return "http://rentalcore:8080"
+		}
+	}
+
+	return base
+}
+
+func rentalCoreServiceAPIKey() (string, string) {
+	if key := strings.TrimSpace(os.Getenv("RENTALCORE_API_KEY")); key != "" {
+		return key, "RENTALCORE_API_KEY"
+	}
+	if key := strings.TrimSpace(os.Getenv("SERVICE_API_KEY")); key != "" {
+		return key, "SERVICE_API_KEY"
+	}
+	if key := strings.TrimSpace(os.Getenv("WAREHOUSECORE_API_KEY")); key != "" {
+		return key, "WAREHOUSECORE_API_KEY"
+	}
+	return "", ""
+}
+
+func proxyRentalCoreServiceGET(w http.ResponseWriter, r *http.Request, servicePath string) bool {
+	baseURL := rentalCoreBaseURL()
+	if baseURL == "" {
+		return false
+	}
+
+	requestURL := baseURL + servicePath
+	if rawQuery := strings.TrimSpace(r.URL.RawQuery); rawQuery != "" && !strings.Contains(servicePath, "?") {
+		requestURL += "?" + rawQuery
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, requestURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create RentalCore request"})
+		return true
+	}
+	req.Header.Set("Accept", "application/json")
+	apiKey, _ := rentalCoreServiceAPIKey()
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		log.Printf("Error proxying RentalCore service request %s: %v", servicePath, err)
+		respondJSON(w, http.StatusBadGateway, map[string]string{"error": "RentalCore unavailable"})
+		return true
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]string{"error": "Failed to read RentalCore response"})
+		return true
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		log.Printf("RentalCore service auth failed for %s (status=%d)", servicePath, resp.StatusCode)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(body)
+	return true
+}
+
+func replaceRequirementNamesWithLocalProducts(body []byte) ([]byte, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+
+	requirementsRaw, ok := payload["product_requirements"].([]interface{})
+	if !ok || len(requirementsRaw) == 0 {
+		return body, nil
+	}
+
+	productIDs := make([]int, 0, len(requirementsRaw))
+	seen := make(map[int]bool)
+	for _, item := range requirementsRaw {
+		reqMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		idFloat, ok := reqMap["product_id"].(float64)
+		if !ok {
+			continue
+		}
+		productID := int(idFloat)
+		if productID <= 0 || seen[productID] {
+			continue
+		}
+		seen[productID] = true
+		productIDs = append(productIDs, productID)
+	}
+
+	if len(productIDs) == 0 {
+		return body, nil
+	}
+
+	placeholders := make([]string, 0, len(productIDs))
+	args := make([]interface{}, 0, len(productIDs))
+	for i, id := range productIDs {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf("SELECT productID, name FROM products WHERE productID IN (%s)", strings.Join(placeholders, ","))
+	rows, err := repository.GetSQLDB().Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	localNames := make(map[int]string)
+	for rows.Next() {
+		var productID int
+		var name string
+		if err := rows.Scan(&productID, &name); err != nil {
+			continue
+		}
+		trimmed := strings.TrimSpace(name)
+		if trimmed != "" {
+			localNames[productID] = trimmed
+		}
+	}
+
+	for _, item := range requirementsRaw {
+		reqMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		idFloat, ok := reqMap["product_id"].(float64)
+		if !ok {
+			continue
+		}
+		if localName, exists := localNames[int(idFloat)]; exists {
+			reqMap["product_name"] = localName
+		}
+	}
+
+	result, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func mergeLocalJobDevicesIntoSummary(body []byte, jobID int) ([]byte, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+
+	rows, err := repository.GetSQLDB().Query(`
+		SELECT jd.deviceID,
+		       COALESCE(d.status, '') as status,
+		       COALESCE(p.productID, 0) as product_id,
+		       COALESCE(p.name, '') as product_name,
+		       COALESCE(z.name, '') as zone_name,
+		       d.barcode,
+		       d.qr_code,
+		       COALESCE(jd.pack_status, 'pending') as pack_status
+		FROM jobdevices jd
+		LEFT JOIN devices d ON jd.deviceID = d.deviceID
+		LEFT JOIN products p ON d.productID = p.productID
+		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
+		WHERE jd.jobID = $1
+		ORDER BY COALESCE(p.name, ''), jd.deviceID
+	`, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	devices := make([]map[string]interface{}, 0)
+	assignedByProduct := make(map[int]int)
+
+	for rows.Next() {
+		var (
+			deviceID    string
+			status      string
+			productID   int
+			productName string
+			zoneName    string
+			barcode     sql.NullString
+			qrCode      sql.NullString
+			packStatus  string
+		)
+
+		if err := rows.Scan(&deviceID, &status, &productID, &productName, &zoneName, &barcode, &qrCode, &packStatus); err != nil {
+			return nil, err
+		}
+
+		scanned := status == "on_job"
+		if scanned && productID > 0 {
+			assignedByProduct[productID]++
+		}
+
+		device := map[string]interface{}{
+			"device_id":    deviceID,
+			"status":       status,
+			"product_name": productName,
+			"pack_status":  packStatus,
+			"scanned":      scanned,
+		}
+		if strings.TrimSpace(zoneName) != "" {
+			device["zone_name"] = zoneName
+		}
+		if barcode.Valid && strings.TrimSpace(barcode.String) != "" {
+			device["barcode"] = barcode.String
+		}
+		if qrCode.Valid && strings.TrimSpace(qrCode.String) != "" {
+			device["qr_code"] = qrCode.String
+		}
+
+		devices = append(devices, device)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	payload["devices"] = devices
+
+	if requirementsRaw, ok := payload["product_requirements"].([]interface{}); ok {
+		for _, item := range requirementsRaw {
+			reqMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			idFloat, ok := reqMap["product_id"].(float64)
+			if !ok {
+				continue
+			}
+			reqMap["assigned"] = assignedByProduct[int(idFloat)]
+		}
+	}
+
+	result, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func proxyRentalCoreJobSummaryWithLocalNames(w http.ResponseWriter, r *http.Request, jobID int) bool {
+	baseURL := rentalCoreBaseURL()
+	if baseURL == "" {
+		return false
+	}
+
+	requestURL := fmt.Sprintf("%s/api/v1/service/jobs/%d/summary", baseURL, jobID)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, requestURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create RentalCore request"})
+		return true
+	}
+	req.Header.Set("Accept", "application/json")
+	apiKey, _ := rentalCoreServiceAPIKey()
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]string{"error": "RentalCore unavailable"})
+		return true
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]string{"error": "Failed to read RentalCore response"})
+		return true
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		rewritten, rewriteErr := replaceRequirementNamesWithLocalProducts(body)
+		if rewriteErr != nil {
+			log.Printf("Failed to rewrite product names for RentalCore summary job %d: %v", jobID, rewriteErr)
+		} else {
+			body = rewritten
+		}
+
+		merged, mergeErr := mergeLocalJobDevicesIntoSummary(body, jobID)
+		if mergeErr != nil {
+			log.Printf("Failed to merge local job devices into RentalCore summary job %d: %v", jobID, mergeErr)
+		} else {
+			body = merged
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(body)
+	return true
 }
 
 // PostgresPlaceholders converts MySQL ? placeholders to PostgreSQL $N placeholders
@@ -1273,7 +1583,11 @@ func GetZone(w http.ResponseWriter, r *http.Request) {
 // GetZoneDevices returns all devices in a specific zone
 func GetZoneDevices(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	zoneID := vars["id"]
+	zoneID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid zone ID"})
+		return
+	}
 
 	db := repository.GetSQLDB()
 	rows, err := db.Query(`
@@ -1509,45 +1823,154 @@ func GetZoneByBarcode(w http.ResponseWriter, r *http.Request) {
 
 // GetJobs returns jobs filtered by status
 func GetJobs(w http.ResponseWriter, r *http.Request) {
+	forceLocal := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("source")), "local")
+	if !forceLocal {
+		if proxyTwentyJobs(w, r) {
+			return
+		}
+
+		if proxyRentalCoreServiceGET(w, r, "/api/v1/service/jobs") {
+			return
+		}
+	}
+
 	status := r.URL.Query().Get("status")
 
 	db := repository.GetSQLDB()
+	jobCols, err := getTableColumnsForDB(db, "jobs")
+	if err != nil {
+		log.Printf("Error loading jobs schema: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load jobs"})
+		return
+	}
+
+	jobPKExpr := "j.jobid"
+	if !jobCols["jobid"] && jobCols["id"] {
+		jobPKExpr = "j.id"
+	}
+	if !jobCols["jobid"] && !jobCols["id"] {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "jobs primary key column is missing"})
+		return
+	}
+
+	statusCols, _ := getTableColumnsForDB(db, "status")
+	hasStatusJoin := jobCols["statusid"] && statusCols["statusid"] && statusCols["status"]
+
+	customersCols, _ := getTableColumnsForDB(db, "customers")
+	hasCustomersJoin := jobCols["customerid"] && customersCols["customerid"]
+
+	jobDevicesCols, _ := getTableColumnsForDB(db, "jobdevices")
+	hasJobDevices := jobDevicesCols["jobid"] && jobDevicesCols["deviceid"]
+
+	jobReqCols, _ := getTableColumnsForDB(db, "job_product_requirements")
+	hasJobRequirements := jobReqCols["job_id"]
+
+	jobCodeExpr := fmt.Sprintf("CONCAT('JOB', LPAD(CAST(%s AS TEXT), 6, '0'))", jobPKExpr)
+	if jobCols["job_code"] {
+		jobCodeExpr = fmt.Sprintf("COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(%s AS TEXT), 6, '0')))", jobPKExpr)
+	}
+
+	descriptionExpr := "NULL::text"
+	if jobCols["description"] {
+		descriptionExpr = "j.description"
+	}
+
+	startDateExpr := "NULL::text"
+	if jobCols["startdate"] {
+		startDateExpr = "j.startdate"
+	}
+
+	endDateExpr := "NULL::text"
+	if jobCols["enddate"] {
+		endDateExpr = "j.enddate"
+	}
+
+	statusExpr := "'open'"
+	statusFilterExpr := "'open'"
+	if hasStatusJoin {
+		statusExpr = "COALESCE(s.status, 'open')"
+		statusFilterExpr = "COALESCE(s.status, 'open')"
+	} else if jobCols["status"] {
+		statusExpr = "COALESCE(j.status, 'open')"
+		statusFilterExpr = "COALESCE(j.status, 'open')"
+	}
+
+	customerIDExpr := "NULL::bigint"
+	if jobCols["customerid"] {
+		customerIDExpr = "j.customerid"
+	}
+
+	statusIDExpr := "NULL::bigint"
+	if jobCols["statusid"] {
+		statusIDExpr = "j.statusid"
+	}
+
+	customerFirstExpr := "''"
+	customerLastExpr := "''"
+	if hasCustomersJoin {
+		if customersCols["firstname"] {
+			customerFirstExpr = "COALESCE(c.firstname, '')"
+		}
+		if customersCols["lastname"] {
+			customerLastExpr = "COALESCE(c.lastname, '')"
+		}
+	}
+
+	deviceCountExpr := "0"
+	if hasJobDevices {
+		deviceCountExpr = "COALESCE(dc.device_count, 0)"
+	}
+
+	requirementsCountExpr := "0"
+	if hasJobRequirements {
+		requirementsCountExpr = "COALESCE(rc.requirements_count, 0)"
+	}
+
 	qb := NewQueryBuilder()
-	query := `
-		SELECT j.jobid,
-		       COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.jobid AS TEXT), 6, '0'))) AS job_code,
-		       j.description, j.startdate, j.enddate, COALESCE(s.status, 'open') AS status,
-		       COALESCE(c.firstname, '') as customer_first_name,
-		       COALESCE(c.lastname, '') as customer_last_name,
-		       COALESCE(dc.device_count, 0) as device_count,
-		       COALESCE(rc.requirements_count, 0) as requirements_count
+	query := fmt.Sprintf(`
+		SELECT %s,
+		       %s AS job_code,
+		       %s, %s, %s, %s AS status,
+		       %s,
+		       %s,
+		       %s as customer_first_name,
+		       %s as customer_last_name,
+		       %s as device_count,
+		       %s as requirements_count
 		FROM jobs j
-		LEFT JOIN status s ON j.statusid = s.statusid
-		LEFT JOIN customers c ON j.customerid = c.customerid
-		LEFT JOIN (
-		    SELECT jobid, COUNT(DISTINCT deviceid) as device_count
-		    FROM jobdevices
-		    GROUP BY jobid
-		) dc ON dc.jobid = j.jobid
-		LEFT JOIN (
-		    SELECT job_id, SUM(quantity) as requirements_count
-		    FROM job_product_requirements
-		    GROUP BY job_id
-		) rc ON rc.job_id = j.jobid
-		WHERE 1=1`
+	`, jobPKExpr, jobCodeExpr, descriptionExpr, startDateExpr, endDateExpr, statusExpr,
+		customerIDExpr, statusIDExpr, customerFirstExpr, customerLastExpr, deviceCountExpr, requirementsCountExpr)
+
+	if hasStatusJoin {
+		query += "LEFT JOIN status s ON j.statusid = s.statusid\n"
+	}
+	if hasCustomersJoin {
+		query += "LEFT JOIN customers c ON j.customerid = c.customerid\n"
+	}
+	if hasJobDevices {
+		query += "LEFT JOIN (SELECT jobid, COUNT(DISTINCT deviceid) as device_count FROM jobdevices GROUP BY jobid) dc ON dc.jobid = " + jobPKExpr + "\n"
+	}
+	if hasJobRequirements {
+		query += "LEFT JOIN (SELECT job_id, SUM(quantity) as requirements_count FROM job_product_requirements GROUP BY job_id) rc ON rc.job_id = " + jobPKExpr + "\n"
+	}
+
+	query += "WHERE 1=1"
 
 	args := []interface{}{}
 	if status != "" {
-		// 'open' is a legacy status value meaning any non-terminal job
 		if strings.EqualFold(status, "open") {
-			query += " AND (s.status IS NULL OR s.status NOT IN ('Completed', 'Invoiced', 'Cancelled'))"
+			query += " AND LOWER(" + statusFilterExpr + ") NOT IN ('completed', 'invoiced', 'cancelled')"
 		} else {
-			query += " AND LOWER(s.status) = LOWER(" + qb.NextPlaceholder() + ")"
+			query += " AND LOWER(" + statusFilterExpr + ") = LOWER(" + qb.NextPlaceholder() + ")"
 			args = append(args, status)
 		}
 	}
 
-	query += " ORDER BY j.startdate ASC"
+	if jobCols["startdate"] {
+		query += " ORDER BY j.startdate ASC"
+	} else {
+		query += " ORDER BY " + jobPKExpr + " DESC"
+	}
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -1564,6 +1987,8 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		StartDate         *string `json:"start_date,omitempty"`
 		EndDate           *string `json:"end_date,omitempty"`
 		Status            string  `json:"status"`
+		CustomerID        *int64  `json:"customer_id,omitempty"`
+		StatusID          *int64  `json:"status_id,omitempty"`
 		CustomerFirstName string  `json:"customer_first_name,omitempty"`
 		CustomerLastName  string  `json:"customer_last_name,omitempty"`
 		DeviceCount       int     `json:"device_count"`
@@ -1574,8 +1999,10 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var j JobResponse
 		var description, startDate, endDate sql.NullString
+		var customerID, statusID sql.NullInt64
 
 		if err := rows.Scan(&j.JobID, &j.JobCode, &description, &startDate, &endDate, &j.Status,
+			&customerID, &statusID,
 			&j.CustomerFirstName, &j.CustomerLastName, &j.DeviceCount, &j.RequirementsCount); err != nil {
 			log.Printf("Error scanning job row: %v", err)
 			continue
@@ -1589,6 +2016,14 @@ func GetJobs(w http.ResponseWriter, r *http.Request) {
 		}
 		if endDate.Valid {
 			j.EndDate = &endDate.String
+		}
+		if customerID.Valid {
+			v := customerID.Int64
+			j.CustomerID = &v
+		}
+		if statusID.Valid {
+			v := statusID.Int64
+			j.StatusID = &v
 		}
 
 		jobs = append(jobs, j)
@@ -1606,26 +2041,115 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db := repository.GetSQLDB()
+	forceLocal := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("source")), "local")
+	if !forceLocal {
+		if proxyTwentyJobSummaryWithLocalDevices(w, r, jobID) {
+			return
+		}
 
-	// Get job details
+		if proxyRentalCoreJobSummaryWithLocalNames(w, r, jobID) {
+			return
+		}
+	}
+
+	db := repository.GetSQLDB()
+	jobCols, err := getTableColumnsForDB(db, "jobs")
+	if err != nil {
+		log.Printf("Error loading jobs schema for summary: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load job"})
+		return
+	}
+
+	jobPKCol := "jobid"
+	if !jobCols["jobid"] && jobCols["id"] {
+		jobPKCol = "id"
+	}
+	if !jobCols["jobid"] && !jobCols["id"] {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "jobs primary key column is missing"})
+		return
+	}
+
+	statusCols, _ := getTableColumnsForDB(db, "status")
+	hasStatusJoin := jobCols["statusid"] && statusCols["statusid"] && statusCols["status"]
+
+	customersCols, _ := getTableColumnsForDB(db, "customers")
+	hasCustomersJoin := jobCols["customerid"] && customersCols["customerid"]
+
+	jobCodeExpr := fmt.Sprintf("CONCAT('JOB', LPAD(CAST(j.%s AS TEXT), 6, '0'))", jobPKCol)
+	if jobCols["job_code"] {
+		jobCodeExpr = fmt.Sprintf("COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.%s AS TEXT), 6, '0')))", jobPKCol)
+	}
+
+	descriptionExpr := "NULL::text"
+	if jobCols["description"] {
+		descriptionExpr = "j.description"
+	}
+
+	startDateExpr := "NULL::text"
+	if jobCols["startdate"] {
+		startDateExpr = "j.startdate"
+	}
+
+	endDateExpr := "NULL::text"
+	if jobCols["enddate"] {
+		endDateExpr = "j.enddate"
+	}
+
+	statusExpr := "'open'"
+	if hasStatusJoin {
+		statusExpr = "COALESCE(s.status, 'open')"
+	} else if jobCols["status"] {
+		statusExpr = "COALESCE(j.status, 'open')"
+	}
+
+	customerIDExpr := "NULL::bigint"
+	if jobCols["customerid"] {
+		customerIDExpr = "j.customerid"
+	}
+
+	statusIDExpr := "NULL::bigint"
+	if jobCols["statusid"] {
+		statusIDExpr = "j.statusid"
+	}
+
+	customerFirstExpr := "''"
+	customerLastExpr := "''"
+	if hasCustomersJoin {
+		if customersCols["firstname"] {
+			customerFirstExpr = "COALESCE(c.firstname, '')"
+		}
+		if customersCols["lastname"] {
+			customerLastExpr = "COALESCE(c.lastname, '')"
+		}
+	}
+
 	var (
 		jobCode                             sql.NullString
 		description, startDate, endDate     sql.NullString
+		customerID, statusID                sql.NullInt64
 		status                              string
 		customerFirstName, customerLastName string
 	)
 
-	err = db.QueryRow(`
-		SELECT COALESCE(j.job_code, CONCAT('JOB', LPAD(CAST(j.jobid AS TEXT), 6, '0'))),
-		       j.description, j.startdate, j.enddate, COALESCE(s.status, 'open') AS status,
-		       COALESCE(c.firstname, '') as customer_first_name,
-		       COALESCE(c.lastname, '') as customer_last_name
+	query := fmt.Sprintf(`
+		SELECT %s,
+		       %s, %s, %s, %s AS status,
+		       %s, %s,
+		       %s as customer_first_name,
+		       %s as customer_last_name
 		FROM jobs j
-		LEFT JOIN status s ON j.statusid = s.statusid
-		LEFT JOIN customers c ON j.customerid = c.customerid
-		WHERE j.jobid = $1
-	`, jobID).Scan(&jobCode, &description, &startDate, &endDate, &status, &customerFirstName, &customerLastName)
+	`, jobCodeExpr, descriptionExpr, startDateExpr, endDateExpr, statusExpr, statusIDExpr, customerIDExpr, customerFirstExpr, customerLastExpr)
+
+	if hasStatusJoin {
+		query += "LEFT JOIN status s ON j.statusid = s.statusid\n"
+	}
+	if hasCustomersJoin {
+		query += "LEFT JOIN customers c ON j.customerid = c.customerid\n"
+	}
+
+	query += fmt.Sprintf("WHERE j.%s = $1", jobPKCol)
+
+	err = db.QueryRow(query, jobID).Scan(&jobCode, &description, &startDate, &endDate, &status, &statusID, &customerID, &customerFirstName, &customerLastName)
 
 	if err == sql.ErrNoRows {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Job not found"})
@@ -1637,7 +2161,6 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get devices for this job with their current status
 	rows, err := db.Query(`
 		SELECT jd.deviceID, d.status, d.barcode, d.qr_code,
 		       COALESCE(p.name, '') as product_name,
@@ -1666,7 +2189,7 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		Barcode     *string `json:"barcode,omitempty"`
 		QRCode      *string `json:"qr_code,omitempty"`
 		PackStatus  string  `json:"pack_status"`
-		Scanned     bool    `json:"scanned"` // true if pack_status is 'issued' or device status is 'on_job'
+		Scanned     bool    `json:"scanned"`
 	}
 
 	devices := []JobDevice{}
@@ -1687,50 +2210,118 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 			jd.QRCode = &qrCode.String
 		}
 
-		// Mark as scanned only if device is currently on_job
-		// If device is back in storage, it should not be highlighted as scanned
 		jd.Scanned = jd.Status == "on_job"
-
 		devices = append(devices, jd)
 	}
 
-	// Get product requirements for this job
 	type ProductRequirement struct {
 		ProductID   int    `json:"product_id"`
 		ProductName string `json:"product_name"`
 		Required    int    `json:"required"`
-		Assigned    int    `json:"assigned"` // devices of this product currently on_job
+		Assigned    int    `json:"assigned"`
 	}
 
-	reqRows, err := db.Query(`
-		SELECT jpr.product_id, COALESCE(p.name, '') as product_name, jpr.quantity,
-		       COALESCE(assigned_counts.assigned, 0) as assigned
-		FROM job_product_requirements jpr
-		LEFT JOIN products p ON jpr.product_id = p.productid
-		LEFT JOIN (
-			SELECT d2.productid, COUNT(*) as assigned
-			FROM jobdevices jd2
-			LEFT JOIN devices d2 ON jd2.deviceid = d2.deviceid
-			WHERE jd2.jobid = $1 AND d2.status = 'on_job'
-			GROUP BY d2.productid
-		) assigned_counts ON assigned_counts.productid = jpr.product_id
-		WHERE jpr.job_id = $1
-		ORDER BY COALESCE(p.name, ''), jpr.product_id
-	`, jobID)
-
 	productRequirements := []ProductRequirement{}
-	if err == nil {
-		defer reqRows.Close()
-		for reqRows.Next() {
-			var req ProductRequirement
-			if err := reqRows.Scan(&req.ProductID, &req.ProductName, &req.Required, &req.Assigned); err != nil {
-				log.Printf("Error scanning requirement row: %v", err)
-				continue
+	jobReqCols, reqColsErr := getTableColumnsForDB(db, "job_product_requirements")
+	if reqColsErr != nil {
+		log.Printf("Error checking requirement table columns: %v", reqColsErr)
+	} else if jobReqCols["job_id"] && jobReqCols["product_id"] && jobReqCols["quantity"] {
+		reqRows, reqErr := db.Query(`
+			SELECT jpr.product_id, COALESCE(p.name, '') as product_name, jpr.quantity,
+			       COALESCE(assigned_counts.assigned, 0) as assigned
+			FROM job_product_requirements jpr
+			LEFT JOIN products p ON jpr.product_id = p.productid
+			LEFT JOIN (
+				SELECT d2.productid, COUNT(*) as assigned
+				FROM jobdevices jd2
+				LEFT JOIN devices d2 ON jd2.deviceid = d2.deviceid
+				WHERE jd2.jobid = $1 AND d2.status = 'on_job'
+				GROUP BY d2.productid
+			) assigned_counts ON assigned_counts.productid = jpr.product_id
+			WHERE jpr.job_id = $1
+			ORDER BY COALESCE(p.name, ''), jpr.product_id
+		`, jobID)
+		if reqErr == nil {
+			defer reqRows.Close()
+			for reqRows.Next() {
+				var req ProductRequirement
+				if err := reqRows.Scan(&req.ProductID, &req.ProductName, &req.Required, &req.Assigned); err != nil {
+					log.Printf("Error scanning requirement row: %v", err)
+					continue
+				}
+				productRequirements = append(productRequirements, req)
 			}
-			productRequirements = append(productRequirements, req)
+		} else {
+			log.Printf("Error getting product requirements: %v", reqErr)
 		}
 	} else {
-		log.Printf("Error getting product requirements: %v", err)
+		fallbackRequirements, fallbackErr := loadJobRequirementsFallback(jobID)
+		if fallbackErr != nil {
+			log.Printf("job_product_requirements table missing and fallback load failed for job %d: %v", jobID, fallbackErr)
+		} else if len(fallbackRequirements) > 0 {
+			assignedByProduct := make(map[int]int)
+			assignedRows, assignedErr := db.Query(`
+				SELECT COALESCE(d2.productid, 0) as product_id, COUNT(*) as assigned
+				FROM jobdevices jd2
+				LEFT JOIN devices d2 ON jd2.deviceid = d2.deviceid
+				WHERE jd2.jobid = $1 AND d2.status = 'on_job'
+				GROUP BY COALESCE(d2.productid, 0)
+			`, jobID)
+			if assignedErr == nil {
+				defer assignedRows.Close()
+				for assignedRows.Next() {
+					var productID int
+					var assigned int
+					if scanErr := assignedRows.Scan(&productID, &assigned); scanErr != nil {
+						continue
+					}
+					if productID > 0 {
+						assignedByProduct[productID] = assigned
+					}
+				}
+			}
+
+			productNameByID := make(map[int]string)
+			if len(fallbackRequirements) > 0 {
+				placeholders := make([]string, 0, len(fallbackRequirements))
+				args := make([]interface{}, 0, len(fallbackRequirements))
+				for i, req := range fallbackRequirements {
+					placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+					args = append(args, req.ProductID)
+				}
+				if len(placeholders) > 0 {
+					nameQuery := fmt.Sprintf("SELECT productID, name FROM products WHERE productID IN (%s)", strings.Join(placeholders, ","))
+					nameRows, nameErr := db.Query(nameQuery, args...)
+					if nameErr == nil {
+						defer nameRows.Close()
+						for nameRows.Next() {
+							var productID int
+							var productName string
+							if scanErr := nameRows.Scan(&productID, &productName); scanErr != nil {
+								continue
+							}
+							productNameByID[productID] = productName
+						}
+					}
+				}
+			}
+
+			for _, req := range fallbackRequirements {
+				productName := productNameByID[req.ProductID]
+				if strings.TrimSpace(productName) == "" {
+					productName = fmt.Sprintf("Product %d", req.ProductID)
+				}
+				productRequirements = append(productRequirements, ProductRequirement{
+					ProductID:   req.ProductID,
+					ProductName: productName,
+					Required:    req.Quantity,
+					Assigned:    assignedByProduct[req.ProductID],
+				})
+			}
+			log.Printf("job_product_requirements table missing; loaded %d fallback requirements for job %d", len(productRequirements), jobID)
+		} else {
+			log.Printf("job_product_requirements table missing; returning empty requirement list for job %d", jobID)
+		}
 	}
 
 	jobCodeValue := fmt.Sprintf("JOB%06d", jobID)
@@ -1746,6 +2337,12 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 		"customer_last_name":   customerLastName,
 		"devices":              devices,
 		"product_requirements": productRequirements,
+	}
+	if customerID.Valid {
+		response["customer_id"] = customerID.Int64
+	}
+	if statusID.Valid {
+		response["status_id"] = statusID.Int64
 	}
 
 	if description.Valid {
@@ -1763,6 +2360,420 @@ func GetJobSummary(w http.ResponseWriter, r *http.Request) {
 
 func CompleteJob(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Job completed"})
+}
+
+func getTableColumnsForDB(db *sql.DB, tableName string) (map[string]bool, error) {
+	rows, err := db.Query(`
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = $1
+	`, tableName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols := make(map[string]bool)
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			return nil, err
+		}
+		cols[strings.ToLower(strings.TrimSpace(col))] = true
+	}
+
+	return cols, nil
+}
+
+func findOpenStatusID(db *sql.DB) (*int64, error) {
+	var statusID int64
+	err := db.QueryRow(`
+		SELECT statusid
+		FROM status
+		WHERE LOWER(COALESCE(status, '')) = 'open'
+		LIMIT 1
+	`).Scan(&statusID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &statusID, nil
+}
+
+// GetJobFormOptions returns customer and status options for job create/edit forms.
+func GetJobFormOptions(w http.ResponseWriter, r *http.Request) {
+	db := repository.GetSQLDB()
+
+	jobCols, err := getTableColumnsForDB(db, "jobs")
+	if err != nil {
+		log.Printf("GetJobFormOptions jobs columns error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load job options"})
+		return
+	}
+
+	customers := []map[string]interface{}{}
+	if jobCols["customerid"] {
+		customerCols, err := getTableColumnsForDB(db, "customers")
+		if err == nil && customerCols["customerid"] {
+			rows, qErr := db.Query(`
+				SELECT customerid, COALESCE(firstname, ''), COALESCE(lastname, '')
+				FROM customers
+				ORDER BY lastname, firstname
+				LIMIT 1000
+			`)
+			if qErr == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var customerID int64
+					var firstName, lastName string
+					if scanErr := rows.Scan(&customerID, &firstName, &lastName); scanErr != nil {
+						continue
+					}
+					displayName := strings.TrimSpace(strings.TrimSpace(firstName) + " " + strings.TrimSpace(lastName))
+					if displayName == "" {
+						displayName = fmt.Sprintf("Customer %d", customerID)
+					}
+					customers = append(customers, map[string]interface{}{
+						"customer_id":  customerID,
+						"first_name":   firstName,
+						"last_name":    lastName,
+						"display_name": displayName,
+					})
+				}
+			}
+		}
+	}
+
+	statuses := []map[string]interface{}{}
+	var defaultStatusID *int64
+	if jobCols["statusid"] {
+		statusCols, err := getTableColumnsForDB(db, "status")
+		if err == nil && statusCols["statusid"] {
+			rows, qErr := db.Query(`
+				SELECT statusid, COALESCE(status, '')
+				FROM status
+				ORDER BY status
+			`)
+			if qErr == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var statusID int64
+					var statusName string
+					if scanErr := rows.Scan(&statusID, &statusName); scanErr != nil {
+						continue
+					}
+					if defaultStatusID == nil && strings.EqualFold(strings.TrimSpace(statusName), "open") {
+						copyID := statusID
+						defaultStatusID = &copyID
+					}
+					statuses = append(statuses, map[string]interface{}{
+						"status_id": statusID,
+						"name":      statusName,
+					})
+				}
+			}
+		}
+
+		if defaultStatusID == nil {
+			if openID, openErr := findOpenStatusID(db); openErr == nil {
+				defaultStatusID = openID
+			}
+		}
+	}
+
+	resp := map[string]interface{}{
+		"customers": customers,
+		"statuses":  statuses,
+	}
+	if defaultStatusID != nil {
+		resp["default_status_id"] = *defaultStatusID
+	}
+
+	respondJSON(w, http.StatusOK, resp)
+}
+
+// CreateJob creates a new job record.
+func CreateJob(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		JobCode     string  `json:"job_code"`
+		Description *string `json:"description"`
+		StartDate   *string `json:"start_date"`
+		EndDate     *string `json:"end_date"`
+		CustomerID  *int64  `json:"customer_id"`
+		StatusID    *int64  `json:"status_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if strings.TrimSpace(req.JobCode) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "job_code is required"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+	jobCols, err := getTableColumnsForDB(db, "jobs")
+	if err != nil {
+		log.Printf("CreateJob columns error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to inspect jobs schema"})
+		return
+	}
+
+	if !jobCols["job_code"] {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "jobs.job_code column is missing"})
+		return
+	}
+
+	insertCols := []string{"job_code"}
+	placeholders := []string{"$1"}
+	args := []interface{}{strings.TrimSpace(req.JobCode)}
+	nextArg := 2
+
+	if jobCols["description"] {
+		insertCols = append(insertCols, "description")
+		placeholders = append(placeholders, fmt.Sprintf("$%d", nextArg))
+		args = append(args, req.Description)
+		nextArg++
+	}
+	if jobCols["startdate"] {
+		insertCols = append(insertCols, "startdate")
+		placeholders = append(placeholders, fmt.Sprintf("$%d", nextArg))
+		args = append(args, req.StartDate)
+		nextArg++
+	}
+	if jobCols["enddate"] {
+		insertCols = append(insertCols, "enddate")
+		placeholders = append(placeholders, fmt.Sprintf("$%d", nextArg))
+		args = append(args, req.EndDate)
+		nextArg++
+	}
+	if jobCols["customerid"] && req.CustomerID != nil && *req.CustomerID > 0 {
+		insertCols = append(insertCols, "customerid")
+		placeholders = append(placeholders, fmt.Sprintf("$%d", nextArg))
+		args = append(args, *req.CustomerID)
+		nextArg++
+	}
+	if jobCols["statusid"] {
+		if req.StatusID != nil && *req.StatusID > 0 {
+			insertCols = append(insertCols, "statusid")
+			placeholders = append(placeholders, fmt.Sprintf("$%d", nextArg))
+			args = append(args, *req.StatusID)
+			nextArg++
+		} else if openStatusID, openErr := findOpenStatusID(db); openErr == nil && openStatusID != nil {
+			insertCols = append(insertCols, "statusid")
+			placeholders = append(placeholders, fmt.Sprintf("$%d", nextArg))
+			args = append(args, *openStatusID)
+			nextArg++
+		}
+	}
+
+	returningCol := ""
+	if jobCols["jobid"] {
+		returningCol = "jobid"
+	} else if jobCols["id"] {
+		returningCol = "id"
+	}
+	if returningCol == "" {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "jobs primary key column is missing"})
+		return
+	}
+
+	var jobID int64
+	query := fmt.Sprintf(
+		"INSERT INTO jobs (%s) VALUES (%s) RETURNING %s",
+		strings.Join(insertCols, ", "),
+		strings.Join(placeholders, ", "),
+		returningCol,
+	)
+	err = db.QueryRow(query, args...).Scan(&jobID)
+	if err != nil {
+		log.Printf("CreateJob error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create job"})
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"job_id":  jobID,
+		"message": "Job created successfully",
+	})
+}
+
+// UpdateJob updates an existing job.
+func UpdateJob(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	jobIDStr := vars["id"]
+	jobID, err := strconv.Atoi(jobIDStr)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid job ID"})
+		return
+	}
+
+	var req struct {
+		JobCode     string  `json:"job_code"`
+		Description *string `json:"description"`
+		StartDate   *string `json:"start_date"`
+		EndDate     *string `json:"end_date"`
+		CustomerID  *int64  `json:"customer_id"`
+		StatusID    *int64  `json:"status_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if strings.TrimSpace(req.JobCode) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "job_code is required"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+	jobCols, err := getTableColumnsForDB(db, "jobs")
+	if err != nil {
+		log.Printf("UpdateJob columns error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to inspect jobs schema"})
+		return
+	}
+
+	if !jobCols["job_code"] {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "jobs.job_code column is missing"})
+		return
+	}
+
+	whereCol := ""
+	if jobCols["jobid"] {
+		whereCol = "jobid"
+	} else if jobCols["id"] {
+		whereCol = "id"
+	}
+	if whereCol == "" {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "jobs primary key column is missing"})
+		return
+	}
+
+	setClauses := []string{"job_code = $1"}
+	args := []interface{}{strings.TrimSpace(req.JobCode)}
+	nextArg := 2
+
+	if jobCols["description"] {
+		setClauses = append(setClauses, fmt.Sprintf("description = $%d", nextArg))
+		args = append(args, req.Description)
+		nextArg++
+	}
+	if jobCols["startdate"] {
+		setClauses = append(setClauses, fmt.Sprintf("startdate = $%d", nextArg))
+		args = append(args, req.StartDate)
+		nextArg++
+	}
+	if jobCols["enddate"] {
+		setClauses = append(setClauses, fmt.Sprintf("enddate = $%d", nextArg))
+		args = append(args, req.EndDate)
+		nextArg++
+	}
+	if jobCols["customerid"] {
+		if req.CustomerID != nil && *req.CustomerID > 0 {
+			setClauses = append(setClauses, fmt.Sprintf("customerid = $%d", nextArg))
+			args = append(args, *req.CustomerID)
+			nextArg++
+		} else if req.CustomerID != nil {
+			setClauses = append(setClauses, "customerid = NULL")
+		}
+	}
+	if jobCols["statusid"] && req.StatusID != nil {
+		if *req.StatusID > 0 {
+			setClauses = append(setClauses, fmt.Sprintf("statusid = $%d", nextArg))
+			args = append(args, *req.StatusID)
+			nextArg++
+		}
+	}
+	if jobCols["updated_at"] {
+		setClauses = append(setClauses, "updated_at = NOW()")
+	}
+
+	args = append(args, jobID)
+	query := fmt.Sprintf(
+		"UPDATE jobs SET %s WHERE %s = $%d",
+		strings.Join(setClauses, ", "),
+		whereCol,
+		nextArg,
+	)
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		log.Printf("UpdateJob error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update job"})
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Job not found"})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Job updated successfully"})
+}
+
+// DeleteJob deletes a job after verifying it has no assigned devices.
+func DeleteJob(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	jobIDStr := vars["id"]
+	jobID, err := strconv.Atoi(jobIDStr)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid job ID"})
+		return
+	}
+
+	db := repository.GetSQLDB()
+
+	var deviceCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM jobdevices WHERE jobid = $1", jobID).Scan(&deviceCount); err != nil {
+		log.Printf("DeleteJob check error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to check job devices"})
+		return
+	}
+	if deviceCount > 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("Cannot delete job with %d device(s) assigned. Remove devices first.", deviceCount),
+		})
+		return
+	}
+
+	jobCols, err := getTableColumnsForDB(db, "jobs")
+	if err != nil {
+		log.Printf("DeleteJob columns error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to inspect jobs schema"})
+		return
+	}
+
+	whereCol := ""
+	if jobCols["jobid"] {
+		whereCol = "jobid"
+	} else if jobCols["id"] {
+		whereCol = "id"
+	}
+	if whereCol == "" {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "jobs primary key column is missing"})
+		return
+	}
+
+	result, err := db.Exec(fmt.Sprintf("DELETE FROM jobs WHERE %s = $1", whereCol), jobID)
+	if err != nil {
+		log.Printf("DeleteJob error: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete job"})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Job not found"})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Job deleted successfully"})
 }
 
 func GetCases(w http.ResponseWriter, r *http.Request) {
@@ -2861,7 +3872,35 @@ func GetMovements(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db := repository.GetSQLDB()
-	rows, err := db.Query(`
+	jobCols, err := getTableColumnsForDB(db, "jobs")
+	if err != nil {
+		log.Printf("Error loading jobs schema for movements: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load movements"})
+		return
+	}
+
+	jobPKCol := "jobid"
+	if !jobCols["jobid"] && jobCols["id"] {
+		jobPKCol = "id"
+	}
+
+	fromJobJoin := fmt.Sprintf("dm.from_job_id = fj.%s", jobPKCol)
+	toJobJoin := fmt.Sprintf("dm.to_job_id = tj.%s", jobPKCol)
+
+	fromJobLabelExpr := "NULL::text"
+	toJobLabelExpr := "NULL::text"
+	if jobCols["description"] {
+		fromJobLabelExpr = "fj.description"
+		toJobLabelExpr = "tj.description"
+	} else if jobCols["job_code"] {
+		fromJobLabelExpr = "fj.job_code"
+		toJobLabelExpr = "tj.job_code"
+	} else if jobCols[jobPKCol] {
+		fromJobLabelExpr = fmt.Sprintf("CONCAT('JOB', LPAD(CAST(fj.%s AS TEXT), 6, '0'))", jobPKCol)
+		toJobLabelExpr = fmt.Sprintf("CONCAT('JOB', LPAD(CAST(tj.%s AS TEXT), 6, '0'))", jobPKCol)
+	}
+
+	query := fmt.Sprintf(`
 		SELECT
 			dm.movement_id,
 			dm.device_id,
@@ -2876,20 +3915,22 @@ func GetMovements(w http.ResponseWriter, r *http.Request) {
 			p.name,
 			fz.name,
 			tz.name,
-			fj.description,
-			tj.description,
+			%s,
+			%s,
 			COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.username) as performed_by
 		FROM device_movements dm
 		LEFT JOIN devices d ON dm.device_id = d.deviceID
 		LEFT JOIN products p ON d.productID = p.productID
 		LEFT JOIN storage_zones fz ON dm.from_zone_id = fz.zone_id
 		LEFT JOIN storage_zones tz ON dm.to_zone_id = tz.zone_id
-		LEFT JOIN jobs fj ON dm.from_job_id = fj.jobID
-		LEFT JOIN jobs tj ON dm.to_job_id = tj.jobID
+		LEFT JOIN jobs fj ON %s
+		LEFT JOIN jobs tj ON %s
 		LEFT JOIN users u ON dm.moved_by = u.userID
 		ORDER BY dm.created_at DESC
 		LIMIT $1
-	`, limit)
+	`, fromJobLabelExpr, toJobLabelExpr, fromJobJoin, toJobJoin)
+
+	rows, err := db.Query(query, limit)
 	if err != nil {
 		log.Printf("Error querying movements: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to load movements"})
@@ -3092,8 +4133,8 @@ func buildDeviceMap(deviceID, productName, status, barcode, qrCode, serialNumber
 func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 	db := repository.GetSQLDB()
 
-	// Query for device tree with categories - Include ALL categories, devices, consumables, and accessories
-	// This ensures newly created categories and consumables/accessories appear immediately in the tree
+	// Query for device tree including products without categories (placed under "Uncategorized")
+	// Start from products so standalone products (no category/subcategory) are included.
 	query := `
 		WITH latest_job AS (
 			SELECT jd.deviceID, jd.jobID
@@ -3103,20 +4144,39 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 				FROM jobdevices
 				GROUP BY deviceID
 			) latest ON jd.deviceID = latest.deviceID AND jd.jobID = latest.jobID
+		), products_cte AS (
+			SELECT
+				p.productID,
+				p.name as product_name,
+				p.is_consumable,
+				p.is_accessory,
+				COALESCE(p.stock_quantity, 0) as stock_quantity,
+				ct.abbreviation as unit,
+				sc.subcategoryID,
+				COALESCE(sc.name, '') as subcategory_name,
+				sbc.subbiercategoryID,
+				COALESCE(sbc.name, '') as subbiercategory_name,
+				c.categoryID,
+				COALESCE(c.name, 'Uncategorized') as category_name
+			FROM products p
+			LEFT JOIN subbiercategories sbc ON p.subbiercategoryID = sbc.subbiercategoryID
+			LEFT JOIN subcategories sc ON COALESCE(p.subcategoryID, sbc.subcategoryID) = sc.subcategoryID
+			LEFT JOIN categories c ON sc.categoryID = c.categoryID
+			LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
 		)
 		SELECT
-			c.categoryID,
-			c.name as category_name,
-			sc.subcategoryID,
-			sc.name as subcategory_name,
-			sbc.subbiercategoryID,
-			sbc.name as subbiercategory_name,
-			p.productID,
-			COALESCE(p.name, '') as product_name,
-			CASE WHEN p.is_consumable = TRUE THEN 1 ELSE 0 END as is_consumable,
-			CASE WHEN p.is_accessory = TRUE THEN 1 ELSE 0 END as is_accessory,
-			COALESCE(p.stock_quantity, 0) as stock_quantity,
-			COALESCE(ct.abbreviation, '') as unit,
+			COALESCE(pcte.categoryID, 0) as categoryID,
+			pcte.category_name,
+			pcte.subcategoryID,
+			pcte.subcategory_name,
+			pcte.subbiercategoryID,
+			pcte.subbiercategory_name,
+			pcte.productID,
+			COALESCE(pcte.product_name, '') as product_name,
+			CASE WHEN pcte.is_consumable = TRUE THEN 1 ELSE 0 END as is_consumable,
+			CASE WHEN pcte.is_accessory = TRUE THEN 1 ELSE 0 END as is_accessory,
+			COALESCE(pcte.stock_quantity, 0) as stock_quantity,
+			COALESCE(pcte.unit, '') as unit,
 			d.deviceID,
 			d.status,
 			d.barcode,
@@ -3136,18 +4196,14 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 			d.lastmaintenance,
 			d.nextmaintenance,
 			d.notes
-		FROM categories c
-		LEFT JOIN subcategories sc ON c.categoryID = sc.categoryID
-		LEFT JOIN subbiercategories sbc ON sc.subcategoryID = sbc.subcategoryID
-		LEFT JOIN products p ON (sbc.subbiercategoryID = p.subbiercategoryID OR (sc.subcategoryID = p.subcategoryID AND p.subbiercategoryID IS NULL))
-		LEFT JOIN count_types ct ON p.count_type_id = ct.count_type_id
-		LEFT JOIN devices d ON p.productID = d.productID
+		FROM products_cte pcte
+		LEFT JOIN devices d ON pcte.productID = d.productID
 		LEFT JOIN storage_zones z ON d.zone_id = z.zone_id
 		LEFT JOIN devicescases dc ON d.deviceID = dc.deviceID
 		LEFT JOIN cases cs ON dc.caseID = cs.caseID
 		LEFT JOIN latest_job lj ON d.deviceID = lj.deviceID
 		LEFT JOIN jobs j ON lj.jobID = j.jobID
-		ORDER BY c.name, sc.name, sbc.name, p.name, d.deviceID
+		ORDER BY pcte.category_name, pcte.subcategory_name, pcte.subbiercategory_name, pcte.product_name, d.deviceID
 	`
 
 	rows, err := db.Query(query)
@@ -3360,7 +4416,11 @@ func GetDeviceTree(w http.ResponseWriter, r *http.Request) {
 // AssignDevicesToZone assigns multiple devices to a storage zone
 func AssignDevicesToZone(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	zoneID := vars["id"]
+	zoneID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid zone ID"})
+		return
+	}
 
 	var input struct {
 		DeviceIDs []string `json:"device_ids"`
@@ -3380,7 +4440,7 @@ func AssignDevicesToZone(w http.ResponseWriter, r *http.Request) {
 
 	// Verify zone exists
 	var exists bool
-	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM storage_zones WHERE zone_id = $1)", zoneID).Scan(&exists)
+	err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM storage_zones WHERE zone_id = $1)", zoneID).Scan(&exists)
 	if err != nil || !exists {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "Zone not found"})
 		return
@@ -3402,7 +4462,7 @@ func AssignDevicesToZone(w http.ResponseWriter, r *http.Request) {
 		`, zoneID, deviceID)
 
 		if err != nil {
-			log.Printf("Error assigning device %s to zone %s: %v", deviceID, zoneID, err)
+			log.Printf("Error assigning device %s to zone %d: %v", deviceID, zoneID, err)
 			failedDevices = append(failedDevices, deviceID)
 			continue
 		}

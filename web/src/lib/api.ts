@@ -1,14 +1,58 @@
 import axios from 'axios';
 
 // Use relative path so it works on any host/platform
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Admin company settings shape (snake_case keys returned from backend)
+export interface AdminCompanySettings {
+  name?: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+
+  tax_number?: string;
+  vat_number?: string;
+  invoice_prefix?: string;
+  invoice_footer?: string;
+  default_tax_rate?: number;
+  currency?: string;
+
+  bank_name?: string;
+  iban?: string;
+  bic?: string;
+  account_holder?: string;
+
+  ceo_name?: string;
+  register_court?: string;
+  register_number?: string;
+
+  brand_primary_color?: string;
+  brand_accent_color?: string;
+  brand_dark_mode?: boolean;
+  brand_logo_url?: string;
+
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  smtp_from_email?: string;
+  smtp_from_name?: string;
+  smtp_use_tls?: boolean;
+}
 
 // Types
 export interface Device {
@@ -55,6 +99,10 @@ export interface DeviceTreeDevice {
   product_id?: number;
   product_name: string;
   status: string;
+  is_consumable?: boolean;
+  is_accessory?: boolean;
+  stock_quantity?: number;
+  unit?: string;
   barcode?: string;
   qr_code?: string;
   serial_number?: string;
@@ -222,6 +270,8 @@ export interface Job {
   start_date?: string;
   end_date?: string;
   status: string;
+  customer_id?: number;
+  status_id?: number;
   customer_first_name?: string;
   customer_last_name?: string;
   device_count: number;
@@ -253,10 +303,60 @@ export interface JobSummary {
   start_date?: string;
   end_date?: string;
   status: string;
+  customer_id?: number;
+  status_id?: number;
   customer_first_name?: string;
   customer_last_name?: string;
   devices: JobDevice[];
   product_requirements: ProductRequirement[];
+}
+
+export interface JobCustomerOption {
+  customer_id: number;
+  first_name?: string;
+  last_name?: string;
+  display_name: string;
+}
+
+export interface JobStatusOption {
+  status_id: number;
+  name: string;
+}
+
+export interface JobFormOptions {
+  customers: JobCustomerOption[];
+  statuses: JobStatusOption[];
+  default_status_id?: number;
+}
+
+export interface JobRequirementProductOption {
+  product_id: number;
+  name: string;
+  category_name?: string;
+}
+
+export interface JobRequirementUpsertPayload {
+  product_id: number;
+  quantity: number;
+}
+
+export interface JobRequirementReplacePayload {
+  requirements: JobRequirementUpsertPayload[];
+}
+
+export interface JobRequirementUpsertResponse {
+  ok: boolean;
+  action: 'created' | 'updated' | 'deleted';
+  job_id: number;
+  product_id: number;
+  quantity: number;
+}
+
+export interface JobRequirementReplaceResponse {
+  ok: boolean;
+  job_id: number;
+  saved_count: number;
+  requirements: JobRequirementUpsertPayload[];
 }
 
 // API Functions
@@ -387,9 +487,41 @@ export const scansApi = {
   getHistory: (limit: number = 50) => api.get(`/scans/history`, { params: { limit } }),
 };
 
+export interface JobCreateInput {
+  job_code: string;
+  description?: string;
+  start_date?: string;
+  end_date?: string;
+  customer_id?: number;
+  status_id?: number;
+}
+
+export interface JobUpdateInput {
+  job_code: string;
+  description?: string;
+  start_date?: string;
+  end_date?: string;
+  customer_id?: number;
+  status_id?: number;
+}
+
 export const jobsApi = {
-  getAll: (params?: { status?: string }) => api.get<Job[]>('/jobs', { params }),
-  getById: (id: number) => api.get<JobSummary>(`/jobs/${id}`),
+  getAll: (params?: { status?: string; source?: 'local' | 'remote' }) => api.get<Job[]>('/jobs', { params }),
+  getById: (id: number, params?: { source?: 'local' | 'remote' }) => api.get<JobSummary>(`/jobs/${id}`, { params }),
+  getRequirementProductOptions: (params?: { q?: string; limit?: number }) =>
+    api.get<{ products: JobRequirementProductOption[]; count: number }>('/jobs/products/options', { params }),
+  upsertRequirement: (jobId: number, payload: JobRequirementUpsertPayload) =>
+    api.post<JobRequirementUpsertResponse>(`/jobs/${jobId}/requirements`, payload),
+  replaceRequirements: (jobId: number, payload: JobRequirementReplacePayload) =>
+    api.put<JobRequirementReplaceResponse>(`/jobs/${jobId}/requirements`, payload),
+  getFormOptions: () =>
+    api.get<JobFormOptions>('/admin/jobs/options'),
+  create: (data: JobCreateInput) =>
+    api.post<{ job_id: number; message: string }>('/admin/jobs', data),
+  update: (id: number, data: JobUpdateInput) =>
+    api.put<{ message: string }>(`/admin/jobs/${id}`, data),
+  delete: (id: number) =>
+    api.delete<{ message: string }>(`/admin/jobs/${id}`),
 };
 
 export interface Defect {
@@ -629,6 +761,9 @@ export const adminSettingsApi = {
     api.put<CurrencySettings & { message: string }>('/admin/currency', {
       currency_symbol: symbol,
     }),
+  getCompany: () => api.get<AdminCompanySettings>('/admin/company-settings'),
+  updateCompany: (payload: Partial<AdminCompanySettings>) =>
+    api.put<AdminCompanySettings & { message?: string }>('/admin/company-settings', payload),
 };
 
 // Eventory integration
@@ -692,6 +827,44 @@ export const eventoryApi = {
     api.put<EventoryCredentialKeyStatus>('/admin/eventory/credential-key', { key }),
   generateCredentialKey: (save: boolean) =>
     api.post<{ key: string; saved: boolean }>('/admin/eventory/credential-key/generate', { save }),
+};
+
+// Twenty integration
+export interface TwentySettings {
+  base_url: string;
+  base_url_source?: 'none' | 'database' | 'env';
+  base_url_locked?: boolean;
+  api_key_configured: boolean;
+  api_key_source?: 'none' | 'database' | 'env';
+  api_key_locked?: boolean;
+  api_key_masked: string;
+  sync_interval_minutes: number;
+  enable_job_bootstrap: boolean;
+}
+
+export interface TwentySettingsPayload {
+  base_url: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  sync_interval_minutes: number;
+  enable_job_bootstrap: boolean;
+}
+
+export interface TwentySyncResult {
+  ok: boolean;
+  created: number;
+  updated: number;
+  productCreated: number;
+  productUpdated: number;
+  packageCreated: number;
+  packageUpdated: number;
+}
+
+export const twentyApi = {
+  getSettings: () => api.get<TwentySettings>('/admin/twenty/settings'),
+  updateSettings: (payload: TwentySettingsPayload) =>
+    api.put<TwentySettings & { message: string }>('/admin/twenty/settings', payload),
+  sync: () => api.post<TwentySyncResult>('/admin/twenty/sync', {}),
 };
 
 // API Keys

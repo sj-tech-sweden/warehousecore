@@ -129,6 +129,12 @@ func main() {
 	}
 
 	// Ensure auto-admin assignment based on ENV (ADMIN_NAME_MATCH)
+	// Ensure default admin exists (create if no users present)
+	if err := services.NewRBACService().EnsureDefaultAdminFromEnv(); err != nil {
+		log.Printf("[RBAC] EnsureDefaultAdminFromEnv failed: %v", err)
+	}
+
+	// Ensure auto-admin assignment based on ENV (ADMIN_NAME_MATCH)
 	go func() {
 		// Run asynchronously to not block startup
 		r := services.NewRBACService()
@@ -139,9 +145,15 @@ func main() {
 
 	// Bootstrap Eventory config from environment variables (if any and not yet stored)
 	services.BootstrapEventoryFromEnv()
+	// Bootstrap Twenty config from environment variables (if any and not yet stored)
+	services.BootstrapTwentyFromEnv()
+	// Register Twenty scheduler sync hook (handlers -> services)
+	handlers.RegisterTwentySyncHook()
 
 	// Start Eventory background scheduler (no-op if sync_interval_minutes == 0)
 	services.GetEventoryScheduler().Reset()
+	// Start Twenty background scheduler (runs initial sync, then interval if enabled)
+	services.GetTwentyScheduler().Reset()
 
 	// Setup router
 	router := mux.NewRouter()
@@ -177,6 +189,7 @@ func main() {
 
 	// Protected routes - apply auth middleware
 	protected := api.PathPrefix("").Subrouter()
+	protected.Use(middleware.SSOMiddleware)
 	protected.Use(middleware.AuthMiddleware)
 
 	// Auth status endpoint (requires authentication)
@@ -207,9 +220,26 @@ func main() {
 	api.HandleFunc("/zone-types", handlers.GetZoneTypes).Methods("GET")
 
 	// Job endpoints
-	api.HandleFunc("/jobs", handlers.GetJobs).Methods("GET")
-	api.HandleFunc("/jobs/{id}", handlers.GetJobSummary).Methods("GET")
-	api.HandleFunc("/jobs/{id}/complete", handlers.CompleteJob).Methods("POST")
+	protected.HandleFunc("/jobs", handlers.GetJobs).Methods("GET")
+	protected.HandleFunc("/jobs/{id}", handlers.GetJobSummary).Methods("GET")
+	protected.HandleFunc("/jobs/{id}/complete", handlers.CompleteJob).Methods("POST")
+	protected.HandleFunc("/jobs/products/options", handlers.GetJobRequirementProductOptions).Methods("GET")
+	protected.HandleFunc("/jobs/{id}/requirements", handlers.UpsertJobRequirement).Methods("POST")
+	protected.HandleFunc("/jobs/{id}/requirements", handlers.ReplaceJobRequirements).Methods("PUT")
+
+	// Twenty CRM integration (admin-only write operation)
+	twenty := api.PathPrefix("/twenty").Subrouter()
+	twenty.Use(middleware.SSOMiddleware)
+	twenty.Use(middleware.AuthMiddleware)
+	twenty.Use(middleware.RequireAdmin)
+	twenty.HandleFunc("/sync-products", handlers.TwentySyncProductsHandler).Methods("POST")
+
+	// Bidirectional integration ingest (admin-only write operation)
+	integrations := api.PathPrefix("/integrations/twenty").Subrouter()
+	integrations.Use(middleware.SSOMiddleware)
+	integrations.Use(middleware.AuthMiddleware)
+	integrations.Use(middleware.RequireAdmin)
+	integrations.HandleFunc("/events", handlers.IngestTwentyEvent).Methods("POST")
 
 	// Public rental equipment endpoint (for RentalCore integration)
 	api.HandleFunc("/rental-equipment", handlers.GetRentalEquipment).Methods("GET")
@@ -266,6 +296,7 @@ func main() {
 	// Admin routes (RBAC protected)
 	// Read-only admin routes (admin or manager)
 	adminRead := api.PathPrefix("/admin").Subrouter()
+	adminRead.Use(middleware.SSOMiddleware)
 	adminRead.Use(middleware.AuthMiddleware)
 	adminRead.Use(middleware.RequireAdminOrManager)
 	adminRead.HandleFunc("/zone-types", handlers.GetZoneTypes).Methods("GET")
@@ -294,11 +325,21 @@ func main() {
 	adminRead.HandleFunc("/rental-equipment/suppliers", handlers.GetRentalEquipmentSuppliers).Methods("GET")
 	adminRead.HandleFunc("/rental-equipment/{id}", handlers.GetRentalEquipmentByID).Methods("GET")
 	adminRead.HandleFunc("/api-keys", handlers.ListAPIKeys).Methods("GET")
+	adminRead.HandleFunc("/jobs/options", handlers.GetJobFormOptions).Methods("GET")
 
 	// Admin-only routes (write operations)
 	admin := api.PathPrefix("/admin").Subrouter()
+	admin.Use(middleware.SSOMiddleware)
 	admin.Use(middleware.AuthMiddleware)
 	admin.Use(middleware.RequireAdmin)
+	// Job CRUD (admin-only)
+	admin.HandleFunc("/jobs", handlers.CreateJob).Methods("POST")
+	admin.HandleFunc("/jobs/{id}", handlers.UpdateJob).Methods("PUT")
+	admin.HandleFunc("/jobs/{id}", handlers.DeleteJob).Methods("DELETE")
+	// Create role/user endpoints
+	admin.HandleFunc("/roles", handlers.CreateRole).Methods("POST")
+	admin.HandleFunc("/roles/{id}", handlers.UpdateRole).Methods("PUT")
+	admin.HandleFunc("/users", handlers.CreateUser).Methods("POST")
 	admin.HandleFunc("/zone-types", handlers.CreateZoneType).Methods("POST")
 	admin.HandleFunc("/zone-types/{id}", handlers.UpdateZoneType).Methods("PUT")
 	admin.HandleFunc("/zone-types/{id}", handlers.DeleteZoneType).Methods("DELETE")
@@ -314,6 +355,8 @@ func main() {
 	admin.HandleFunc("/led/controllers/{id}/restart", handlers.RestartLEDController).Methods("POST")
 	admin.HandleFunc("/led/controllers/{id}", handlers.DeleteLEDController).Methods("DELETE")
 	admin.HandleFunc("/users/{id}/roles", handlers.UpdateUserRoles).Methods("PUT")
+	admin.HandleFunc("/users/{id}", handlers.AdminUpdateUser).Methods("PUT")
+	admin.HandleFunc("/users/{id}/reset-password", handlers.AdminResetUserPassword).Methods("POST")
 	admin.HandleFunc("/categories", handlers.CreateCategory).Methods("POST")
 	admin.HandleFunc("/categories/{id}", handlers.UpdateCategory).Methods("PUT")
 	admin.HandleFunc("/categories/{id}", handlers.DeleteCategory).Methods("DELETE")
@@ -378,6 +421,8 @@ func main() {
 	admin.HandleFunc("/api-limits", handlers.UpdateAPILimits).Methods("PUT")
 	admin.HandleFunc("/currency", handlers.GetCurrencySettings).Methods("GET")
 	admin.HandleFunc("/currency", handlers.UpdateCurrencySettings).Methods("PUT")
+	admin.HandleFunc("/company-settings", handlers.GetCompanySettings).Methods("GET")
+	admin.HandleFunc("/company-settings", handlers.UpdateCompanySettings).Methods("PUT")
 
 	// Eventory integration endpoints (admin-only write + read)
 	admin.HandleFunc("/eventory/settings", handlers.GetEventorySettings).Methods("GET")
@@ -388,6 +433,11 @@ func main() {
 	admin.HandleFunc("/eventory/credential-key", handlers.UpdateEventoryCredentialKey).Methods("PUT")
 	admin.HandleFunc("/eventory/credential-key/generate", handlers.GenerateEventoryCredentialKey).Methods("POST")
 
+	// Twenty integration endpoints (admin-only)
+	admin.HandleFunc("/twenty/settings", handlers.GetTwentySettings).Methods("GET")
+	admin.HandleFunc("/twenty/settings", handlers.UpdateTwentySettings).Methods("PUT")
+	admin.HandleFunc("/twenty/sync", handlers.SyncTwentyProductsNow).Methods("POST")
+
 	// CSV Export endpoints (read-only, admin or manager)
 	adminRead.HandleFunc("/export/{type}", handlers.ExportCSV).Methods("GET")
 
@@ -396,16 +446,21 @@ func main() {
 	protected.HandleFunc("/profile/me", handlers.UpdateMyProfile).Methods("PUT")
 	protected.HandleFunc("/product-packages/alias-map", handlers.GetProductPackageAliasMap).Methods("GET")
 
-	// Service API routes (service-to-service, any active API key)
+	// Service API routes (service-to-service, authenticated by SERVICE_API_KEY env var)
 	serviceAPI := api.PathPrefix("/service").Subrouter()
-	serviceAPI.Use(middleware.APIKeyMiddleware)
+	serviceAPI.Use(middleware.ServiceKeyMiddleware)
 	serviceAPI.HandleFunc("/devices/{id}", handlers.GetDevice).Methods("GET")
+	serviceAPI.HandleFunc("/products", handlers.GetProducts).Methods("GET")
+	serviceAPI.HandleFunc("/products/{id}", handlers.GetProduct).Methods("GET")
+	serviceAPI.HandleFunc("/product-packages", handlers.GetProductPackages).Methods("GET")
+	serviceAPI.HandleFunc("/product-packages/{id}", handlers.GetProductPackage).Methods("GET")
 
 	// Apply middleware
 	api.Use(middleware.Logger)
 	api.Use(middleware.RecoveryMiddleware)
 	// Docs endpoints - always available but require authentication
 	docsRouter := router.PathPrefix("").Subrouter()
+	docsRouter.Use(middleware.SSOMiddleware)
 	docsRouter.Use(middleware.AuthMiddleware)
 	registerDynamicDocs(docsRouter, router)
 
@@ -450,6 +505,7 @@ func main() {
 		controllerListener.Close()
 	}
 	services.GetEventoryScheduler().Stop()
+	services.GetTwentyScheduler().Stop()
 	repository.CloseDatabase()
 	log.Println("Server stopped")
 }

@@ -59,9 +59,9 @@ func Load() (*Config, error) {
 			// PostgreSQL configuration
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
-			Name:     getEnv("DB_NAME", "rentalcore"),
-			User:     getEnv("DB_USER", "rentalcore"),
-			Password: getEnv("DB_PASSWORD", "rentalcore123"),
+			Name:     getEnv("DB_NAME", "warehousecore"),
+			User:     getEnv("DB_USER", "warehousecore"),
+			Password: getEnv("DB_PASSWORD", ""),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		App: AppConfig{

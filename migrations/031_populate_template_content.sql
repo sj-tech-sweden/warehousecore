@@ -4,6 +4,9 @@
 BEGIN;
 
 -- Update any templates that lack template_content with the default device label JSON
+-- Ensure template_content column exists (JSONB) before updating
+ALTER TABLE IF EXISTS label_templates ADD COLUMN IF NOT EXISTS template_content JSONB;
+
 UPDATE label_templates
 SET template_content = $$[
         {
@@ -50,8 +53,8 @@ SET template_content = $$[
                 "alignment": "left"
             }
         }
-    ]$$
-WHERE template_content IS NULL OR TRIM(template_content) = '';
+    ]$$::jsonb
+    WHERE template_content IS NULL OR TRIM(template_content::text) = '';
 
 -- Ensure width_mm/height_mm are populated from legacy width/height columns if present
 ALTER TABLE label_templates ADD COLUMN IF NOT EXISTS width_mm numeric;

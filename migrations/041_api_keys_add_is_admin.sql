@@ -16,8 +16,13 @@ ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT 
 -- migration if API keys are actively in use.
 -- Use a per-row invalidated value so the update remains valid if
 -- api_key_hash is protected by a UNIQUE constraint.
-UPDATE api_keys
-SET api_key_hash = '__invalidated__:' || id::text,
-    is_active = FALSE;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'api_key_hash') THEN
+        EXECUTE 'UPDATE api_keys SET api_key_hash = ''__invalidated__:'' || id::text, is_active = FALSE';
+    ELSE
+        RAISE NOTICE 'Skipping api_key_hash invalidation: column api_key_hash not present on api_keys';
+    END IF;
+END$$;
 
 COMMIT;

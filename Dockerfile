@@ -38,6 +38,7 @@ COPY . .
 # Build the application with CGO enabled (needed for webp library)
 # Output binary to /app so final stage can copy from that path
 RUN CGO_ENABLED=1 GOOS=linux go build -mod=mod -a -o /app/warehousecore ./cmd/server
+RUN CGO_ENABLED=1 GOOS=linux go build -mod=mod -a -o /app/migrate ./cmd/migrate
 
 # Stage 3: Final Image
 FROM alpine:latest
@@ -63,6 +64,7 @@ WORKDIR /root/
 # Copy binary from backend builder
 # Copy binary from backend builder
 COPY --from=backend-builder /app/warehousecore .
+COPY --from=backend-builder /app/migrate ./migrate
 
 # Copy migrations
 COPY --from=backend-builder /app/migrations ./migrations

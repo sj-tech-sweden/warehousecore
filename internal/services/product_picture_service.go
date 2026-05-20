@@ -29,6 +29,20 @@ type ProductPictureService struct {
 	cacheDir     string
 }
 
+// ProductPictureServiceInterface defines the subset of methods used by handlers
+// so tests can inject a mock implementation.
+type ProductPictureServiceInterface interface {
+	Enabled() bool
+	MaxFileSize() int64
+	FolderForProduct(productName string) string
+	ListPictures(productName string) ([]ProductPictureInfo, error)
+	UploadPicture(productName string, file multipart.File, header *multipart.FileHeader) (string, error)
+	DeletePicture(productName, fileName string) error
+	DownloadPictureWithVariant(productName, fileName, variant, format string) (io.ReadCloser, string, error)
+	ClearCachedVariants(productName, fileName string)
+	WarmPictureVariants(productName, fileName string)
+}
+
 type ProductPictureInfo struct {
 	FileName    string    `json:"file_name"`
 	Size        int64     `json:"size"`

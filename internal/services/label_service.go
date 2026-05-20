@@ -29,6 +29,24 @@ type LabelService struct {
 	LabelsDir string
 }
 
+// LabelServiceInterface defines the subset of label service methods used by
+// handlers. Defining an interface allows tests to inject a mock implementation.
+type LabelServiceInterface interface {
+	GenerateQRCode(content string, size int) (string, error)
+	GenerateBarcode(content string, width, height int) (string, error)
+	GetAllTemplates() ([]models.LabelTemplate, error)
+	GetTemplateByID(id int) (*models.LabelTemplate, error)
+	CreateTemplate(tpl *models.LabelTemplate) error
+	UpdateTemplate(id int, updates map[string]interface{}) error
+	DeleteTemplate(id int) error
+	GenerateLabelForDevice(deviceID string, templateID int) (map[string]interface{}, error)
+	GenerateLabelForCase(caseID int, templateID int) (map[string]interface{}, error)
+	GenerateLabelForZone(zoneID int64, templateID int) (map[string]interface{}, error)
+	SaveLabelImage(deviceID, base64Image string) (string, error)
+	SaveCaseLabelImage(caseID int, base64Image string) (string, error)
+	SaveZoneLabelImage(zoneID int64, base64Image string) (string, error)
+}
+
 func NewLabelService() *LabelService {
 	log.Printf("[LABEL INIT] Label service initialized (using headless browser rendering)")
 	return &LabelService{}

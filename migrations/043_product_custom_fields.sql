@@ -201,11 +201,18 @@ DROP  INDEX  IF EXISTS idx_devices_cable_id;
 ALTER TABLE devices DROP COLUMN IF EXISTS cable_id;
 
 -- Drop cable tables (FK-safe order: dependent first).
--- Some other tables (e.g. job_cables) may still reference `cables`.
+-- Some other tables (e.g. job_cables) may still reference "cables".
 -- Remove those FK constraints and referencing columns if present so
 -- the cleanup can proceed in guarded/ idempotent fashion.
-ALTER TABLE job_cables DROP CONSTRAINT IF EXISTS job_cables_cableid_fkey;
-ALTER TABLE job_cables DROP COLUMN IF EXISTS cableid;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'job_cables') THEN
+        EXECUTE 'ALTER TABLE job_cables DROP CONSTRAINT IF EXISTS job_cables_cableid_fkey';
+        EXECUTE 'ALTER TABLE job_cables DROP COLUMN IF EXISTS cableid';
+    ELSE
+        RAISE NOTICE 'Skipping job_cables cleanup: relation job_cables does not exist.';
+    END IF;
+END$$;
 
 DROP TABLE IF EXISTS cables;
 DROP TABLE IF EXISTS cable_connectors;

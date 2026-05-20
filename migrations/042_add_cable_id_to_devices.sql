@@ -16,10 +16,11 @@ BEGIN
           AND table_name = 'devices'
           AND table_schema = 'public'
     ) THEN
-        ALTER TABLE devices
-            ADD CONSTRAINT fk_devices_cable_id
-            FOREIGN KEY (cable_id) REFERENCES cables(cableID)
-            ON DELETE SET NULL;
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'cables') THEN
+            EXECUTE 'ALTER TABLE devices ADD CONSTRAINT fk_devices_cable_id FOREIGN KEY (cable_id) REFERENCES cables(cableID) ON DELETE SET NULL';
+        ELSE
+            RAISE NOTICE 'Skipping FK fk_devices_cable_id: relation cables does not exist in this database.';
+        END IF;
     END IF;
 END $$;
 

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { LogIn } from 'lucide-react';
+import { fetchPublicCompanyName, getInitialCompanyName } from '../lib/publicConfig';
 
 export function Login() {
   const { t } = useTranslation();
@@ -13,15 +14,14 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [companyName, setCompanyName] = useState<string>(
-    (window as any).__APP_CONFIG__?.companyName || 'RentalCore'
-  );
+  const [companyName, setCompanyName] = useState<string>(getInitialCompanyName());
 
   useEffect(() => {
-    fetch('/api/v1/config')
-      .then(res => res.json())
-      .then(cfg => { if (cfg?.companyName) setCompanyName(cfg.companyName); })
-      .catch(() => {});
+    fetchPublicCompanyName().then((name) => {
+      if (name) {
+        setCompanyName(name);
+      }
+    });
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {

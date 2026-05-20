@@ -5,29 +5,37 @@
 -- Using CONCAT to build full name from first_name and last_name
 -- Also trying username and email fields as fallback
 
-SET @admin_role_id = (SELECT roleID FROM roles WHERE name = 'admin' LIMIT 1);
-SET @wh_admin_role_id = (SELECT roleID FROM roles WHERE name = 'warehouse_admin' LIMIT 1);
-SET @thielmann_user_id = (
-  SELECT userID FROM users
-  WHERE CONCAT(first_name, ' ', last_name) LIKE '%Thielmann%'
-     OR username LIKE '%thielmann%'
-     OR email LIKE '%thielmann%'
-  LIMIT 1
-);
+DO $$
+DECLARE
+  admin_role_id INT;
+  wh_admin_role_id INT;
+  thielmann_user_id INT;
+BEGIN
+  SELECT roleid INTO admin_role_id FROM roles WHERE name = 'admin' LIMIT 1;
+  SELECT roleid INTO wh_admin_role_id FROM roles WHERE name = 'warehouse_admin' LIMIT 1;
+  SELECT userid INTO thielmann_user_id FROM users
+    WHERE (COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')) ILIKE '%Thielmann%'
+       OR username ILIKE '%thielmann%'
+       OR email ILIKE '%thielmann%'
+    LIMIT 1;
 
--- Assign both admin and warehouse_admin roles if user exists
-INSERT IGNORE INTO user_roles_wh (user_id, role_id)
-SELECT @thielmann_user_id, @admin_role_id
-WHERE @thielmann_user_id IS NOT NULL AND @admin_role_id IS NOT NULL;
+  IF thielmann_user_id IS NOT NULL AND admin_role_id IS NOT NULL THEN
+    INSERT INTO user_roles_wh (user_id, role_id, created_at)
+    VALUES (thielmann_user_id, admin_role_id, NOW())
+    ON CONFLICT DO NOTHING;
+  END IF;
 
-INSERT IGNORE INTO user_roles_wh (user_id, role_id)
-SELECT @thielmann_user_id, @wh_admin_role_id
-WHERE @thielmann_user_id IS NOT NULL AND @wh_admin_role_id IS NOT NULL;
+  IF thielmann_user_id IS NOT NULL AND wh_admin_role_id IS NOT NULL THEN
+    INSERT INTO user_roles_wh (user_id, role_id, created_at)
+    VALUES (thielmann_user_id, wh_admin_role_id, NOW())
+    ON CONFLICT DO NOTHING;
+  END IF;
 
--- Log the result
-SELECT
-  CASE
-    WHEN @thielmann_user_id IS NULL THEN 'WARNING: User "N. Thielmann" not found. Admin role not assigned.'
-    WHEN @admin_role_id IS NULL THEN 'WARNING: Admin role not found in roles table.'
-    ELSE CONCAT('SUCCESS: Admin role assigned to user ID ', @thielmann_user_id)
-  END AS migration_status;
+  IF thielmann_user_id IS NULL THEN
+    RAISE NOTICE 'WARNING: User "N. Thielmann" not found. Admin role not assigned.';
+  ELSIF admin_role_id IS NULL THEN
+    RAISE NOTICE 'WARNING: Admin role not found in roles table.';
+  ELSE
+    RAISE NOTICE 'SUCCESS: Admin role assigned to user ID %', thielmann_user_id;
+  END IF;
+END$$;
