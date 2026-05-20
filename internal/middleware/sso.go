@@ -17,6 +17,7 @@ import (
 
 	"warehousecore/internal/models"
 	"warehousecore/internal/repository"
+	"warehousecore/internal/services"
 )
 
 type ssoClaims struct {
@@ -163,6 +164,9 @@ func SSOMiddleware(next http.Handler) http.Handler {
 					return
 				}
 				user = dbUser
+				if roles, err := services.NewRBACService().GetUserRoles(claims.UserID); err == nil {
+					user.Roles = roles
+				}
 				localUserLoaded = true
 			}
 		}

@@ -195,6 +195,13 @@ func TestSSOMiddleware_PreservesPasswordHashFromDBUser(t *testing.T) {
 		}).AddRow(
 			claims.UserID, "alice", "alice@example.com", "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", "Alice", "User", false, true, false, now, now, nil,
 		))
+	mock.ExpectQuery(`SELECT .* FROM "roles" JOIN user_roles ON user_roles.roleid = roles.roleid WHERE user_roles.userid = \$1`).
+		WithArgs(claims.UserID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"roleid", "name", "display_name", "description", "is_system_role", "is_active", "permissions", "created_at", "updated_at",
+		}).AddRow(
+			1, "admin", "Admin", "Administrator", true, true, []byte(`["*"]`), now, now,
+		))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: "sso_token", Value: s})
@@ -207,6 +214,10 @@ func TestSSOMiddleware_PreservesPasswordHashFromDBUser(t *testing.T) {
 			return
 		}
 		if user.PasswordHash == "" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if len(user.Roles) != 1 || user.Roles[0].Name != "admin" {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
