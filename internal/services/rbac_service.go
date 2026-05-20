@@ -344,7 +344,7 @@ func (s *RBACService) EnsureDefaultAdminFromEnv() error {
 			return fmt.Errorf("failed to lookup admin role: %w", err)
 		}
 		if role == nil {
-			return fmt.Errorf("failed to assign role to seeded admin user: neither super_admin nor admin role exists")
+			return fmt.Errorf("failed to assign role to seeded admin user: neither super_admin nor admin role exists in the database; ensure migrations have been run and core roles are seeded")
 		}
 	}
 	ur := models.UserRole{UserID: newUserID, RoleID: role.ID, AssignedAt: time.Now(), IsActive: true}
